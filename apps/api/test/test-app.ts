@@ -4,10 +4,13 @@ import {
   FastifyAdapter,
   NestFastifyApplication
 } from "@nestjs/platform-fastify";
-import { AppModule } from "../src/app.module";
-import { configureApp } from "../src/app.setup";
 
 export async function createTestApp(): Promise<NestFastifyApplication> {
+  const [{ AppModule }, { configureApp }] = await Promise.all([
+    import("../src/app.module"),
+    import("../src/app.setup")
+  ]);
+
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule]
   }).compile();

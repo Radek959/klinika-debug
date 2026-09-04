@@ -1,0 +1,58 @@
+const NODE_ENV_VALUES = ["development", "test", "production"] as const;
+
+type NodeEnv = (typeof NODE_ENV_VALUES)[number];
+
+interface ValidatedEnv {
+  NODE_ENV: NodeEnv;
+  PORT: string;
+  DATABASE_URL: string;
+  SESSION_TOKEN_PEPPER: string;
+}
+
+export function validateEnvironment(config: Record<string, unknown>): ValidatedEnv {
+  const errors: string[] = [];
+  const nodeEnv = readString(config, "NODE_ENV");
+  const port = readString(config, "PORT");
+  const databaseUrl = readString(config, "DATABASE_URL");
+  const sessionTokenPepper = readString(config, "SESSION_TOKEN_PEPPER");
+
+  if (!nodeEnv || !NODE_ENV_VALUES.includes(nodeEnv as NodeEnv)) {
+    errors.push(
+      `NODE_ENV musi mieć jedną z wartości: ${NODE_ENV_VALUES.join(", ")}.`
+    );
+  }
+
+  const parsedPort = Number(port);
+  if (
+    !port ||
+    !Number.isInteger(parsedPort) ||
+    parsedPort < 1 ||
+    parsedPort > 65535
+  ) {
+    errors.push("PORT musi być liczbą całkowitą z zakresu 1-65535.");
+  }
+
+  if (!databaseUrl || !databaseUrl.startsWith("mysql://")) {
+    errors.push("DATABASE_URL musi być poprawnym adresem MySQL zaczynającym się od mysql://.");
+  }
+
+  if (!sessionTokenPepper || sessionTokenPepper.trim().length < 16) {
+    errors.push("SESSION_TOKEN_PEPPER musi mieć co najmniej 16 znaków.");
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Nieprawidłowa konfiguracja aplikacji:\n- ${errors.join("\n- ")}`);
+  }
+
+  return {
+    NODE_ENV: nodeEnv as NodeEnv,
+    PORT: port!,
+    DATABASE_URL: databaseUrl!,
+    SESSION_TOKEN_PEPPER: sessionTokenPepper!
+  };
+}
+
+function readString(config: Record<string, unknown>, key: string): string | undefined {
+  const value = config[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}

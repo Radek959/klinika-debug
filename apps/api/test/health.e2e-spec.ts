@@ -51,4 +51,15 @@ describe("health and docs", () => {
         expect(response.text).toContain("Klinika Debug API");
       });
   });
+
+  it("zwraca kontrolowany polski błąd dla nieznanego endpointu", async () => {
+    await request(app.getHttpServer())
+      .get("/api/v1/nie-ma-takiej-sciezki")
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body.error.code).toBe("RESOURCE_NOT_FOUND");
+        expect(body.error.message).toBe("Nie znaleziono zasobu.");
+        expect(body.error.message).not.toContain("Cannot GET");
+      });
+  });
 });

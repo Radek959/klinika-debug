@@ -4,6 +4,7 @@ import * as argon2 from "argon2";
 const prisma = new PrismaClient();
 
 async function main() {
+  const seedPassword = getSeedStaffPassword();
   const workspace = await prisma.workspace.upsert({
     where: { slug: "klinika-pokazowa" },
     update: { name: "Klinika Pokazowa" },
@@ -13,7 +14,7 @@ async function main() {
     }
   });
 
-  const passwordHash = await argon2.hash("HasloTestowe123!", {
+  const passwordHash = await argon2.hash(seedPassword, {
     type: argon2.argon2id
   });
 
@@ -35,6 +36,19 @@ async function main() {
       active: true
     }
   });
+}
+
+function getSeedStaffPassword(): string {
+  const password = process.env.SEED_STAFF_PASSWORD;
+  if (password) {
+    return password;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SEED_STAFF_PASSWORD jest wymagane podczas produkcyjnego seedowania.");
+  }
+
+  return "HasloTestowe123!";
 }
 
 main()

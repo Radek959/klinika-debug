@@ -6,9 +6,10 @@ import {
 import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { AppModule } from "./app.module";
 import { configureApp } from "./app.setup";
+import { getWebDistPath } from "./config/repo-paths";
 
 const RESERVED_SPA_PREFIXES = ["/api", "/api/docs", "/health", "/internal"];
 type StaticReply = { sendFile: (fileName: string) => unknown };
@@ -24,12 +25,12 @@ async function bootstrap() {
 
   await registerFrontend(app);
 
-  const port = Number(process.env.PORT ?? 3000);
+  const port = Number(process.env.PORT);
   await app.listen(port, "0.0.0.0");
 }
 
 async function registerFrontend(app: NestFastifyApplication) {
-  const webDist = process.env.WEB_DIST_DIR ?? resolve(process.cwd(), "apps/web/dist");
+  const webDist = getWebDistPath();
   const indexFile = join(webDist, "index.html");
 
   if (!existsSync(indexFile)) {
@@ -43,10 +44,10 @@ async function registerFrontend(app: NestFastifyApplication) {
   });
 
   fastify.setNotFoundHandler((request, reply) => {
-    const url = request.url;
+    const pathname = new URL(request.url, "http://localhost").pathname;
     const acceptsHtml = request.headers.accept?.includes("text/html") ?? false;
     const isReservedPath = RESERVED_SPA_PREFIXES.some(
-      (prefix) => url === prefix || url.startsWith(`${prefix}/`)
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
     );
 
     if (request.method === "GET" && acceptsHtml && !isReservedPath) {

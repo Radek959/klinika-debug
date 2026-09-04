@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/bootstrap-mvp
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root_local_password
+          MYSQL_DATABASE: klinika_debug_test
+          MYSQL_USER: klinika
+          MYSQL_PASSWORD: klinika_local_password
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot_local_password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      DATABASE_URL: mysql://klinika:klinika_local_password@127.0.0.1:3307/klinika_debug_test
+      TEST_DATABASE_URL: mysql://klinika:klinika_local_password@127.0.0.1:3307/klinika_debug_test
+      SESSION_TOKEN_PEPPER: ci-session-token-pepper
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run db:generate
+
+      - run: npm run db:migrate:test
+
+      - run: npm run check
+
+      - run: npm run test:integration
+
+      - run: npm run build
+
+      - run: npm run test:production-start

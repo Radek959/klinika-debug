@@ -67,7 +67,8 @@ describe("auth api", () => {
       .expect(200);
 
     const session = await prisma.userSession.findFirstOrThrow();
-    const oldActivity = new Date("2026-09-04T10:00:00.000Z");
+    const now = Date.now();
+    const oldActivity = new Date(now - 10 * 60 * 1000);
     await prisma.userSession.update({
       where: { id: session.id },
       data: {

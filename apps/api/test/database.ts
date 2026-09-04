@@ -10,6 +10,8 @@ export function configureTestEnvironment() {
   }
 
   process.env.DATABASE_URL = databaseUrl;
+  process.env.NODE_ENV ??= "test";
+  process.env.PORT ??= "3000";
   process.env.SESSION_TOKEN_PEPPER ??= "test-session-pepper";
 }
 

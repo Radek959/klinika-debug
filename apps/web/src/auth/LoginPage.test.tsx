@@ -1,12 +1,16 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoginPage } from "./LoginPage";
 
 describe("LoginPage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("wysyła dane logowania i zapisuje token sesji", async () => {
@@ -51,6 +55,21 @@ describe("LoginPage", () => {
     );
     expect(onAuthenticated).toHaveBeenCalledWith(
       expect.objectContaining({ login: "staff.demo" })
+    );
+  });
+
+  it("pokazuje polski komunikat przy błędzie sieciowym", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
+      new TypeError("Failed to fetch")
+    );
+
+    render(<LoginPage onAuthenticated={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText("Login"), "staff.demo");
+    await userEvent.type(screen.getByLabelText("Hasło"), "HasloTestowe123!");
+    await userEvent.click(screen.getByRole("button", { name: "Zaloguj" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Nie udało się połączyć z serwerem."
     );
   });
 });

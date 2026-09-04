@@ -28,9 +28,12 @@ export default tseslint.config(
     languageOptions: {
       sourceType: "commonjs",
       globals: {
+        __dirname: "readonly",
         console: "readonly",
+        fetch: "readonly",
         process: "readonly",
-        require: "readonly"
+        require: "readonly",
+        setTimeout: "readonly"
       }
     },
     rules: {

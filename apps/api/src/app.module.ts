@@ -3,6 +3,8 @@ import { ConfigModule } from "@nestjs/config";
 import { AuthModule } from "./auth/auth.module";
 import { CorrelationIdMiddleware } from "./common/correlation/correlation-id.middleware";
 import { PrismaModule } from "./common/prisma/prisma.module";
+import { getEnvFilePaths } from "./config/repo-paths";
+import { validateEnvironment } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
 import { PatientsModule } from "./patients/patients.module";
 
@@ -10,7 +12,8 @@ import { PatientsModule } from "./patients/patients.module";
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [".env.local", ".env"]
+      envFilePath: getEnvFilePaths(),
+      validate: validateEnvironment
     }),
     PrismaModule,
     HealthModule,

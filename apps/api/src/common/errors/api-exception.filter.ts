@@ -35,7 +35,10 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const body: ApiErrorBody = {
       error: {
         code: payload.code ?? this.defaultCode(status),
-        message: payload.message ?? this.defaultMessage(status),
+        message:
+          payload.code && payload.message
+            ? payload.message
+            : this.defaultMessage(status),
         correlationId
       }
     };
@@ -53,7 +56,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     fieldErrors?: FieldError[];
   } {
     if (typeof response === "string") {
-      return { message: response };
+      return {};
     }
 
     if (!response || typeof response !== "object") {

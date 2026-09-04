@@ -55,6 +55,24 @@ Domyślne syntetyczne konto Etapu 1:
 - login: `staff.demo`
 - hasło: `HasloTestowe123!`
 
+W produkcji seed wymaga jawnego `SEED_STAFF_PASSWORD`. Lokalna wartość domyślna działa tylko poza `NODE_ENV=production`.
+
+## Hostinger
+
+Build command:
+
+```powershell
+npm install && npm run db:generate && npm run build
+```
+
+Start command:
+
+```powershell
+npm run start:hostinger
+```
+
+`start:hostinger` wykonuje `prisma migrate deploy`, a następnie uruchamia produkcyjny backend. Seed nie uruchamia się automatycznie przy starcie ani przy deployu.
+
 ## Testy i build
 
 Podstawowe bramki:
@@ -74,6 +92,16 @@ $env:TEST_DATABASE_URL = "mysql://klinika:klinika_local_password@localhost:3307/
 npm run db:migrate:test
 npm run test:integration
 ```
+
+Smoke test produkcyjnego startu wymaga wcześniejszego buildu i tej samej testowej bazy:
+
+```powershell
+npm run build
+$env:TEST_DATABASE_URL = "mysql://klinika:klinika_local_password@localhost:3307/klinika_debug_test"
+npm run test:production-start
+```
+
+Jeżeli lokalnie nie ma MySQL albo Dockera, testy integracyjne i smoke test produkcyjny uruchamia workflow GitHub Actions z usługą MySQL.
 
 ## Status
 

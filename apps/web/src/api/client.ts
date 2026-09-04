@@ -49,10 +49,18 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(url, {
-    ...init,
-    headers
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers
+    });
+  } catch {
+    throw new ApiClientError(
+      "Nie udało się połączyć z serwerem. Sprawdź połączenie i spróbuj ponownie.",
+      0
+    );
+  }
 
   if (!response.ok) {
     const payload = (await safeJson(response)) as ApiErrorResponse;
