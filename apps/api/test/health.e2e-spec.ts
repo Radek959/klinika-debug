@@ -19,8 +19,8 @@ describe("health and docs", () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
     await closeTestApp(app);
+    await prisma.$disconnect();
   });
 
   it("udostępnia /health/live poza prefiksem /api/v1", async () => {

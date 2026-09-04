@@ -23,8 +23,8 @@ describe("workspace isolation", () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
     await closeTestApp(app);
+    await prisma.$disconnect();
   });
 
   it("traktuje pacjenta z innego workspace’u jak nieistniejący zasób", async () => {

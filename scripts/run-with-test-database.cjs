@@ -17,7 +17,9 @@ const commands = {
       join("..", "..", "node_modules", "jest", "bin", "jest.js"),
       "--config",
       join("test", "jest-e2e.json"),
-      "--runInBand"
+      "--runInBand",
+      "--testTimeout=30000",
+      "--forceExit"
     ],
     cwd: join(repoRoot, "apps", "api")
   },

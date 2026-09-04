@@ -24,8 +24,8 @@ describe("auth api", () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
     await closeTestApp(app);
+    await prisma.$disconnect();
   });
 
   it("loguje konto STAFF i zapisuje wyłącznie hash tokenu sesji", async () => {
