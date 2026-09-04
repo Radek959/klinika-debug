@@ -1,5 +1,7 @@
 const { spawnSync } = require("node:child_process");
-const { join } = require("node:path");
+const { dirname, join } = require("node:path");
+
+const repoRoot = dirname(__dirname);
 
 const [mode] = process.argv.slice(2);
 
@@ -17,12 +19,12 @@ const commands = {
       join("test", "jest-e2e.json"),
       "--runInBand"
     ],
-    cwd: join(process.cwd(), "apps", "api")
+    cwd: join(repoRoot, "apps", "api")
   },
   "prisma-migrate-deploy": [
     process.execPath,
     [join("node_modules", "prisma", "build", "index.js"), "migrate", "deploy"],
-    process.cwd()
+    repoRoot
   ]
 };
 
