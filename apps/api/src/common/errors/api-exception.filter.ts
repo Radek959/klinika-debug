@@ -6,7 +6,10 @@ import {
   HttpStatus
 } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
-import { randomUUID } from "node:crypto";
+import {
+  CORRELATION_ID_HEADER,
+  resolveCorrelationId
+} from "../correlation/correlation-id";
 import type { ApiErrorBody, FieldError } from "./api-error.types";
 
 interface ExceptionPayload {
@@ -30,7 +33,10 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const context = host.switchToHttp();
     const request = context.getRequest<FastifyRequest>();
     const reply = context.getResponse<ReplyLike>();
-    const correlationId = request.correlationId ?? randomUUID();
+    const correlationId = resolveCorrelationId(
+      request.headers,
+      request.correlationId
+    );
 
     const status =
       exception instanceof HttpException
@@ -70,14 +76,14 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const send = reply.send;
 
     if (setHeader && setStatus && send) {
-      setHeader.call(reply, "X-Correlation-ID", correlationId);
+      setHeader.call(reply, CORRELATION_ID_HEADER, correlationId);
       setStatus.call(reply, status);
       send.call(reply, body);
       return;
     }
 
     reply.statusCode = status;
-    reply.setHeader?.("X-Correlation-ID", correlationId);
+    reply.setHeader?.(CORRELATION_ID_HEADER, correlationId);
     reply.setHeader?.("Content-Type", "application/json; charset=utf-8");
     reply.end?.(JSON.stringify(body));
   }
