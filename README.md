@@ -22,9 +22,8 @@ System służy wyłącznie do demonstracji i nauki testowania. Nie wolno używa�
 
 - [Dokumentacja produktowa](docs/dokumentacja-produktowa.md)
 - [Specyfikacja MVP](docs/specyfikacja-mvp.md)
-
-Dokument architektury technicznej zostanie dodany przed rozpoczęciem implementacji.
+- [Architektura techniczna](docs/architektura-techniczna.md)
 
 ## Status
 
-Projekt jest w fazie przygotowania architektury technicznej i szkieletu MVP.
+Projekt jest w fazie akceptacji architektury technicznej i przygotowania szkieletu MVP.
