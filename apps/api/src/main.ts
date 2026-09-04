@@ -40,10 +40,11 @@ async function registerFrontend(app: NestFastifyApplication) {
   const fastify = app.getHttpAdapter().getInstance();
   await (fastify.register as any)(fastifyStatic, {
     root: webDist,
-    prefix: "/"
+    prefix: "/",
+    wildcard: false
   });
 
-  fastify.setNotFoundHandler((request, reply) => {
+  fastify.get("/*", (request, reply) => {
     const pathname = new URL(request.url, "http://localhost").pathname;
     const acceptsHtml = request.headers.accept?.includes("text/html") ?? false;
     const isReservedPath = RESERVED_SPA_PREFIXES.some(
