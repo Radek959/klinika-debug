@@ -5,7 +5,7 @@ import {
   HttpException,
   HttpStatus
 } from "@nestjs/common";
-import type { FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyRequest } from "fastify";
 import { randomUUID } from "node:crypto";
 import type { ApiErrorBody, FieldError } from "./api-error.types";
 
@@ -15,12 +15,21 @@ interface ExceptionPayload {
   fieldErrors?: FieldError[];
 }
 
+interface ReplyLike {
+  header?: (name: string, value: string) => ReplyLike;
+  status?: (statusCode: number) => ReplyLike;
+  send?: (body: unknown) => void;
+  setHeader?: (name: string, value: string) => void;
+  end?: (body: string) => void;
+  statusCode?: number;
+}
+
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const context = host.switchToHttp();
     const request = context.getRequest<FastifyRequest>();
-    const reply = context.getResponse<FastifyReply>();
+    const reply = context.getResponse<ReplyLike>();
     const correlationId = request.correlationId ?? randomUUID();
 
     const status =
@@ -47,7 +56,30 @@ export class ApiExceptionFilter implements ExceptionFilter {
       body.error.fieldErrors = payload.fieldErrors;
     }
 
-    reply.header("X-Correlation-ID", correlationId).status(status).send(body);
+    this.send(reply, status, correlationId, body);
+  }
+
+  private send(
+    reply: ReplyLike,
+    status: number,
+    correlationId: string,
+    body: ApiErrorBody
+  ) {
+    const setHeader = reply.header;
+    const setStatus = reply.status;
+    const send = reply.send;
+
+    if (setHeader && setStatus && send) {
+      setHeader.call(reply, "X-Correlation-ID", correlationId);
+      setStatus.call(reply, status);
+      send.call(reply, body);
+      return;
+    }
+
+    reply.statusCode = status;
+    reply.setHeader?.("X-Correlation-ID", correlationId);
+    reply.setHeader?.("Content-Type", "application/json; charset=utf-8");
+    reply.end?.(JSON.stringify(body));
   }
 
   private normalizePayload(response: unknown): {
