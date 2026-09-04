@@ -14,7 +14,11 @@ export class CorrelationIdMiddleware implements NestMiddleware {
       requestedId && UUID_PATTERN.test(requestedId) ? requestedId : randomUUID();
 
     request.correlationId = correlationId;
-    reply.header("X-Correlation-ID", correlationId);
+    if (typeof reply.header === "function") {
+      reply.header("X-Correlation-ID", correlationId);
+    } else if ("setHeader" in reply && typeof reply.setHeader === "function") {
+      reply.setHeader("X-Correlation-ID", correlationId);
+    }
     next();
   }
 }
