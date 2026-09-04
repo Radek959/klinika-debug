@@ -1,4 +1,3 @@
-import request from "supertest";
 import { PrismaClient } from "@prisma/client";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { closeTestApp, createTestApp } from "./test-app";
@@ -61,25 +60,30 @@ describe("workspace isolation", () => {
       }
     });
 
-    const loginResponse = await request(app.getHttpServer())
-      .post("/api/v1/auth/login")
-      .send({ login: "staff.a", password })
-      .expect(200);
+    const loginResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { login: "staff.a", password }
+    });
+    expect(loginResponse.statusCode).toBe(200);
+    const loginBody = JSON.parse(loginResponse.body);
 
-    await request(app.getHttpServer())
-      .get(`/api/v1/patients/${patientA.id}`)
-      .set("Authorization", `Bearer ${loginResponse.body.token}`)
-      .expect(200)
-      .expect(({ body }) => {
-        expect(body.id).toBe(patientA.id);
-      });
+    const ownPatientResponse = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${patientA.id}`,
+      headers: { authorization: `Bearer ${loginBody.token}` }
+    });
+    expect(ownPatientResponse.statusCode).toBe(200);
+    expect(JSON.parse(ownPatientResponse.body).id).toBe(patientA.id);
 
-    await request(app.getHttpServer())
-      .get(`/api/v1/patients/${patientB.id}`)
-      .set("Authorization", `Bearer ${loginResponse.body.token}`)
-      .expect(404)
-      .expect(({ body }) => {
-        expect(body.error.code).toBe("PATIENT_NOT_FOUND");
-      });
+    const otherWorkspacePatientResponse = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${patientB.id}`,
+      headers: { authorization: `Bearer ${loginBody.token}` }
+    });
+    expect(otherWorkspacePatientResponse.statusCode).toBe(404);
+    expect(JSON.parse(otherWorkspacePatientResponse.body).error.code).toBe(
+      "PATIENT_NOT_FOUND"
+    );
   });
 });

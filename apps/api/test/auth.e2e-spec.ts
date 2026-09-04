@@ -1,4 +1,3 @@
-import request from "supertest";
 import { PrismaClient } from "@prisma/client";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { calculateSessionExpiry } from "@klinika/domain";
@@ -37,16 +36,19 @@ describe("auth api", () => {
       password
     });
 
-    const response = await request(app.getHttpServer())
-      .post("/api/v1/auth/login")
-      .send({ login: "staff.a", password })
-      .expect(200);
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { login: "staff.a", password }
+    });
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
 
-    expect(response.body.token).toEqual(expect.any(String));
-    expect(response.body.user.workspace.name).toBe("Klinika A");
+    expect(body.token).toEqual(expect.any(String));
+    expect(body.user.workspace.name).toBe("Klinika A");
 
     const session = await prisma.userSession.findFirstOrThrow();
-    expect(session.tokenHash).not.toBe(response.body.token);
+    expect(session.tokenHash).not.toBe(body.token);
     expect(session.lastActivityAt).toBeInstanceOf(Date);
     expect(session.expiresAt).toBeInstanceOf(Date);
     expect(session.revokedAt).toBeNull();
@@ -61,10 +63,13 @@ describe("auth api", () => {
       password
     });
 
-    const loginResponse = await request(app.getHttpServer())
-      .post("/api/v1/auth/login")
-      .send({ login: "staff.a", password })
-      .expect(200);
+    const loginResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { login: "staff.a", password }
+    });
+    expect(loginResponse.statusCode).toBe(200);
+    const loginBody = JSON.parse(loginResponse.body);
 
     const session = await prisma.userSession.findFirstOrThrow();
     const now = Date.now();
@@ -77,14 +82,15 @@ describe("auth api", () => {
       }
     });
 
-    await request(app.getHttpServer())
-      .get("/api/v1/auth/me")
-      .set("Authorization", `Bearer ${loginResponse.body.token}`)
-      .expect(200)
-      .expect(({ body }) => {
-        expect(body.user.login).toBe("staff.a");
-        expect(body.user.workspace.slug).toBe("klinika-a");
-      });
+    const meResponse = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/me",
+      headers: { authorization: `Bearer ${loginBody.token}` }
+    });
+    expect(meResponse.statusCode).toBe(200);
+    const meBody = JSON.parse(meResponse.body);
+    expect(meBody.user.login).toBe("staff.a");
+    expect(meBody.user.workspace.slug).toBe("klinika-a");
 
     const updatedSession = await prisma.userSession.findUniqueOrThrow({
       where: { id: session.id }
@@ -105,18 +111,23 @@ describe("auth api", () => {
       password: "HasloTestowe123!"
     });
 
-    await request(app.getHttpServer())
-      .post("/api/v1/auth/login")
-      .set("X-Correlation-ID", "a3a90c31-a45b-4e36-8f42-17f33196693c")
-      .send({ login: "staff.a", password: "bledne" })
-      .expect(401)
-      .expect("X-Correlation-ID", "a3a90c31-a45b-4e36-8f42-17f33196693c")
-      .expect(({ body }) => {
-        expect(body.error.code).toBe("INVALID_CREDENTIALS");
-        expect(body.error.correlationId).toBe(
-          "a3a90c31-a45b-4e36-8f42-17f33196693c"
-        );
-      });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      headers: {
+        "x-correlation-id": "a3a90c31-a45b-4e36-8f42-17f33196693c"
+      },
+      payload: { login: "staff.a", password: "bledne" }
+    });
+    const body = JSON.parse(response.body);
+    expect(response.statusCode).toBe(401);
+    expect(response.headers["x-correlation-id"]).toBe(
+      "a3a90c31-a45b-4e36-8f42-17f33196693c"
+    );
+    expect(body.error.code).toBe("INVALID_CREDENTIALS");
+    expect(body.error.correlationId).toBe(
+      "a3a90c31-a45b-4e36-8f42-17f33196693c"
+    );
   });
 
   it("unieważnia sesję przy wylogowaniu", async () => {
@@ -127,15 +138,20 @@ describe("auth api", () => {
       login: "staff.a",
       password
     });
-    const loginResponse = await request(app.getHttpServer())
-      .post("/api/v1/auth/login")
-      .send({ login: "staff.a", password })
-      .expect(200);
+    const loginResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { login: "staff.a", password }
+    });
+    expect(loginResponse.statusCode).toBe(200);
+    const loginBody = JSON.parse(loginResponse.body);
 
-    await request(app.getHttpServer())
-      .post("/api/v1/auth/logout")
-      .set("Authorization", `Bearer ${loginResponse.body.token}`)
-      .expect(204);
+    const logoutResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/logout",
+      headers: { authorization: `Bearer ${loginBody.token}` }
+    });
+    expect(logoutResponse.statusCode).toBe(204);
 
     const session = await prisma.userSession.findFirstOrThrow();
     expect(session.revokedAt).toBeInstanceOf(Date);
