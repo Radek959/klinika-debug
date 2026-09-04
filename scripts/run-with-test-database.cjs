@@ -19,6 +19,7 @@ const commands = {
       join("test", "jest-e2e.json"),
       "--runInBand",
       "--testTimeout=30000",
+      "--verbose",
       "--forceExit"
     ],
     cwd: join(repoRoot, "apps", "api")
