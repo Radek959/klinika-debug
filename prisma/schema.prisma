@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STAFF
+}
+
+enum IdentifierType {
+  PESEL
+  OTHER_DOCUMENT
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    User[]
+  patients Patient[]
+
+  @@map("workspaces")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  login        String    @unique
+  displayName  String
+  role         UserRole  @default(STAFF)
+  passwordHash String
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sessions  UserSession[]
+
+  @@index([workspaceId])
+  @@map("users")
+}
+
+model UserSession {
+  id             String    @id @default(cuid())
+  userId         String
+  tokenHash      String    @unique
+  lastActivityAt DateTime
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+model Patient {
+  id             String         @id @default(cuid())
+  workspaceId    String
+  firstName      String
+  lastName       String
+  identifierType IdentifierType
+  pesel          String?
+  documentType   String?
+  documentNumber String?
+  documentCountry String?
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, pesel], map: "patients_workspace_pesel_key")
+  @@unique([workspaceId, documentType, documentNumber, documentCountry], map: "patients_workspace_document_key")
+  @@index([workspaceId], map: "patients_workspace_idx")
+  @@map("patients")
+}
