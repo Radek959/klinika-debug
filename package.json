@@ -8,8 +8,9 @@
   ],
   "scripts": {
     "build": "npm run build --workspace=@klinika/api-contracts && npm run build --workspace=@klinika/domain && npm run build --workspace=@klinika/web && npm run build --workspace=@klinika/api",
+    "build:hostinger": "npm run db:generate && npm run build && npm run db:migrate",
+    "build:hostinger:seed": "npm run build:hostinger && npm run db:seed",
     "start": "npm run start:prod --workspace=@klinika/api",
-    "start:hostinger": "prisma migrate deploy && npm run start:prod --workspace=@klinika/api",
     "dev:api": "npm run dev --workspace=@klinika/api",
     "dev:web": "npm run dev --workspace=@klinika/web",
     "lint": "eslint .",

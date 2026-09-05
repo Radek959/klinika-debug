@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - feat/bootstrap-mvp
+      - main
 
 jobs:
   test:
@@ -52,6 +52,6 @@ jobs:
       - run: npm run test:integration
         timeout-minutes: 5
 
-      - run: npm run build
+      - run: npm run build:hostinger
 
       - run: npm run test:production-start

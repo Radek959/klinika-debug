@@ -384,8 +384,10 @@ Docelowe skrypty w głównym `package.json`:
 ```json
 {
   "scripts": {
-    "build": "npm run build --workspace=apps/web && npm run build --workspace=apps/api",
-    "start": "npm run start:prod --workspace=apps/api",
+    "build": "npm run build --workspace=@klinika/api-contracts && npm run build --workspace=@klinika/domain && npm run build --workspace=@klinika/web && npm run build --workspace=@klinika/api",
+    "build:hostinger": "npm run db:generate && npm run build && npm run db:migrate",
+    "build:hostinger:seed": "npm run build:hostinger && npm run db:seed",
+    "start": "npm run start:prod --workspace=@klinika/api",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "check": "npm run lint && npm run typecheck && npm test && npm run build"
@@ -393,7 +395,15 @@ Docelowe skrypty w głównym `package.json`:
 }
 ```
 
-Ostateczne komendy zostaną zweryfikowane na pierwszym działającym szkielecie aplikacji i dopasowane do pól Build command oraz Start command w Hostingerze.
+Konfiguracja w Hostingerze dla frameworka `Other`:
+
+- Build command pierwszego wdrożenia: `npm run build:hostinger:seed`;
+- Build command kolejnych wdrożeń: `npm run build:hostinger`;
+- Package manager: `npm`;
+- Output directory: `./`;
+- Entry file: `apps/api/dist/main.js`.
+
+Hostinger w trybie `Other` nie używa osobnego pola Start command. Seed jest uruchamiany tylko świadomie podczas pierwszego wdrożenia przez `build:hostinger:seed`; zwykłe wdrożenia wykonują migracje przez `build:hostinger`, ale nie seedują danych.
 
 ### 17.3. Zmienne środowiskowe
 
