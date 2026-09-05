@@ -52,6 +52,15 @@ jobs:
       - run: npm run test:integration
         timeout-minutes: 5
 
+      - name: Hide frontend test-only packages before production build
+        run: |
+          test -d node_modules/vitest
+          test -d node_modules/jsdom
+          test -d node_modules/@testing-library
+          mv node_modules/vitest node_modules/.vitest-hidden
+          mv node_modules/jsdom node_modules/.jsdom-hidden
+          mv node_modules/@testing-library node_modules/.testing-library-hidden
+
       - run: npm run build:hostinger
 
       - run: npm run test:production-start
