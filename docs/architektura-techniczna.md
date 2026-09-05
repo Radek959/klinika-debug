@@ -43,7 +43,7 @@ Jeżeli docelowy plan Hostingera okaże się VPS-em zamiast zarządzanego hostin
 | Adapter HTTP | Fastify | Niski narzut i wystarczająca wydajność dla ćwiczeń API |
 | Dokumentacja API | `@nestjs/swagger` | Automatyczne generowanie OpenAPI oraz interaktywnej strony `/api/docs` |
 | Baza danych | MySQL 8 | Natywna baza dostępna na zarządzanym hostingu Hostinger |
-| ORM i migracje | Prisma | Czytelny model danych, migracje i seedowanie |
+| ORM i migracje | Prisma z adapterem `@prisma/adapter-mariadb` | Czytelny model danych, migracje i seedowanie bez natywnego silnika Rust w runtime |
 | Testy backendu | Jest + Supertest | Testy jednostkowe i integracyjne reguł oraz endpointów |
 | Testy frontendu | Vitest + Testing Library | Testy komponentów i najważniejszych zachowań UI |
 | Testy E2E | Playwright — opcjonalnie | Przydatny do demonstracji, ale nie jest warunkiem MVP |
@@ -434,6 +434,10 @@ Po deployu wykonywany jest test dymny:
 - środowisko nadal ma oczekiwany pakiet błędów i preset danych.
 
 Deploy nie może automatycznie zmieniać aktywnego pakietu błędów ani resetować danych warsztatowych.
+
+### 17.5. Prisma w runtime Hostingera
+
+Prisma Client działa w trybie `engineType = "client"` i korzysta z oficjalnego adaptera `@prisma/adapter-mariadb`. Aplikacja parsuje istniejące `DATABASE_URL` i tworzy jedną pulę połączeń z limitem `connectionLimit: 2`, odpowiednim dla hostingu współdzielonego. Migracje nadal są wykonywane przez `prisma migrate deploy` podczas builda Hostinger.
 
 ## 18. Lokalne uruchomienie
 

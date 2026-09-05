@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { calculateSessionExpiry } from "@klinika/domain";
+import { PrismaService } from "../src/common/prisma/prisma.service";
 import { closeTestApp, createTestApp } from "./test-app";
 import {
   configureTestEnvironment,
@@ -14,8 +15,8 @@ describe("auth api", () => {
 
   beforeAll(async () => {
     configureTestEnvironment();
-    prisma = new PrismaClient();
     app = await createTestApp();
+    prisma = app.get(PrismaService);
   });
 
   beforeEach(async () => {
@@ -24,7 +25,6 @@ describe("auth api", () => {
 
   afterAll(async () => {
     await closeTestApp(app);
-    await prisma.$disconnect();
   });
 
   it("loguje konto STAFF i zapisuje wyłącznie hash tokenu sesji", async () => {

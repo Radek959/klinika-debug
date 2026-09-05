@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { AppModule } from "./app.module";
 import { configureApp } from "./app.setup";
+import { logBootstrapError } from "./config/bootstrap-error";
 import { getWebDistPath } from "./config/repo-paths";
 
 const RESERVED_SPA_PREFIXES = ["/api", "/api/docs", "/health", "/internal"];
@@ -66,4 +67,7 @@ async function registerFrontend(app: NestFastifyApplication) {
   });
 }
 
-void bootstrap();
+bootstrap().catch((error) => {
+  logBootstrapError(error);
+  process.exit(1);
+});
