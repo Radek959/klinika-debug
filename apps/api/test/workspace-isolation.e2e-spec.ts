@@ -4,6 +4,7 @@ import { PrismaService } from "../src/common/prisma/prisma.service";
 import { closeTestApp, createTestApp } from "./test-app";
 import {
   configureTestEnvironment,
+  createTestPatient,
   createStaffUser,
   resetTestDatabase
 } from "./database";
@@ -41,23 +42,21 @@ describe("workspace isolation", () => {
       password
     });
 
-    const patientA = await prisma.patient.create({
-      data: {
-        workspaceId: workspaceA.workspace.id,
-        firstName: "Jan",
-        lastName: "Testowy",
-        identifierType: "PESEL",
-        pesel: "44051401458"
-      }
+    const patientA = await createTestPatient(prisma, {
+      workspaceId: workspaceA.workspace.id,
+      firstName: "Jan",
+      lastName: "Testowy",
+      pesel: "44051401458",
+      birthDate: "1944-05-14",
+      gender: "MALE"
     });
-    const patientB = await prisma.patient.create({
-      data: {
-        workspaceId: workspaceB.workspace.id,
-        firstName: "Anna",
-        lastName: "Syntetyczna",
-        identifierType: "PESEL",
-        pesel: "02270803628"
-      }
+    const patientB = await createTestPatient(prisma, {
+      workspaceId: workspaceB.workspace.id,
+      firstName: "Anna",
+      lastName: "Syntetyczna",
+      pesel: "02270803624",
+      birthDate: "2002-07-08",
+      gender: "FEMALE"
     });
 
     const loginResponse = await app.inject({
