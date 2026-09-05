@@ -100,6 +100,7 @@ model Patient {
 
   @@unique([workspaceId, pesel], map: "patients_workspace_pesel_key")
   @@unique([workspaceId, documentType, documentNumber, documentCountry], map: "patients_workspace_document_key")
+  @@unique([workspaceId, id], map: "patients_workspace_id_key")
   @@index([workspaceId], map: "patients_workspace_idx")
   @@index([workspaceId, lastName, firstName], map: "patients_workspace_name_idx")
   @@index([workspaceId, birthDate], map: "patients_workspace_birth_date_idx")
@@ -120,8 +121,9 @@ model Guardian {
   updatedAt   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  patient   Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient   Patient   @relation(fields: [workspaceId, patientId], references: [workspaceId, id], onDelete: Cascade)
 
+  @@unique([workspaceId, patientId], map: "guardians_workspace_patient_key")
   @@index([workspaceId], map: "guardians_workspace_idx")
   @@map("guardians")
 }

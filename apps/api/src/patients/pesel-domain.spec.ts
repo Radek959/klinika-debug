@@ -9,6 +9,8 @@ describe("PESEL domain rules", () => {
   it("odczytuje datę urodzenia i płeć z poprawnego numeru PESEL", () => {
     expect(readPeselBirthDate("44051401458")).toBe("1944-05-14");
     expect(readPeselGender("44051401458")).toBe("MALE");
+    expect(readPeselGender("123")).toBeNull();
+    expect(readPeselGender("abcdefghijk")).toBeNull();
     expect(readPeselData("02270803624")).toEqual({
       birthDate: "2002-07-08",
       gender: "FEMALE"
@@ -23,8 +25,14 @@ describe("PESEL domain rules", () => {
   });
 
   it("zwraca błąd długości, cyfr, daty i sumy kontrolnej", () => {
-    expect(validatePesel("123").valid).toBe(false);
-    expect(validatePesel("abcdefghijk").valid).toBe(false);
+    expect(validatePesel("123")).toEqual({
+      valid: false,
+      errors: [{ field: "pesel", code: "INVALID_LENGTH" }]
+    });
+    expect(validatePesel("abcdefghijk")).toEqual({
+      valid: false,
+      errors: [{ field: "pesel", code: "INVALID_DIGITS" }]
+    });
     expect(validatePesel("44993101458")).toEqual({
       valid: false,
       errors: [

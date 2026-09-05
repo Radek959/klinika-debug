@@ -51,9 +51,14 @@ export function readPeselData(pesel: string): PeselData | null {
     return null;
   }
 
+  const gender = readPeselGender(pesel);
+  if (!gender) {
+    return null;
+  }
+
   return {
     birthDate,
-    gender: readPeselGender(pesel)
+    gender
   };
 }
 
@@ -86,7 +91,11 @@ export function readPeselBirthDate(pesel: string): string | null {
   ].join("-");
 }
 
-export function readPeselGender(pesel: string): Gender {
+export function readPeselGender(pesel: string): Gender | null {
+  if (pesel.length !== PESEL_LENGTH || !/^\d+$/.test(pesel)) {
+    return null;
+  }
+
   return Number(pesel[9]) % 2 === 1 ? "MALE" : "FEMALE";
 }
 

@@ -128,6 +128,30 @@ describe("patients read api", () => {
     ]);
   });
 
+  it("odrzuca zbyt długi parametr wyszukiwania", async () => {
+    const { token } = await authenticateWorkspace("staff.a");
+    const search = "a".repeat(101);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients?search=${search}`,
+      headers: { authorization: `Bearer ${token}` }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error: {
+        code: "VALIDATION_ERROR",
+        fieldErrors: [
+          {
+            field: "search",
+            code: "maxLength"
+          }
+        ]
+      }
+    });
+  });
+
   it("zwraca szczegóły pacjenta z opiekunem i datą urodzenia jako YYYY-MM-DD", async () => {
     const { token, workspaceId } = await authenticateWorkspace("staff.a");
     const patient = await createTestPatient(prisma, {
@@ -220,6 +244,45 @@ describe("patients read api", () => {
     });
     expect(detailResponse.statusCode).toBe(404);
     expect(JSON.parse(detailResponse.body).error.code).toBe("PATIENT_NOT_FOUND");
+  });
+
+  it("nie pozwala przypisać opiekuna z innego workspace’u do pacjenta", async () => {
+    const password = "HasloTestowe123!";
+    const workspaceA = await createStaffUser(prisma, {
+      workspaceSlug: "klinika-a",
+      workspaceName: "Klinika A",
+      login: "staff.a",
+      password
+    });
+    const workspaceB = await createStaffUser(prisma, {
+      workspaceSlug: "klinika-b",
+      workspaceName: "Klinika B",
+      login: "staff.b",
+      password
+    });
+    const patient = await createTestPatient(prisma, {
+      workspaceId: workspaceA.workspace.id,
+      firstName: "Maja",
+      lastName: "Syntetyczna",
+      pesel: "18210112349",
+      birthDate: "2018-01-01",
+      gender: "FEMALE"
+    });
+
+    await expect(
+      prisma.guardian.create({
+        data: {
+          workspaceId: workspaceB.workspace.id,
+          patientId: patient.id,
+          firstName: "Karolina",
+          lastName: "Syntetyczna",
+          phone: "+48123123126",
+          email: "karolina.syntetyczna@example.test"
+        }
+      })
+    ).rejects.toThrow();
+
+    await expect(prisma.guardian.count()).resolves.toBe(0);
   });
 
   async function authenticateWorkspace(login: string) {

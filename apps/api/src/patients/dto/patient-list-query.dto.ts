@@ -1,6 +1,14 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min
+} from "class-validator";
 
 export const PATIENT_SORT_FIELDS = ["lastName", "birthDate", "createdAt"] as const;
 export const SORT_ORDERS = ["asc", "desc"] as const;
@@ -37,6 +45,7 @@ export class PatientListQueryDto {
   })
   @IsOptional()
   @IsString({ message: "Szukana fraza musi być tekstem." })
+  @MaxLength(100, { message: "Szukana fraza może mieć maksymalnie 100 znaków." })
   search?: string;
 
   @ApiPropertyOptional({

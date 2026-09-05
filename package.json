@@ -17,6 +17,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:integration": "node scripts/run-with-test-database.cjs jest-e2e",
+    "test:migration:patients": "node scripts/test-patient-migration.cjs",
     "test:production-start": "node scripts/smoke-production-start.cjs",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
