@@ -2,12 +2,20 @@ const { readFileSync } = require("node:fs");
 const { join } = require("node:path");
 const { URL } = require("node:url");
 const mariadb = require("mariadb");
+const {
+  assertSafeTestDatabaseUrl
+} = require("./test-database-safety.cjs");
 
 const repoRoot = join(__dirname, "..");
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
-if (!databaseUrl) {
-  console.error("TEST_DATABASE_URL musi wskazywać oddzielną testową bazę MySQL.");
+try {
+  assertSafeTestDatabaseUrl({
+    databaseUrl,
+    nodeEnv: process.env.NODE_ENV
+  });
+} catch (error) {
+  console.error(error.message);
   process.exit(1);
 }
 

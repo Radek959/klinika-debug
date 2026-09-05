@@ -15,7 +15,8 @@
     "dev:web": "npm run dev --workspace=@klinika/web",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test:safety && npm run test --workspaces --if-present",
+    "test:safety": "node scripts/test-database-safety.spec.cjs",
     "test:integration": "node scripts/run-with-test-database.cjs jest-e2e",
     "test:migration:patients": "node scripts/test-patient-migration.cjs",
     "test:production-start": "node scripts/smoke-production-start.cjs",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@eslint/js": "^9.9.0",
     "eslint": "^9.9.0",
+    "mariadb": "3.4.7",
     "prisma": "^6.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.0",

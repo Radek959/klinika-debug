@@ -1,12 +1,20 @@
 const { spawnSync } = require("node:child_process");
 const { dirname, join } = require("node:path");
+const {
+  assertSafeTestDatabaseUrl
+} = require("./test-database-safety.cjs");
 
 const repoRoot = dirname(__dirname);
 
 const [mode] = process.argv.slice(2);
 
-if (!process.env.TEST_DATABASE_URL) {
-  console.error("TEST_DATABASE_URL musi wskazywać oddzielną testową bazę MySQL.");
+try {
+  assertSafeTestDatabaseUrl({
+    databaseUrl: process.env.TEST_DATABASE_URL,
+    nodeEnv: process.env.NODE_ENV
+  });
+} catch (error) {
+  console.error(error.message);
   process.exit(1);
 }
 
