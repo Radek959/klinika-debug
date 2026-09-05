@@ -17,6 +17,11 @@ enum IdentifierType {
   OTHER_DOCUMENT
 }
 
+enum Gender {
+  FEMALE
+  MALE
+}
+
 model Workspace {
   id        String   @id @default(cuid())
   name      String
@@ -24,22 +29,23 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users    User[]
-  patients Patient[]
+  users     User[]
+  patients  Patient[]
+  guardians Guardian[]
 
   @@map("workspaces")
 }
 
 model User {
-  id           String    @id @default(cuid())
+  id           String   @id @default(cuid())
   workspaceId  String
-  login        String    @unique
+  login        String   @unique
   displayName  String
-  role         UserRole  @default(STAFF)
+  role         UserRole @default(STAFF)
   passwordHash String
-  active       Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sessions  UserSession[]
@@ -65,23 +71,59 @@ model UserSession {
 }
 
 model Patient {
-  id             String         @id @default(cuid())
-  workspaceId    String
-  firstName      String
-  lastName       String
-  identifierType IdentifierType
-  pesel          String?
-  documentType   String?
-  documentNumber String?
-  documentCountry String?
-  active         Boolean        @default(true)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id                     String         @id @default(cuid())
+  workspaceId            String
+  firstName              String
+  lastName               String
+  identifierType         IdentifierType
+  pesel                  String?
+  documentType           String?
+  documentNumber         String?
+  documentCountry        String?
+  birthDate              DateTime       @db.Date
+  gender                 Gender
+  citizenship            String?
+  phone                  String?
+  email                  String?
+  addressStreet          String?
+  addressBuildingNumber  String?
+  addressApartmentNumber String?
+  addressPostalCode      String?
+  addressCity            String?
+  addressCountry         String?
+  active                 Boolean        @default(true)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  guardian  Guardian?
 
   @@unique([workspaceId, pesel], map: "patients_workspace_pesel_key")
   @@unique([workspaceId, documentType, documentNumber, documentCountry], map: "patients_workspace_document_key")
+  @@unique([workspaceId, id], map: "patients_workspace_id_key")
   @@index([workspaceId], map: "patients_workspace_idx")
+  @@index([workspaceId, lastName, firstName], map: "patients_workspace_name_idx")
+  @@index([workspaceId, birthDate], map: "patients_workspace_birth_date_idx")
+  @@index([workspaceId, createdAt], map: "patients_workspace_created_at_idx")
+  @@index([workspaceId, active], map: "patients_workspace_active_idx")
   @@map("patients")
+}
+
+model Guardian {
+  id          String   @id @default(cuid())
+  workspaceId String
+  patientId   String   @unique
+  firstName   String
+  lastName    String
+  phone       String?
+  email       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   Patient   @relation(fields: [workspaceId, patientId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, patientId], map: "guardians_workspace_patient_key")
+  @@index([workspaceId], map: "guardians_workspace_idx")
+  @@map("guardians")
 }

@@ -17,6 +17,7 @@ export function configureTestEnvironment() {
 
 export async function resetTestDatabase(prisma: PrismaClient) {
   await prisma.userSession.deleteMany();
+  await prisma.guardian.deleteMany();
   await prisma.patient.deleteMany();
   await prisma.user.deleteMany();
   await prisma.workspace.deleteMany();
@@ -54,4 +55,37 @@ export async function createStaffUser(
   });
 
   return { workspace, user };
+}
+
+export async function createTestPatient(
+  prisma: PrismaClient,
+  input: {
+    workspaceId: string;
+    firstName: string;
+    lastName: string;
+    identifierType?: "PESEL" | "OTHER_DOCUMENT";
+    pesel?: string;
+    documentType?: string;
+    documentNumber?: string;
+    documentCountry?: string;
+    birthDate?: string;
+    gender?: "FEMALE" | "MALE";
+    active?: boolean;
+  }
+) {
+  return prisma.patient.create({
+    data: {
+      workspaceId: input.workspaceId,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      identifierType: input.identifierType ?? "PESEL",
+      pesel: input.pesel ?? null,
+      documentType: input.documentType ?? null,
+      documentNumber: input.documentNumber ?? null,
+      documentCountry: input.documentCountry ?? null,
+      birthDate: new Date(`${input.birthDate ?? "1990-01-01"}T00:00:00.000Z`),
+      gender: input.gender ?? "FEMALE",
+      active: input.active ?? true
+    }
+  });
 }

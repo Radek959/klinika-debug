@@ -45,6 +45,8 @@ jobs:
 
       - run: npm run db:generate
 
+      - run: npm run test:migration:patients
+
       - run: npm run db:migrate:test
 
       - run: npm run check

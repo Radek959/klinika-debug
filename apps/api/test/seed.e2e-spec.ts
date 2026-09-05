@@ -29,6 +29,7 @@ describe("database seed", () => {
 
   it("tworzy syntetyczny workspace i konto STAFF z hasłem z konfiguracji", async () => {
     await seedDatabase(prisma);
+    await seedDatabase(prisma);
 
     const user = await prisma.user.findUniqueOrThrow({
       where: { login: "staff.demo" },
@@ -42,5 +43,22 @@ describe("database seed", () => {
     await expect(
       argon2.verify(user.passwordHash, "SeedTestowe123!")
     ).resolves.toBe(true);
+
+    const patients = await prisma.patient.findMany({
+      where: { workspaceId: user.workspace.id },
+      include: { guardian: true },
+      orderBy: { lastName: "asc" }
+    });
+    expect(patients).toHaveLength(4);
+    expect(patients.map((patient) => patient.pesel).sort()).toEqual([
+      "02270803624",
+      "18210112349",
+      "44051401458",
+      null
+    ]);
+    expect(patients.find((patient) => patient.guardian)?.guardian).toMatchObject({
+      firstName: "Karolina",
+      email: "karolina.syntetyczna@example.test"
+    });
   });
 });
