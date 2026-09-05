@@ -174,6 +174,7 @@ function parseDatabaseUrl(value) {
     port: parsed.port ? Number(parsed.port) : 3306,
     user: decodeURIComponent(parsed.username),
     password: decodeURIComponent(parsed.password),
-    database: decodeURIComponent(parsed.pathname.replace(/^\/+/, ""))
+    database: decodeURIComponent(parsed.pathname.replace(/^\/+/, "")),
+    allowPublicKeyRetrieval: true
   };
 }
