@@ -16,15 +16,13 @@ SELECT
   `id`,
   CASE
     WHEN `peselIsValid` = 1
-      AND `candidateBirthDate` IS NOT NULL
-      AND DATE_FORMAT(STR_TO_DATE(`candidateBirthDate`, '%Y-%m-%d'), '%Y-%m-%d') = `candidateBirthDate`
+      AND `birthDateIsValid` = 1
     THEN STR_TO_DATE(`candidateBirthDate`, '%Y-%m-%d')
     ELSE DATE('1900-01-01')
   END AS `birthDate`,
   CASE
     WHEN `peselIsValid` = 1
-      AND `candidateBirthDate` IS NOT NULL
-      AND DATE_FORMAT(STR_TO_DATE(`candidateBirthDate`, '%Y-%m-%d'), '%Y-%m-%d') = `candidateBirthDate`
+      AND `birthDateIsValid` = 1
     THEN `peselGender`
     ELSE 'FEMALE'
   END AS `gender`
@@ -42,6 +40,18 @@ FROM (
       )
       ELSE NULL
     END AS `candidateBirthDate`,
+    CASE
+      WHEN `yearBase` IS NOT NULL
+        AND `decodedMonth` IS NOT NULL
+        AND `dayPartNumber` BETWEEN 1 AND DAY(LAST_DAY(STR_TO_DATE(CONCAT(
+          CAST(`yearBase` + `yearPart` AS CHAR),
+          '-',
+          LPAD(CAST(`decodedMonth` AS CHAR), 2, '0'),
+          '-01'
+        ), '%Y-%m-%d')))
+      THEN 1
+      ELSE 0
+    END AS `birthDateIsValid`,
     `peselGender`,
     `peselIsValid`
   FROM (
@@ -49,6 +59,7 @@ FROM (
       `id`,
       CAST(SUBSTRING(`pesel`, 1, 2) AS UNSIGNED) AS `yearPart`,
       SUBSTRING(`pesel`, 5, 2) AS `dayPart`,
+      CAST(SUBSTRING(`pesel`, 5, 2) AS UNSIGNED) AS `dayPartNumber`,
       CASE
         WHEN CAST(SUBSTRING(`pesel`, 3, 2) AS UNSIGNED) BETWEEN 1 AND 12 THEN 1900
         WHEN CAST(SUBSTRING(`pesel`, 3, 2) AS UNSIGNED) BETWEEN 21 AND 32 THEN 2000
