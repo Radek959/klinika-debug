@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
+import { PrismaService } from "../src/common/prisma/prisma.service";
 import { closeTestApp, createTestApp } from "./test-app";
 import {
   configureTestEnvironment,
@@ -13,8 +14,8 @@ describe("workspace isolation", () => {
 
   beforeAll(async () => {
     configureTestEnvironment();
-    prisma = new PrismaClient();
     app = await createTestApp();
+    prisma = app.get(PrismaService);
   });
 
   beforeEach(async () => {
@@ -23,7 +24,6 @@ describe("workspace isolation", () => {
 
   afterAll(async () => {
     await closeTestApp(app);
-    await prisma.$disconnect();
   });
 
   it("traktuje pacjenta z innego workspace’u jak nieistniejący zasób", async () => {

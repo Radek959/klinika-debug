@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
+import { PrismaService } from "../src/common/prisma/prisma.service";
 import { closeTestApp, createTestApp } from "./test-app";
 import { configureTestEnvironment, resetTestDatabase } from "./database";
 
@@ -9,8 +10,8 @@ describe("health and docs", () => {
 
   beforeAll(async () => {
     configureTestEnvironment();
-    prisma = new PrismaClient();
     app = await createTestApp();
+    prisma = app.get(PrismaService);
   });
 
   beforeEach(async () => {
@@ -19,7 +20,6 @@ describe("health and docs", () => {
 
   afterAll(async () => {
     await closeTestApp(app);
-    await prisma.$disconnect();
   });
 
   it("udostępnia /health/live poza prefiksem /api/v1", async () => {
@@ -44,6 +44,12 @@ describe("health and docs", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body).database).toBe("ok");
+  });
+
+  it("wykonuje zapytanie do MySQL przez adapter Prisma", async () => {
+    await expect(prisma.$queryRaw`SELECT 1`).resolves.toEqual(
+      expect.any(Array)
+    );
   });
 
   it("udostępnia OpenAPI pod /api/docs poza prefiksem /api/v1", async () => {

@@ -1,3 +1,5 @@
+import { parsePrismaDatabaseUrl } from "../common/prisma/prisma-client.factory";
+
 const NODE_ENV_VALUES = ["development", "test", "production"] as const;
 
 type NodeEnv = (typeof NODE_ENV_VALUES)[number];
@@ -32,8 +34,10 @@ export function validateEnvironment(config: Record<string, unknown>): ValidatedE
     errors.push("PORT musi być liczbą całkowitą z zakresu 1-65535.");
   }
 
-  if (!databaseUrl || !databaseUrl.startsWith("mysql://")) {
-    errors.push("DATABASE_URL musi być poprawnym adresem MySQL zaczynającym się od mysql://.");
+  try {
+    parsePrismaDatabaseUrl(databaseUrl ?? "");
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "DATABASE_URL jest nieprawidłowe.");
   }
 
   if (!sessionTokenPepper || sessionTokenPepper.trim().length < 16) {
