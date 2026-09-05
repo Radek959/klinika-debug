@@ -59,19 +59,27 @@ W produkcji seed wymaga jawnego `SEED_STAFF_PASSWORD`. Lokalna wartość domyśl
 
 ## Hostinger
 
-Build command:
+Konfiguracja dla frameworka `Other`:
 
 ```powershell
-npm install && npm run db:generate && npm run build
+Package manager: npm
+Output directory: ./
+Entry file: apps/api/dist/main.js
 ```
 
-Start command:
+Build command dla pierwszego wdrożenia:
 
 ```powershell
-npm run start:hostinger
+npm run build:hostinger:seed
 ```
 
-`start:hostinger` wykonuje `prisma migrate deploy`, a następnie uruchamia produkcyjny backend. Seed nie uruchamia się automatycznie przy starcie ani przy deployu.
+Build command dla kolejnych wdrożeń:
+
+```powershell
+npm run build:hostinger
+```
+
+`build:hostinger` wykonuje `prisma generate`, build aplikacji i `prisma migrate deploy`. `build:hostinger:seed` dodatkowo uruchamia seed i jest przeznaczony wyłącznie do pierwszego wdrożenia. Przy seedowaniu produkcyjnym wymagane jest ustawienie `SEED_STAFF_PASSWORD`.
 
 ## Testy i build
 
