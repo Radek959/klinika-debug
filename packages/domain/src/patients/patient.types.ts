@@ -1,3 +1,4 @@
+export type IdentifierType = "PESEL" | "OTHER_DOCUMENT";
 export type Gender = "FEMALE" | "MALE";
 
 export type PeselValidationCode =
