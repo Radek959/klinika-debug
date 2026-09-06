@@ -130,6 +130,11 @@ button:disabled {
   background: #e8f0eb;
 }
 
+.primary-button {
+  color: #ffffff;
+  background: #256450;
+}
+
 .danger-button {
   color: #ffffff;
   background: #a1281f;
@@ -410,6 +415,40 @@ th {
 
 .muted {
   color: #52635b;
+}
+
+.test-catalog-list {
+  display: grid;
+  gap: 12px;
+}
+
+.test-catalog-item {
+  border: 1px solid #d8e2db;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #ffffff;
+}
+
+.test-required-fields {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-left: 26px;
+}
+
+.sample-form {
+  display: grid;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.result-card {
+  margin-bottom: 20px;
+}
+
+.result-card h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
 }
 
 .workspace-summary {

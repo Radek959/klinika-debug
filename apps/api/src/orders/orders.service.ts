@@ -212,7 +212,8 @@ export class OrdersService {
           orderBy: {
             materialType: "asc"
           }
-        }
+        },
+        results: true
       }
     });
 

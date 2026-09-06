@@ -1,9 +1,15 @@
 import type {
+  CreateOrderRequest,
   CreatePatientRequest,
   LoginResponse,
   MeResponse,
+  MedicalTestsListResponse,
+  OrderDetailsResponse,
+  OrderResponse,
+  OrdersListResponse,
   PatientResponse,
   PatientsListResponse,
+  RegisterSampleRequest,
   UpdatePatientRequest
 } from "@klinika/api-contracts";
 
@@ -108,6 +114,75 @@ export async function updatePatient(
     method: "PATCH",
     headers: authHeaders(token),
     body: JSON.stringify(payload)
+  });
+}
+
+export interface OrdersListParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+  priority?: string;
+  sort?: string;
+  order?: string;
+}
+
+export async function listOrders(
+  token: string,
+  params: OrdersListParams,
+  signal?: AbortSignal
+) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") {
+      search.set(key, String(value));
+    }
+  });
+
+  return request<OrdersListResponse>(`/api/v1/orders?${search.toString()}`, {
+    headers: authHeaders(token),
+    signal
+  });
+}
+
+export async function getOrder(token: string, orderId: string, signal?: AbortSignal) {
+  return request<OrderDetailsResponse>(`/api/v1/orders/${orderId}`, {
+    headers: authHeaders(token),
+    signal
+  });
+}
+
+export async function createOrder(token: string, payload: CreateOrderRequest) {
+  return request<OrderResponse>("/api/v1/orders", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function registerSample(
+  token: string,
+  orderId: string,
+  payload: RegisterSampleRequest
+) {
+  return request<OrderResponse>(`/api/v1/orders/${orderId}/samples`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function sendOrderToLab(token: string, orderId: string) {
+  return request<OrderResponse>(`/api/v1/orders/${orderId}/send`, {
+    method: "POST",
+    headers: authHeaders(token)
+  });
+}
+
+export async function listMedicalTests(token: string, signal?: AbortSignal) {
+  return request<MedicalTestsListResponse>("/api/v1/tests?pageSize=100", {
+    headers: authHeaders(token),
+    signal
   });
 }
 

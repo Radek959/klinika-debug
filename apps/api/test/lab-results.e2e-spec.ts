@@ -99,6 +99,27 @@ describe("lab results webhook and scheduler", () => {
     expect(result.value).toBe("3.10");
     expect(result.unit).toBe("mg/L");
     expect(result.flag).toBe("NORMAL");
+
+    const detailsResponse = await app.inject({
+      method: "GET",
+      url: `/api/v1/orders/${order.id}`,
+      headers: { authorization: `Bearer ${token}` }
+    });
+    expect(detailsResponse.statusCode).toBe(200);
+    const details = JSON.parse(detailsResponse.body);
+    expect(details.results).toEqual([
+      {
+        medicalTestId: tests.CRP.id,
+        parameters: [
+          expect.objectContaining({
+            code: "CRP",
+            value: "3.10",
+            unit: "mg/L",
+            flag: "NORMAL"
+          })
+        ]
+      }
+    ]);
   });
 
   it("ignoruje ponowne dostarczenie tego samego eventId", async () => {
