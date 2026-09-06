@@ -18,7 +18,13 @@ export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[
   PARTIAL: ["PARTIAL", "COMPLETED", "REJECTED", "TECHNICAL_ERROR"],
   COMPLETED: [],
   REJECTED: [],
-  TECHNICAL_ERROR: []
+  TECHNICAL_ERROR: [
+    "SENT_TO_LAB",
+    "PROCESSING",
+    "PARTIAL",
+    "COMPLETED",
+    "REJECTED"
+  ]
 };
 
 export function canTransitionOrderStatus(
