@@ -146,7 +146,7 @@ export function patientDisplayName(patient: Pick<PatientListItem, "firstName" | 
 }
 
 export function formatEstimatedDuration(minutes: number | null | undefined) {
-  if (!minutes) {
+  if (minutes === null || minutes === undefined) {
     return "Nie podano";
   }
 
