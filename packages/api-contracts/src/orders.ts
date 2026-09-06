@@ -8,6 +8,7 @@ import type {
   OrderStatus,
   SampleStatus
 } from "./tests-catalog";
+import type { OrderResultItem } from "./lab-results";
 
 export type OrderAdditionalDataValue = boolean | string;
 export type OrderAdditionalData = Record<string, OrderAdditionalDataValue>;
@@ -163,4 +164,5 @@ export interface OrderPatientDetails {
 
 export interface OrderDetailsResponse extends OrderResponse {
   patient: OrderPatientDetails;
+  results: OrderResultItem[];
 }

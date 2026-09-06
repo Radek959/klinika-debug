@@ -29,6 +29,7 @@ export function AppLayout({ user, onLogout }: AppLayoutProps) {
             Panel główny
           </NavLink>
           <NavLink to="/patients">Pacjenci</NavLink>
+          <NavLink to="/orders">Zlecenia</NavLink>
         </nav>
         <main className="content">
           <Outlet />

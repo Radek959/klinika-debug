@@ -58,10 +58,52 @@ export class OrderDetailsPatientDto {
   active!: boolean;
 }
 
+export class OrderResultParameterDto {
+  @ApiProperty({ description: "Kod parametru badania.", example: "CRP" })
+  code!: string;
+
+  @ApiProperty({ description: "Wartość wyniku.", example: "4.20" })
+  value!: string;
+
+  @ApiProperty({ description: "Jednostka wyniku.", nullable: true, example: "mg/L" })
+  unit!: string | null;
+
+  @ApiProperty({
+    description: "Zakres referencyjny wyniku, jeżeli został podany.",
+    nullable: true
+  })
+  referenceRange!: string | null;
+
+  @ApiProperty({
+    description: "Oznaczenie wyniku.",
+    enum: ["LOW", "NORMAL", "HIGH", "NOT_APPLICABLE"]
+  })
+  flag!: "LOW" | "NORMAL" | "HIGH" | "NOT_APPLICABLE";
+
+  @ApiProperty({ description: "Czas wykonania wyniku jako ISO 8601." })
+  resultedAt!: string;
+}
+
+export class OrderResultItemDto {
+  @ApiProperty({ description: "Identyfikator badania z katalogu." })
+  medicalTestId!: string;
+
+  @ApiProperty({ type: OrderResultParameterDto, isArray: true })
+  parameters!: OrderResultParameterDto[];
+}
+
 export class OrderDetailsResponseDto extends OrderResponseDto {
   @ApiProperty({
     description: "Szczegółowe dane pacjenta.",
     type: OrderDetailsPatientDto
   })
   patient!: OrderDetailsPatientDto;
+
+  @ApiProperty({
+    description:
+      "Wyniki badań pogrupowane po badaniu. Zawiera wyłącznie badania, dla których laboratorium już dostarczyło wynik.",
+    type: OrderResultItemDto,
+    isArray: true
+  })
+  results!: OrderResultItemDto[];
 }

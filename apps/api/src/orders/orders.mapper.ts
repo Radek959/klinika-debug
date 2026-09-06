@@ -3,12 +3,14 @@ import type {
   Order,
   OrderTest,
   Patient,
+  Result,
   Sample
 } from "@prisma/client";
 import { sortMaterialTypes } from "@klinika/domain";
 import type {
   OrderAdditionalData,
   OrderResponse,
+  OrderResultItem,
   OrderSampleResponse,
   OrderTestResponse,
   OrdersListResponse,
@@ -26,6 +28,10 @@ type OrderWithRelations = Order & {
   patient: Patient;
   tests: OrderTestWithCatalog[];
   samples: Sample[];
+};
+
+type OrderDetailsWithRelations = OrderWithRelations & {
+  results: Result[];
 };
 
 function toDateString(date: Date | null): string | null {
@@ -151,12 +157,44 @@ function toOrderListItem(order: OrderWithRelations): OrderListItem {
 }
 
 export function toOrderDetailsResponse(
-  order: OrderWithRelations
+  order: OrderDetailsWithRelations
 ): OrderDetailsResponse {
   return {
     ...(toOrderResponse(order, order.tests, order.samples) as any),
-    patient: toPatientDetails(order.patient)
+    patient: toPatientDetails(order.patient),
+    results: toOrderResultItems(order.tests, order.results)
   };
+}
+
+function toOrderResultItems(
+  tests: OrderTestWithCatalog[],
+  results: Result[]
+): OrderResultItem[] {
+  const resultsByTest = new Map<string, Result[]>();
+  for (const result of results) {
+    const existing = resultsByTest.get(result.medicalTestId) ?? [];
+    existing.push(result);
+    resultsByTest.set(result.medicalTestId, existing);
+  }
+
+  return tests
+    .filter((test) => resultsByTest.has(test.medicalTestId))
+    .map((test) => {
+      const testResults = [...(resultsByTest.get(test.medicalTestId) ?? [])].sort(
+        (a, b) => a.parameterCode.localeCompare(b.parameterCode)
+      );
+      return {
+        medicalTestId: test.medicalTestId,
+        parameters: testResults.map((result) => ({
+          code: result.parameterCode,
+          value: result.value,
+          unit: result.unit,
+          referenceRange: result.referenceRange,
+          flag: result.flag,
+          resultedAt: result.resultedAt.toISOString()
+        }))
+      };
+    });
 }
 
 function toOrderTestResponse(test: OrderTestWithCatalog): OrderTestResponse {
