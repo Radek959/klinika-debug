@@ -440,10 +440,7 @@ export class PatientsService {
       throw error;
     }
 
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
+    if (this.isPrismaUniqueConstraintError(error)) {
       const target = String(error.meta?.target ?? "");
       if (target.includes("pesel")) {
         throw this.duplicatePeselError();
@@ -454,6 +451,17 @@ export class PatientsService {
     }
 
     throw error;
+  }
+
+  private isPrismaUniqueConstraintError(
+    error: unknown
+  ): error is { code: "P2002"; meta?: { target?: unknown } } {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    );
   }
 
   private duplicatePeselError() {

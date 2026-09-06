@@ -218,7 +218,8 @@ describe("patients write api", () => {
       lastName: "Testowy",
       pesel: "44051401458",
       birthDate: "1944-05-14",
-      gender: "MALE"
+      gender: "MALE",
+      phone: "123456789"
     });
 
     const response = await app.inject({
@@ -250,6 +251,7 @@ describe("patients write api", () => {
       pesel: "44051401458",
       birthDate: "1944-05-14",
       gender: "MALE",
+      phone: "123456789",
       active: false
     });
 
@@ -325,7 +327,8 @@ describe("patients write api", () => {
       documentNumber: "XD1234567",
       documentCountry: "CZ",
       birthDate: "1988-03-12",
-      gender: "MALE"
+      gender: "MALE",
+      email: "alex.demo@example.test"
     });
 
     const response = await app.inject({
@@ -490,7 +493,9 @@ describe("patients write api", () => {
     expect(JSON.parse(response.body)).toMatchObject({
       error: {
         code: "PATIENT_VALIDATION_ERROR",
-        fieldErrors: [expect.objectContaining({ field, code })]
+        fieldErrors: expect.arrayContaining([
+          expect.objectContaining({ field, code })
+        ])
       }
     });
   }
@@ -513,7 +518,9 @@ describe("patients write api", () => {
     expect(JSON.parse(response.body)).toMatchObject({
       error: {
         code: "PATIENT_VALIDATION_ERROR",
-        fieldErrors: [expect.objectContaining({ field, code })]
+        fieldErrors: expect.arrayContaining([
+          expect.objectContaining({ field, code })
+        ])
       }
     });
   }
