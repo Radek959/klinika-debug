@@ -50,7 +50,7 @@ function flattenValidationErrors(
     const ownErrors = Object.entries(error.constraints ?? {}).map(
       ([code, message]) => ({
         field,
-        code,
+        code: mapValidationErrorCode(field, code),
         message
       })
     );
@@ -59,4 +59,21 @@ function flattenValidationErrors(
       ...flattenValidationErrors(error.children ?? [], field)
     ];
   });
+}
+
+function mapValidationErrorCode(field: string, classValidatorCode: string): string {
+  // Map class-validator codes to domain-specific error codes
+  const codeMap: Record<string, Record<string, string>> = {
+    page: { min: "INVALID_PAGE", isInt: "INVALID_PAGE" },
+    pageSize: { min: "INVALID_PAGE_SIZE", max: "INVALID_PAGE_SIZE", isInt: "INVALID_PAGE_SIZE" },
+    status: { isEnum: "INVALID_STATUS" },
+    priority: { isEnum: "INVALID_PRIORITY" },
+    materialType: { isEnum: "INVALID_MATERIAL_TYPE" },
+    createdFrom: { custom: "INVALID_DATE" },
+    createdTo: { custom: "INVALID_DATE" },
+    sort: { isEnum: "INVALID_SORT" },
+    order: { isEnum: "INVALID_ORDER" }
+  };
+
+  return codeMap[field]?.[classValidatorCode] ?? classValidatorCode;
 }
