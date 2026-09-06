@@ -13,9 +13,17 @@ export function configureTestEnvironment() {
   process.env.NODE_ENV ??= "test";
   process.env.PORT ??= "3000";
   process.env.SESSION_TOKEN_PEPPER ??= "test-session-pepper";
+  process.env.LAB_WEBHOOK_SECRET ??= "test-lab-webhook-secret";
+  // Celowo nie natychmiastowe: testy sprawdzające status SENT_TO_LAB tuż po wysyłce
+  // nie mogą być ścigane przez scheduler zanim zdąży wykonać asercję.
+  process.env.LAB_SIMULATOR_DELAY_MS ??= "1000";
+  process.env.LAB_SCHEDULER_POLL_INTERVAL_MS ??= "100";
 }
 
 export async function resetTestDatabase(prisma: PrismaClient) {
+  await prisma.processedLabEvent.deleteMany();
+  await prisma.labJob.deleteMany();
+  await prisma.result.deleteMany();
   await prisma.idempotencyKey.deleteMany();
   await prisma.sample.deleteMany();
   await prisma.orderTest.deleteMany();

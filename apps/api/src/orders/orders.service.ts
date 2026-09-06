@@ -357,7 +357,16 @@ export class OrdersService {
         patient: { select: { active: true } },
         tests: {
           include: {
-            medicalTest: { select: { code: true, name: true, materialType: true } }
+            medicalTest: {
+              select: {
+                code: true,
+                name: true,
+                materialType: true,
+                parameters: {
+                  select: { code: true, valueType: true, unit: true }
+                }
+              }
+            }
           },
           orderBy: {
             medicalTest: { code: "asc" }
@@ -410,7 +419,14 @@ export class OrdersService {
       throw this.orderSendError(fieldErrors);
     }
 
-    const simulatorResult = this.labSimulator.acceptOrder({ workspaceId, orderId });
+    const simulatorResult = this.labSimulator.acceptOrder({
+      workspaceId,
+      orderId,
+      tests: order.tests.map((test) => ({
+        medicalTestId: test.medicalTestId,
+        parameters: test.medicalTest.parameters
+      }))
+    });
 
     let updatedOrder;
     try {
@@ -426,6 +442,16 @@ export class OrdersService {
               externalOrderId: simulatorResult.externalOrderId,
               estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString()
             }
+          }
+        });
+
+        await tx.labJob.create({
+          data: {
+            workspaceId,
+            orderId,
+            scenario: simulatorResult.job.scenario,
+            payload: simulatorResult.job.payload as unknown as Prisma.InputJsonValue,
+            executeAt: simulatorResult.job.executeAt
           }
         });
 

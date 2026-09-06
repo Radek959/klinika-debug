@@ -63,6 +63,25 @@ enum MedicalTestRequiredFieldValueType {
   TEXT
 }
 
+enum OrderTestStatus {
+  PENDING
+  COMPLETED
+}
+
+enum ResultFlag {
+  LOW
+  NORMAL
+  HIGH
+  NOT_APPLICABLE
+}
+
+enum LabJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
 model Workspace {
   id        String   @id @default(cuid())
   name      String
@@ -77,6 +96,9 @@ model Workspace {
   orderTests OrderTest[]
   samples   Sample[]
   idempotencyKeys IdempotencyKey[]
+  results   Result[]
+  labJobs   LabJob[]
+  processedLabEvents ProcessedLabEvent[]
 
   @@map("workspaces")
 }
@@ -240,7 +262,7 @@ model Order {
   createdByUserId       String
   priority              OrderPriority
   status                OrderStatus   @default(DRAFT)
-  externalOrderId       String?
+  externalOrderId       String?       @unique(map: "orders_external_order_id_key")
   correlationId         String?
   sentAt                DateTime?
   estimatedCompletionAt DateTime?
@@ -253,6 +275,9 @@ model Order {
   tests         OrderTest[]
   samples       Sample[]
   idempotencyKeys IdempotencyKey[]
+  results       Result[]
+  labJobs       LabJob[]
+  processedLabEvents ProcessedLabEvent[]
 
   @@unique([workspaceId, id], map: "orders_workspace_id_key")
   @@index([workspaceId, patientId], map: "orders_workspace_patient_idx")
@@ -268,6 +293,7 @@ model OrderTest {
   orderId       String
   medicalTestId String
   additionalData Json?
+  status        OrderTestStatus @default(PENDING)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -322,4 +348,63 @@ model IdempotencyKey {
   @@unique([workspaceId, key], map: "idempotency_keys_workspace_key_key")
   @@index([workspaceId, orderId], map: "idempotency_keys_workspace_order_idx")
   @@map("idempotency_keys")
+}
+
+model Result {
+  id             String     @id @default(cuid())
+  workspaceId    String
+  orderId        String
+  medicalTestId  String
+  parameterCode  String
+  value          String
+  unit           String?
+  referenceRange String?
+  flag           ResultFlag
+  resultedAt     DateTime
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [workspaceId, orderId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([orderId, medicalTestId, parameterCode], map: "results_order_test_parameter_key")
+  @@index([workspaceId, orderId], map: "results_workspace_order_idx")
+  @@map("results")
+}
+
+model LabJob {
+  id          String       @id @default(cuid())
+  workspaceId String
+  orderId     String
+  scenario    String
+  payload     Json
+  executeAt   DateTime
+  status      LabJobStatus @default(PENDING)
+  attempts    Int          @default(0)
+  lockedAt    DateTime?
+  lastError   String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [workspaceId, orderId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@index([status, executeAt], map: "lab_jobs_status_execute_at_idx")
+  @@index([workspaceId, orderId], map: "lab_jobs_workspace_order_idx")
+  @@map("lab_jobs")
+}
+
+model ProcessedLabEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  orderId     String
+  eventId     String
+  processedAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [workspaceId, orderId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, eventId], map: "processed_lab_events_workspace_event_key")
+  @@index([workspaceId, orderId], map: "processed_lab_events_workspace_order_idx")
+  @@map("processed_lab_events")
 }

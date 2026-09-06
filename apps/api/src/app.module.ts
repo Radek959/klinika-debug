@@ -6,6 +6,8 @@ import { PrismaModule } from "./common/prisma/prisma.module";
 import { getEnvFilePaths } from "./config/repo-paths";
 import { validateEnvironment } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
+import { LabCallbacksModule } from "./lab-callbacks/lab-callbacks.module";
+import { LabJobsModule } from "./lab-jobs/lab-jobs.module";
 import { OrdersModule } from "./orders/orders.module";
 import { PatientsModule } from "./patients/patients.module";
 import { TestsCatalogModule } from "./tests-catalog/tests-catalog.module";
@@ -22,7 +24,9 @@ import { TestsCatalogModule } from "./tests-catalog/tests-catalog.module";
     AuthModule,
     PatientsModule,
     OrdersModule,
-    TestsCatalogModule
+    TestsCatalogModule,
+    LabCallbacksModule,
+    LabJobsModule
   ]
 })
 export class AppModule implements NestModule {
