@@ -105,7 +105,7 @@ function TestCatalogRow({
       </div>
 
       {selected && test.requiredFields.length > 0 ? (
-        <div className="order-required-fields" aria-label={`Dane dodatkowe dla badania ${test.name}`}>
+        <div className="order-required-fields">
           {test.requiredFields
             .slice()
             .sort((left, right) => left.displayOrder - right.displayOrder)
