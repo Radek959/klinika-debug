@@ -26,6 +26,7 @@ export function NewOrderPage({ token }: { token: string }) {
   const [selectedTests, setSelectedTests] = useState<Record<string, SelectedTest>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
+  const [submittedTestIds, setSubmittedTestIds] = useState<string[]>([]);
   const [generalError, setGeneralError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -85,16 +86,18 @@ export function NewOrderPage({ token }: { token: string }) {
     setGeneralError(null);
 
     try {
+      const tests = Object.entries(selectedTests).map(([medicalTestId, selection]) => ({
+        medicalTestId,
+        additionalData:
+          Object.keys(selection.additionalData).length > 0
+            ? selection.additionalData
+            : undefined
+      }));
+      setSubmittedTestIds(tests.map((test) => test.medicalTestId));
       const order = await createOrder(token, {
         patientId,
         priority,
-        tests: Object.entries(selectedTests).map(([medicalTestId, selection]) => ({
-          medicalTestId,
-          additionalData:
-            Object.keys(selection.additionalData).length > 0
-              ? selection.additionalData
-              : undefined
-        }))
+        tests
       });
       navigate(`/orders/${order.id}`, {
         state: { message: "Zlecenie zostało utworzone." }
@@ -176,6 +179,7 @@ export function NewOrderPage({ token }: { token: string }) {
                 test={test}
                 selected={Boolean(selectedTests[test.id])}
                 additionalData={selectedTests[test.id]?.additionalData ?? {}}
+                testIndex={submittedTestIds.indexOf(test.id)}
                 fieldErrors={fieldErrors}
                 onToggle={(checked) => toggleTest(test, checked)}
                 onFieldChange={(code, value) => updateAdditionalData(test.id, code, value)}
@@ -198,6 +202,7 @@ function TestCatalogItem({
   test,
   selected,
   additionalData,
+  testIndex,
   fieldErrors,
   onToggle,
   onFieldChange
@@ -205,6 +210,7 @@ function TestCatalogItem({
   test: MedicalTestCatalogItem;
   selected: boolean;
   additionalData: Record<string, OrderAdditionalDataValue>;
+  testIndex: number;
   fieldErrors: ApiFieldError[];
   onToggle: (checked: boolean) => void;
   onFieldChange: (code: string, value: OrderAdditionalDataValue) => void;
@@ -243,7 +249,7 @@ function TestCatalogItem({
       ) : null}
 
       {fieldErrors
-        .filter((fieldError) => fieldError.field.includes(test.id))
+        .filter((fieldError) => testIndex >= 0 && fieldError.field.startsWith(`tests.${testIndex}.`))
         .map((fieldError) => (
           <p key={fieldError.code} className="form-error" role="alert">
             {fieldError.message}

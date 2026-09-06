@@ -277,7 +277,7 @@ function SampleRow({
             <button
               type="button"
               className="secondary-button"
-              disabled={isSubmitting || !barcode}
+              disabled={isSubmitting || !barcode || !collectedAt}
               onClick={submit}
             >
               {isSubmitting ? "Rejestrowanie..." : "Zarejestruj próbkę"}
