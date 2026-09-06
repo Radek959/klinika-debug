@@ -65,7 +65,7 @@ export class PatientsService {
 
       return toPatientResponse(patient);
     } catch (error) {
-      throw this.mapPrismaConflict(error);
+      throw this.mapPrismaConflict(error, validation.value);
     }
   }
 
@@ -172,7 +172,7 @@ export class PatientsService {
 
       return toPatientResponse(patient);
     } catch (error) {
-      throw this.mapPrismaConflict(error);
+      throw this.mapPrismaConflict(error, validation.value);
     }
   }
 
@@ -339,7 +339,8 @@ export class PatientsService {
     key: K,
     existing: T[K]
   ): T[K] {
-    return Object.prototype.hasOwnProperty.call(input, key) ? input[key] : existing;
+    const value = input[key];
+    return value === undefined ? existing : value;
   }
 
   private async ensureIdentifierIsUnique(
@@ -435,17 +436,30 @@ export class PatientsService {
     );
   }
 
-  private mapPrismaConflict(error: unknown): never {
+  private mapPrismaConflict(
+    error: unknown,
+    patient: NormalizedPatientWriteState
+  ): never {
     if (error instanceof ApiErrorException) {
       throw error;
     }
 
     if (this.isPrismaUniqueConstraintError(error)) {
-      const target = String(error.meta?.target ?? "");
+      const target = [
+        String(error.meta?.target ?? ""),
+        String(error.message ?? ""),
+        String(error.sqlMessage ?? "")
+      ].join(" ");
       if (target.includes("pesel")) {
         throw this.duplicatePeselError();
       }
       if (target.includes("document")) {
+        throw this.duplicateDocumentError();
+      }
+      if (patient.identifierType === "PESEL") {
+        throw this.duplicatePeselError();
+      }
+      if (patient.identifierType === "OTHER_DOCUMENT") {
         throw this.duplicateDocumentError();
       }
     }
@@ -455,12 +469,19 @@ export class PatientsService {
 
   private isPrismaUniqueConstraintError(
     error: unknown
-  ): error is { code: "P2002"; meta?: { target?: unknown } } {
+  ): error is {
+    code?: string;
+    errno?: number;
+    meta?: { target?: unknown };
+    message?: string;
+    sqlMessage?: string;
+  } {
     return (
       typeof error === "object" &&
       error !== null &&
-      "code" in error &&
-      error.code === "P2002"
+      (("code" in error && error.code === "P2002") ||
+        ("code" in error && error.code === "ER_DUP_ENTRY") ||
+        ("errno" in error && error.errno === 1062))
     );
   }
 
