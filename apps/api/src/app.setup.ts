@@ -74,7 +74,7 @@ function mapValidationErrorCode(field: string, classValidatorCode: string): stri
     sort: { isEnum: "INVALID_SORT" },
     order: { isEnum: "INVALID_ORDER" },
     barcode: { isString: "BARCODE_REQUIRED", isNotEmpty: "BARCODE_REQUIRED" },
-    collectedAt: { isISO8601: "INVALID_DATE_FORMAT" }
+    collectedAt: { isIso8601: "INVALID_DATE_FORMAT" }
   };
 
   return codeMap[field]?.[classValidatorCode] ?? classValidatorCode;

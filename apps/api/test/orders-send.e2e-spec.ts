@@ -110,7 +110,7 @@ describe("orders send api", () => {
     await registerSample(token, order.id, {
       materialType: "SERUM",
       barcode: "SMP-SEND-0001",
-      collectedAt: "2026-09-04T09:00:00.000Z"
+      collectedAt: nowIso()
     });
     await prisma.patient.update({ where: { id: patientId }, data: { active: false } });
 
@@ -132,7 +132,7 @@ describe("orders send api", () => {
     await registerSample(token, order.id, {
       materialType: "SERUM",
       barcode: "SMP-SEND-0002",
-      collectedAt: "2026-09-04T09:00:00.000Z"
+      collectedAt: nowIso()
     });
 
     const correlationId = "8d0c8cad-9c1b-4d7b-9e3b-0c48288d4fb7";
@@ -169,7 +169,7 @@ describe("orders send api", () => {
     await registerSample(token, order.id, {
       materialType: "SERUM",
       barcode: "SMP-SEND-0003",
-      collectedAt: "2026-09-04T09:00:00.000Z"
+      collectedAt: nowIso()
     });
 
     const first = await sendOrder(token, order.id);
@@ -197,7 +197,7 @@ describe("orders send api", () => {
     await registerSample(token, order.id, {
       materialType: "SERUM",
       barcode: "SMP-SEND-0004",
-      collectedAt: "2026-09-04T09:00:00.000Z"
+      collectedAt: nowIso()
     });
 
     const first = await sendOrder(token, order.id);
@@ -236,6 +236,10 @@ describe("orders send api", () => {
     });
     expect(loginResponse.statusCode).toBe(200);
     return { token: JSON.parse(loginResponse.body).token as string };
+  }
+
+  function nowIso() {
+    return new Date().toISOString();
   }
 
   async function hashPassword(password: string) {
