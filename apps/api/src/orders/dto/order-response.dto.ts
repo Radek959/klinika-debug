@@ -1,7 +1,4 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { ApiErrorResponseDto } from "../../tests-catalog/dto/medical-test-response.dto";
-
-export { ApiErrorResponseDto };
 
 export class OrderTestResponseDto {
   @ApiProperty({ description: "Identyfikator badania w zleceniu." })

@@ -13,11 +13,9 @@ import {
 import type { AuthenticatedUser, OrderResponse } from "@klinika/api-contracts";
 import { AuthGuard } from "../auth/auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
+import { ApiErrorResponseDto } from "../common/errors/api-error-response.dto";
 import { CreateOrderDto } from "./dto/create-order.dto";
-import {
-  ApiErrorResponseDto,
-  OrderResponseDto
-} from "./dto/order-response.dto";
+import { OrderResponseDto } from "./dto/order-response.dto";
 import { OrdersService } from "./orders.service";
 
 @ApiTags("Zlecenia")

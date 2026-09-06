@@ -183,6 +183,31 @@ describe("orders create api", () => {
     await expectOrderTablesCount(0, 0, 0);
   });
 
+  it("zwraca correlationId w body.error i nagłówku odpowiedzi błędu", async () => {
+    const { token, patientId } = await setupDefaultOrderData();
+    const correlationId = "8d0c8cad-9c1b-4d7b-9e3b-0c48288d4fb7";
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-correlation-id": correlationId
+      },
+      payload: {
+        patientId,
+        priority: "ROUTINE",
+        tests: []
+      }
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.headers["x-correlation-id"]).toBe(correlationId);
+    const body = JSON.parse(response.body);
+    expect(body.correlationId).toBeUndefined();
+    expect(body.error.correlationId).toBe(correlationId);
+  });
+
   it("odrzuca powtórzone badanie bez częściowych rekordów", async () => {
     const { token, patientId, tests } = await setupDefaultOrderData();
 
@@ -417,6 +442,12 @@ describe("orders create api", () => {
     expect(document.paths["/api/v1/orders"].post.responses["422"].description).toContain(
       "reguły biznesowe"
     );
+    expectSharedApiErrorSchema(
+      document,
+      document.paths["/api/v1/orders"].post.responses["422"].content[
+        "application/json"
+      ].schema
+    );
     expect(JSON.stringify(document.paths["/api/v1/orders"].post)).toContain(
       "mg/dL"
     );
@@ -504,4 +535,57 @@ function expectOrderValidation(
       ])
     }
   });
+}
+
+function expectSharedApiErrorSchema(
+  document: {
+    components: { schemas: Record<string, Record<string, unknown>> };
+  },
+  schema: { $ref?: string }
+) {
+  const apiError = resolveSchema(document, schema);
+  expect(apiError.properties).toHaveProperty("error");
+  expect(apiError.properties).not.toHaveProperty("correlationId");
+  expect(apiError.required).toEqual(["error"]);
+
+  const details = resolveSchema(
+    document,
+    (apiError.properties as Record<string, { $ref: string }>).error
+  );
+  expect(details.properties).toHaveProperty("correlationId");
+  expect(details.required).toEqual(
+    expect.arrayContaining(["code", "message", "correlationId"])
+  );
+  expect(details.required).not.toContain("fieldErrors");
+
+  const fieldErrors = (
+    details.properties as Record<
+      string,
+      { items: { $ref: string }; type: string }
+    >
+  ).fieldErrors;
+  expect(fieldErrors).toMatchObject({ type: "array" });
+  const fieldError = resolveSchema(document, fieldErrors.items);
+  expect(fieldError.properties).toHaveProperty("field");
+  expect(fieldError.properties).toHaveProperty("code");
+  expect(fieldError.properties).toHaveProperty("message");
+}
+
+function resolveSchema(
+  document: {
+    components: { schemas: Record<string, Record<string, unknown>> };
+  },
+  schema: { $ref?: string; allOf?: { $ref?: string }[] }
+) {
+  if (!schema.$ref && schema.allOf?.length) {
+    return resolveSchema(document, schema.allOf[0]);
+  }
+
+  expect(schema.$ref).toBeDefined();
+  const name = schema.$ref!.replace("#/components/schemas/", "");
+  expect(document.components.schemas[name]).toBeDefined();
+  return document.components.schemas[name] as {
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
 }
