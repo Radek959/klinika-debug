@@ -6,9 +6,10 @@ Przed wprowadzeniem zmian przeczytaj:
 
 1. `docs/dokumentacja-produktowa.md` — reguły biznesowe i oczekiwane zachowanie produktu.
 2. `docs/specyfikacja-mvp.md` — zakres pierwszej wersji.
-3. `docs/architektura-techniczna.md` — decyzje techniczne, gdy dokument zostanie dodany.
+3. `docs/architektura-techniczna.md` — zaakceptowane decyzje techniczne.
+4. `docs/implementation/README.md` — aktualny etap prac, plan i statusy.
 
-Nie rozszerzaj zakresu MVP bez wyraźnej decyzji. Jeżeli dokumenty są niejednoznaczne albo sprzeczne, zatrzymaj implementację danego fragmentu i opisz problem.
+Odczytaj aktywny etap i plan wskazany w `docs/implementation/README.md`. Realizuj tylko wskazany fragment planu. Nie implementuj elementów z przyszłych etapów ani nie rozszerzaj zakresu MVP bez wyraźnego polecenia. Jeżeli dokumenty są niejednoznaczne albo sprzeczne, zatrzymaj implementację danego fragmentu i opisz problem.
 
 ## Język
 
@@ -21,11 +22,12 @@ Dokumentacja produktowa i opisy endpointów w OpenAPI są po polsku. Nazwy symbo
 ## Dane i bezpieczeństwo
 
 - Używaj wyłącznie danych syntetycznych.
-- Nie dodawaj prawdziwych danych medycznych ani osobowych do kodu, seedów, fixture’ów, testów i dokumentacji.
-- Każda operacja na danych użytkownika musi respektować izolację workspace’u.
+- Nie dodawaj prawdziwych danych medycznych ani osobowych do kodu, seedów, fixture'ów, testów i dokumentacji.
+- Każda operacja na danych użytkownika musi respektować izolację workspace'u.
 - Zwykłe konta mają jeden profil uprawnień `STAFF`.
 - Panel `/admin` ma osobne uwierzytelnienie techniczne i nie jest częścią uprawnień użytkownika aplikacji.
 - Nie pokazuj panelu `/admin` w nawigacji produktu.
+- Dokumentacja produktowa i materiały dla uczestników nie ujawniają panelu `/admin` ani wewnętrznego katalogu kontrolowanych błędów.
 
 ## Kontrolowane błędy
 
@@ -52,4 +54,11 @@ Poprawny tryb bazowy jest obowiązkowy. Celowe błędy mogą być aktywowane wy�
 - Dodawaj testy jednostkowe i integracyjne do reguł biznesowych oraz kontraktów API.
 - Testy Playwright i k6 są opcjonalne; nie są warunkiem ukończenia MVP ani obowiązkową bramką CI.
 - Nie zmieniaj zachowania produktu bez aktualizacji odpowiedniej dokumentacji.
+- Nie oznaczaj elementu jako zweryfikowanego lub wdrożonego bez dowodu: wykonanej komendy, wyniku CI, review albo sprawdzonego środowiska.
 - Celowe defekty warsztatowe muszą być oddzielone od prawidłowej implementacji i jasno identyfikowalne w kodzie.
+
+## Playbooki
+
+- Praca frontendowa wymaga przeczytania `docs/ai/frontend-playbook.md`.
+- Praca backendowa wymaga przeczytania `docs/ai/backend-playbook.md`.
+- Realizacja kompletnego zadania albo PR-a wymaga przeczytania `docs/ai/feature-delivery-playbook.md`.

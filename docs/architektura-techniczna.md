@@ -1,12 +1,12 @@
 # Klinika Debug — architektura techniczna
 
-**Wersja:** 1.0  
-**Status:** propozycja do akceptacji  
+**Wersja:** 1.0
+**Status:** zaakceptowana, wdrażana
 **Dokumenty bazowe:** `docs/dokumentacja-produktowa.md`, `docs/specyfikacja-mvp.md`
 
 ## 1. Cel dokumentu
 
-Dokument opisuje architekturę techniczną MVP Kliniki Debug oraz decyzje potrzebne do rozpoczęcia implementacji. Rozwiązanie jest projektowane dla maksymalnie 15 uczestników pracujących równocześnie i automatycznego wdrażania z repozytorium GitHub na zarządzany hosting Node.js w Hostingerze.
+Dokument opisuje zaakceptowaną architekturę techniczną MVP Kliniki Debug oraz decyzje obowiązujące podczas implementacji. Rozwiązanie jest projektowane dla maksymalnie 15 uczestników pracujących równocześnie i automatycznego wdrażania z repozytorium GitHub na zarządzany hosting Node.js w Hostingerze.
 
 Priorytetami są:
 
