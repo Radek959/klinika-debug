@@ -76,6 +76,7 @@ model Workspace {
   orders    Order[]
   orderTests OrderTest[]
   samples   Sample[]
+  idempotencyKeys IdempotencyKey[]
 
   @@map("workspaces")
 }
@@ -251,6 +252,7 @@ model Order {
   createdByUser User        @relation("OrderCreatedByUser", fields: [workspaceId, createdByUserId], references: [workspaceId, id], onDelete: Restrict)
   tests         OrderTest[]
   samples       Sample[]
+  idempotencyKeys IdempotencyKey[]
 
   @@unique([workspaceId, id], map: "orders_workspace_id_key")
   @@index([workspaceId, patientId], map: "orders_workspace_patient_idx")
@@ -302,4 +304,22 @@ model Sample {
   @@index([workspaceId, orderId], map: "samples_workspace_order_idx")
   @@index([workspaceId, collectedByUserId], map: "samples_workspace_collected_by_idx")
   @@map("samples")
+}
+
+model IdempotencyKey {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  orderId        String
+  key            String
+  requestHash    String
+  responseStatus Int
+  responseBody   Json
+  createdAt      DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [workspaceId, orderId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, key], map: "idempotency_keys_workspace_key_key")
+  @@index([workspaceId, orderId], map: "idempotency_keys_workspace_order_idx")
+  @@map("idempotency_keys")
 }

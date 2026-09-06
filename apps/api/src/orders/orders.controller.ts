@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOperation,
@@ -19,6 +20,7 @@ import type {
 } from "@klinika/api-contracts";
 import { AuthGuard } from "../auth/auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
+import { CurrentCorrelationId } from "../common/correlation/current-correlation-id.decorator";
 import { ApiErrorResponseDto } from "../common/errors/api-error-response.dto";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { OrderResponseDto } from "./dto/order-response.dto";
@@ -159,6 +161,7 @@ export class OrdersController {
   }
 
   @Post(":orderId/samples")
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "Rejestracja pobrania próbki",
     description:
@@ -209,5 +212,43 @@ export class OrdersController {
       user.id,
       body
     );
+  }
+
+  @Post(":orderId/send")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Wysłanie zlecenia do laboratorium",
+    description:
+      "Wysyła zlecenie w statusie SAMPLE_COLLECTED do laboratorium. Żądanie jest idempotentne w obrębie zlecenia — ponowne wywołanie z tymi samymi danymi zwraca ten sam rezultat bez ponownej wysyłki."
+  })
+  @ApiOkResponse({
+    type: OrderResponseDto,
+    description:
+      "Zlecenie przyjęte przez laboratorium: status SENT_TO_LAB, externalOrderId, correlationId i szacowany czas zakończenia."
+  })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorResponseDto,
+    description: "Brak poprawnego tokenu Bearer konta personelu."
+  })
+  @ApiNotFoundResponse({
+    type: ApiErrorResponseDto,
+    description: "Zlecenie nie istnieje albo należy do innego workspace'u."
+  })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorResponseDto,
+    description:
+      "Zlecenie narusza reguły biznesowe wysyłki, np. nie ma statusu SAMPLE_COLLECTED albo pacjent jest nieaktywny."
+  })
+  @ApiConflictResponse({
+    type: ApiErrorResponseDto,
+    description:
+      "Zlecenie zostało już wcześniej wysłane z innymi danymi (konflikt klucza idempotencji)."
+  })
+  async sendOrder(
+    @Param("orderId") orderId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentCorrelationId() correlationId: string
+  ): Promise<OrderResponse> {
+    return this.ordersService.sendOrder(user.workspace.id, orderId, correlationId);
   }
 }

@@ -58,7 +58,7 @@ describe("orders samples api", () => {
     expect(order.samples).toHaveLength(1);
     expect(order.samples[0].materialType).toBe("SERUM");
 
-    const collectedAt = "2026-09-04T09:30:00.000Z";
+    const collectedAt = nowIso();
     const response = await registerSample(token, order.id, {
       materialType: "SERUM",
       barcode: "SMP-SERUM-0001",
@@ -96,7 +96,7 @@ describe("orders samples api", () => {
     const firstResponse = await registerSample(token, order.id, {
       materialType: "EDTA_BLOOD",
       barcode: "SMP-EDTA-0001",
-      collectedAt: "2026-09-04T09:00:00.000Z"
+      collectedAt: nowIso()
     });
     expect(firstResponse.statusCode).toBe(200);
     expect(JSON.parse(firstResponse.body).status).toBe(
@@ -106,7 +106,7 @@ describe("orders samples api", () => {
     const secondResponse = await registerSample(token, order.id, {
       materialType: "SERUM",
       barcode: "SMP-SERUM-0002",
-      collectedAt: "2026-09-04T09:05:00.000Z"
+      collectedAt: nowIso()
     });
     expect(secondResponse.statusCode).toBe(200);
     expect(JSON.parse(secondResponse.body).status).toBe("SAMPLE_COLLECTED");
@@ -190,14 +190,14 @@ describe("orders samples api", () => {
     const first = await registerSample(token, order.id, {
       materialType: "SERUM",
       barcode: "SMP-SERUM-1000",
-      collectedAt: "2026-09-04T09:00:00.000Z"
+      collectedAt: nowIso()
     });
     expect(first.statusCode).toBe(200);
 
     const second = await registerSample(token, order.id, {
       materialType: "SERUM",
       barcode: "SMP-SERUM-1001",
-      collectedAt: "2026-09-04T09:10:00.000Z"
+      collectedAt: nowIso()
     });
 
     expect(second.statusCode).toBe(422);
@@ -226,14 +226,14 @@ describe("orders samples api", () => {
     const first = await registerSample(token, firstOrder.id, {
       materialType: "SERUM",
       barcode: "SMP-DUPLICATE",
-      collectedAt: "2026-09-04T09:00:00.000Z"
+      collectedAt: nowIso()
     });
     expect(first.statusCode).toBe(200);
 
     const second = await registerSample(token, secondOrder.id, {
       materialType: "SERUM",
       barcode: "SMP-DUPLICATE",
-      collectedAt: "2026-09-04T09:10:00.000Z"
+      collectedAt: nowIso()
     });
 
     expect(second.statusCode).toBe(422);

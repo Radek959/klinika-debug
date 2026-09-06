@@ -16,6 +16,7 @@ export function configureTestEnvironment() {
 }
 
 export async function resetTestDatabase(prisma: PrismaClient) {
+  await prisma.idempotencyKey.deleteMany();
   await prisma.sample.deleteMany();
   await prisma.orderTest.deleteMany();
   await prisma.order.deleteMany();

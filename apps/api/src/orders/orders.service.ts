@@ -1,5 +1,6 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { Prisma, type MedicalTest } from "@prisma/client";
+import { createHash } from "node:crypto";
 import {
   calculateRequiredMaterials,
   findDuplicateMedicalTestSelections,
@@ -11,6 +12,8 @@ import {
   canTransitionOrderStatus,
   validateCollectedAt,
   determineOrderStatusAfterSampleCollection,
+  canSendOrder,
+  buildSendIdempotencyKey,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
   type OrderValidationFieldError,
@@ -27,6 +30,7 @@ import type {
 } from "@klinika/api-contracts";
 import { ApiErrorException } from "../common/errors/api-error.exception";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { LabSimulatorService } from "../lab-simulator/lab-simulator.service";
 import { toOrderResponse, toOrderListResponse, toOrderDetailsResponse } from "./orders.mapper";
 
 type MedicalTestWithRequiredFields = MedicalTest & {
@@ -39,7 +43,10 @@ type MedicalTestWithRequiredFields = MedicalTest & {
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly labSimulator: LabSimulatorService
+  ) {}
 
   async create(
     workspaceId: string,
@@ -337,6 +344,199 @@ export class OrdersService {
     });
 
     return toOrderResponse(updatedOrder, updatedOrder.tests, updatedOrder.samples);
+  }
+
+  async sendOrder(
+    workspaceId: string,
+    orderId: string,
+    correlationId: string
+  ): Promise<OrderResponse> {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, workspaceId },
+      include: {
+        patient: { select: { active: true } },
+        tests: {
+          include: {
+            medicalTest: { select: { code: true, name: true, materialType: true } }
+          },
+          orderBy: {
+            medicalTest: { code: "asc" }
+          }
+        },
+        samples: {
+          orderBy: {
+            materialType: "asc"
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      throw new ApiErrorException(
+        HttpStatus.NOT_FOUND,
+        "ORDER_NOT_FOUND",
+        "Nie znaleziono zlecenia."
+      );
+    }
+
+    const idempotencyKey = buildSendIdempotencyKey(orderId);
+    const requestHash = this.hashSendRequest(order);
+
+    const existingKey = await this.prisma.idempotencyKey.findUnique({
+      where: { workspaceId_key: { workspaceId, key: idempotencyKey } }
+    });
+
+    if (existingKey) {
+      if (existingKey.requestHash !== requestHash) {
+        throw new ApiErrorException(
+          HttpStatus.CONFLICT,
+          "IDEMPOTENCY_KEY_CONFLICT",
+          "Zlecenie zostało już wysłane z innymi danymi."
+        );
+      }
+
+      // Ponowne żądanie z tym samym payloadem: zwróć bieżący, już zaktualizowany stan zlecenia.
+      return toOrderResponse(order, order.tests, order.samples);
+    }
+
+    const fieldErrors: { field: string; code: string }[] = [];
+    if (!canSendOrder(order.status)) {
+      fieldErrors.push({ field: "status", code: "ORDER_NOT_SENDABLE" });
+    }
+    if (!order.patient.active) {
+      fieldErrors.push({ field: "patientId", code: "PATIENT_INACTIVE" });
+    }
+    if (fieldErrors.length > 0) {
+      throw this.orderSendError(fieldErrors);
+    }
+
+    const simulatorResult = this.labSimulator.acceptOrder({ workspaceId, orderId });
+
+    let updatedOrder;
+    try {
+      updatedOrder = await this.prisma.$transaction(async (tx) => {
+        await tx.idempotencyKey.create({
+          data: {
+            workspaceId,
+            orderId,
+            key: idempotencyKey,
+            requestHash,
+            responseStatus: HttpStatus.OK,
+            responseBody: {
+              externalOrderId: simulatorResult.externalOrderId,
+              estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString()
+            }
+          }
+        });
+
+        return tx.order.update({
+          where: { id: orderId },
+          data: {
+            status: "SENT_TO_LAB",
+            externalOrderId: simulatorResult.externalOrderId,
+            correlationId,
+            sentAt: new Date(),
+            estimatedCompletionAt: simulatorResult.estimatedCompletionAt
+          },
+          include: {
+            tests: {
+              include: {
+                medicalTest: { select: { code: true, name: true, materialType: true } }
+              },
+              orderBy: {
+                medicalTest: { code: "asc" }
+              }
+            },
+            samples: {
+              orderBy: {
+                materialType: "asc"
+              }
+            }
+          }
+        });
+      });
+    } catch (error) {
+      if (!this.isPrismaUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const concurrentKey = await this.prisma.idempotencyKey.findUnique({
+        where: { workspaceId_key: { workspaceId, key: idempotencyKey } }
+      });
+      if (!concurrentKey) {
+        throw error;
+      }
+      if (concurrentKey.requestHash !== requestHash) {
+        throw new ApiErrorException(
+          HttpStatus.CONFLICT,
+          "IDEMPOTENCY_KEY_CONFLICT",
+          "Zlecenie zostało już wysłane z innymi danymi."
+        );
+      }
+
+      const concurrentOrder = await this.prisma.order.findFirst({
+        where: { id: orderId, workspaceId },
+        include: {
+          tests: {
+            include: {
+              medicalTest: { select: { code: true, name: true, materialType: true } }
+            },
+            orderBy: {
+              medicalTest: { code: "asc" }
+            }
+          },
+          samples: {
+            orderBy: {
+              materialType: "asc"
+            }
+          }
+        }
+      });
+      if (!concurrentOrder) {
+        throw error;
+      }
+
+      return toOrderResponse(concurrentOrder, concurrentOrder.tests, concurrentOrder.samples);
+    }
+
+    return toOrderResponse(updatedOrder, updatedOrder.tests, updatedOrder.samples);
+  }
+
+  private hashSendRequest(order: {
+    patientId: string;
+    tests: Array<{ medicalTestId: string }>;
+    samples: Array<{ id: string; barcode: string | null }>;
+  }): string {
+    const payload = {
+      patientId: order.patientId,
+      testIds: order.tests.map((test) => test.medicalTestId).sort(),
+      samples: order.samples
+        .map((sample) => ({ id: sample.id, barcode: sample.barcode }))
+        .sort((a, b) => a.id.localeCompare(b.id))
+    };
+    return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  }
+
+  private orderSendError(errors: { field: string; code: string }[]) {
+    return new ApiErrorException(
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "ORDER_SEND_ERROR",
+      "Nie udało się wysłać zlecenia do laboratorium.",
+      errors.map((error) => ({
+        ...error,
+        message: this.sendFieldErrorMessage(error.code)
+      }))
+    );
+  }
+
+  private sendFieldErrorMessage(code: string): string {
+    const messages: Record<string, string> = {
+      ORDER_NOT_SENDABLE:
+        "Zlecenie można wysłać do laboratorium wyłącznie po zarejestrowaniu wszystkich próbek.",
+      PATIENT_INACTIVE:
+        "Nie można wysłać zlecenia dla nieaktywnego pacjenta."
+    };
+    return messages[code] ?? "Wysłanie zlecenia zawiera nieprawidłowe dane.";
   }
 
   private sampleRegistrationError(errors: { field: string; code: string }[]) {
