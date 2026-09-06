@@ -2,6 +2,76 @@ import { PrismaClient } from "@prisma/client";
 import * as argon2 from "argon2";
 import { readPeselData } from "@klinika/domain";
 
+const medicalTestsCatalog = [
+  {
+    code: "MORF",
+    name: "Morfologia krwi",
+    description: "Syntetyczne badanie demonstracyjne krwi EDTA.",
+    materialType: "EDTA_BLOOD" as const,
+    estimatedDurationMinutes: 5,
+    parameters: [
+      { code: "WBC", name: "Leukocyty", valueType: "NUMERIC" as const, unit: "10^9/L" },
+      { code: "RBC", name: "Erytrocyty", valueType: "NUMERIC" as const, unit: "10^12/L" },
+      { code: "HGB", name: "Hemoglobina", valueType: "NUMERIC" as const, unit: "g/dL" },
+      { code: "PLT", name: "Płytki krwi", valueType: "NUMERIC" as const, unit: "10^9/L" }
+    ],
+    requiredFields: []
+  },
+  {
+    code: "CRP",
+    name: "CRP",
+    description: "Syntetyczne badanie demonstracyjne surowicy.",
+    materialType: "SERUM" as const,
+    estimatedDurationMinutes: 5,
+    parameters: [
+      { code: "CRP", name: "Białko C-reaktywne", valueType: "NUMERIC" as const, unit: "mg/L" }
+    ],
+    requiredFields: []
+  },
+  {
+    code: "TSH",
+    name: "TSH",
+    description: "Syntetyczne badanie demonstracyjne surowicy.",
+    materialType: "SERUM" as const,
+    estimatedDurationMinutes: 5,
+    parameters: [
+      { code: "TSH", name: "Tyreotropina", valueType: "NUMERIC" as const, unit: "µIU/mL" }
+    ],
+    requiredFields: []
+  },
+  {
+    code: "GLU",
+    name: "Glukoza",
+    description: "Syntetyczne badanie demonstracyjne surowicy.",
+    materialType: "SERUM" as const,
+    estimatedDurationMinutes: 5,
+    parameters: [
+      { code: "GLU", name: "Glukoza", valueType: "NUMERIC" as const, unit: "mg/dL" }
+    ],
+    requiredFields: [
+      {
+        code: "PATIENT_PREPARED",
+        label: "Potwierdzenie przygotowania pacjenta",
+        valueType: "BOOLEAN" as const,
+        required: true
+      }
+    ]
+  },
+  {
+    code: "URINE",
+    name: "Badanie ogólne moczu",
+    description: "Syntetyczne badanie demonstracyjne moczu.",
+    materialType: "URINE" as const,
+    estimatedDurationMinutes: 5,
+    parameters: [
+      { code: "PH", name: "Odczyn pH", valueType: "NUMERIC" as const, unit: null },
+      { code: "SG", name: "Ciężar właściwy", valueType: "NUMERIC" as const, unit: null },
+      { code: "COLOR", name: "Barwa", valueType: "TEXT" as const, unit: null }
+    ],
+    requiredFields: []
+  }
+] as const;
+
 const seedPatients = [
   {
     firstName: "Jan",
@@ -94,6 +164,93 @@ export async function seedDatabase(client: PrismaClient) {
   });
 
   await seedDemoPatients(client, workspace.id);
+  await seedMedicalTestsCatalog(client);
+}
+
+async function seedMedicalTestsCatalog(client: PrismaClient) {
+  for (const test of medicalTestsCatalog) {
+    const savedTest = await client.medicalTest.upsert({
+      where: { code: test.code },
+      update: {
+        name: test.name,
+        description: test.description,
+        materialType: test.materialType,
+        estimatedDurationMinutes: test.estimatedDurationMinutes,
+        active: true
+      },
+      create: {
+        code: test.code,
+        name: test.name,
+        description: test.description,
+        materialType: test.materialType,
+        estimatedDurationMinutes: test.estimatedDurationMinutes,
+        active: true
+      }
+    });
+
+    await client.testParameter.deleteMany({
+      where: {
+        medicalTestId: savedTest.id,
+        code: { notIn: test.parameters.map((parameter) => parameter.code) }
+      }
+    });
+    await client.medicalTestRequiredField.deleteMany({
+      where: {
+        medicalTestId: savedTest.id,
+        code: { notIn: test.requiredFields.map((field) => field.code) }
+      }
+    });
+
+    for (const [index, parameter] of test.parameters.entries()) {
+      await client.testParameter.upsert({
+        where: {
+          medicalTestId_code: {
+            medicalTestId: savedTest.id,
+            code: parameter.code
+          }
+        },
+        update: {
+          name: parameter.name,
+          valueType: parameter.valueType,
+          unit: parameter.unit,
+          displayOrder: index + 1
+        },
+        create: {
+          medicalTestId: savedTest.id,
+          code: parameter.code,
+          name: parameter.name,
+          valueType: parameter.valueType,
+          unit: parameter.unit,
+          displayOrder: index + 1
+        }
+      });
+    }
+
+    for (const [index, field] of test.requiredFields.entries()) {
+      await client.medicalTestRequiredField.upsert({
+        where: {
+          medicalTestId_code: {
+            medicalTestId: savedTest.id,
+            code: field.code
+          }
+        },
+        update: {
+          label: field.label,
+          valueType: field.valueType,
+          required: field.required,
+          displayOrder: index + 1
+        },
+        create: {
+          medicalTestId: savedTest.id,
+          code: field.code,
+          label: field.label,
+          valueType: field.valueType,
+          required: field.required,
+          displayOrder: index + 1
+        }
+      });
+    }
+  }
 }
 
 async function seedDemoPatients(client: PrismaClient, workspaceId: string) {

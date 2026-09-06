@@ -22,6 +22,47 @@ enum Gender {
   MALE
 }
 
+enum OrderPriority {
+  ROUTINE
+  URGENT
+}
+
+enum OrderStatus {
+  DRAFT
+  SAMPLE_COLLECTION_IN_PROGRESS
+  SAMPLE_COLLECTED
+  SENT_TO_LAB
+  PROCESSING
+  PARTIAL
+  COMPLETED
+  REJECTED
+  TECHNICAL_ERROR
+}
+
+enum SampleStatus {
+  REQUIRED
+  COLLECTED
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+enum MaterialType {
+  EDTA_BLOOD
+  SERUM
+  URINE
+}
+
+enum TestParameterValueType {
+  NUMERIC
+  TEXT
+}
+
+enum MedicalTestRequiredFieldValueType {
+  BOOLEAN
+  TEXT
+}
+
 model Workspace {
   id        String   @id @default(cuid())
   name      String
@@ -32,6 +73,9 @@ model Workspace {
   users     User[]
   patients  Patient[]
   guardians Guardian[]
+  orders    Order[]
+  orderTests OrderTest[]
+  samples   Sample[]
 
   @@map("workspaces")
 }
@@ -49,7 +93,10 @@ model User {
 
   workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sessions  UserSession[]
+  createdOrders Order[]   @relation("OrderCreatedByUser")
+  collectedSamples Sample[] @relation("SampleCollectedByUser")
 
+  @@unique([workspaceId, id], map: "users_workspace_id_key")
   @@index([workspaceId])
   @@map("users")
 }
@@ -97,6 +144,7 @@ model Patient {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   guardian  Guardian?
+  orders    Order[]
 
   @@unique([workspaceId, pesel], map: "patients_workspace_pesel_key")
   @@unique([workspaceId, documentType, documentNumber, documentCountry], map: "patients_workspace_document_key")
@@ -126,4 +174,132 @@ model Guardian {
   @@unique([workspaceId, patientId], map: "guardians_workspace_patient_key")
   @@index([workspaceId], map: "guardians_workspace_idx")
   @@map("guardians")
+}
+
+model MedicalTest {
+  id                       String                     @id @default(cuid())
+  code                     String                     @unique(map: "medical_tests_code_key")
+  name                     String
+  description              String
+  materialType             MaterialType
+  estimatedDurationMinutes Int
+  active                   Boolean                    @default(true)
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+
+  parameters     TestParameter[]
+  requiredFields MedicalTestRequiredField[]
+  orderTests     OrderTest[]
+
+  @@index([active], map: "medical_tests_active_idx")
+  @@index([materialType], map: "medical_tests_material_type_idx")
+  @@map("medical_tests")
+}
+
+model TestParameter {
+  id            String                 @id @default(cuid())
+  medicalTestId String
+  code          String
+  name          String
+  valueType     TestParameterValueType
+  unit          String?
+  displayOrder  Int
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  medicalTest MedicalTest @relation(fields: [medicalTestId], references: [id], onDelete: Cascade)
+
+  @@unique([medicalTestId, code], map: "test_parameters_test_code_key")
+  @@index([medicalTestId, displayOrder], map: "test_parameters_test_order_idx")
+  @@map("test_parameters")
+}
+
+model MedicalTestRequiredField {
+  id            String                            @id @default(cuid())
+  medicalTestId String
+  code          String
+  label         String
+  valueType     MedicalTestRequiredFieldValueType
+  required      Boolean
+  displayOrder  Int
+  createdAt     DateTime                          @default(now())
+  updatedAt     DateTime                          @updatedAt
+
+  medicalTest MedicalTest @relation(fields: [medicalTestId], references: [id], onDelete: Cascade)
+
+  @@unique([medicalTestId, code], map: "medical_test_required_fields_test_code_key")
+  @@index([medicalTestId, displayOrder], map: "medical_test_required_fields_test_order_idx")
+  @@map("medical_test_required_fields")
+}
+
+model Order {
+  id                    String        @id @default(cuid())
+  workspaceId           String
+  patientId             String
+  createdByUserId       String
+  priority              OrderPriority
+  status                OrderStatus   @default(DRAFT)
+  externalOrderId       String?
+  correlationId         String?
+  sentAt                DateTime?
+  estimatedCompletionAt DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  workspace     Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient       Patient     @relation(fields: [workspaceId, patientId], references: [workspaceId, id], onDelete: Restrict)
+  createdByUser User        @relation("OrderCreatedByUser", fields: [workspaceId, createdByUserId], references: [workspaceId, id], onDelete: Restrict)
+  tests         OrderTest[]
+  samples       Sample[]
+
+  @@unique([workspaceId, id], map: "orders_workspace_id_key")
+  @@index([workspaceId, patientId], map: "orders_workspace_patient_idx")
+  @@index([workspaceId, createdByUserId], map: "orders_workspace_created_by_idx")
+  @@index([workspaceId, status], map: "orders_workspace_status_idx")
+  @@index([workspaceId, createdAt], map: "orders_workspace_created_at_idx")
+  @@map("orders")
+}
+
+model OrderTest {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  orderId       String
+  medicalTestId String
+  additionalData Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order       Order       @relation(fields: [workspaceId, orderId], references: [workspaceId, id], onDelete: Cascade)
+  medicalTest MedicalTest @relation(fields: [medicalTestId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, medicalTestId], map: "order_tests_order_medical_test_key")
+  @@index([workspaceId, orderId], map: "order_tests_workspace_order_idx")
+  @@index([medicalTestId], map: "order_tests_medical_test_idx")
+  @@map("order_tests")
+}
+
+model Sample {
+  id                String       @id @default(cuid())
+  workspaceId       String
+  orderId           String
+  materialType      MaterialType
+  barcode           String?
+  collectedAt       DateTime?
+  collectedByUserId String?
+  status            SampleStatus @default(REQUIRED)
+  rejectionCode     String?
+  rejectionReason   String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order           Order     @relation(fields: [workspaceId, orderId], references: [workspaceId, id], onDelete: Cascade)
+  collectedByUser User?     @relation("SampleCollectedByUser", fields: [workspaceId, collectedByUserId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@unique([orderId, materialType], map: "samples_order_material_type_key")
+  @@unique([workspaceId, barcode], map: "samples_workspace_barcode_key")
+  @@index([workspaceId, orderId], map: "samples_workspace_order_idx")
+  @@index([workspaceId, collectedByUserId], map: "samples_workspace_collected_by_idx")
+  @@map("samples")
 }

@@ -146,6 +146,12 @@ async function assertGuardianWorkspaceConstraint() {
 async function resetKnownTables() {
   await query("SET FOREIGN_KEY_CHECKS = 0");
   for (const table of [
+    "samples",
+    "order_tests",
+    "orders",
+    "medical_test_required_fields",
+    "test_parameters",
+    "medical_tests",
     "guardians",
     "patients",
     "user_sessions",

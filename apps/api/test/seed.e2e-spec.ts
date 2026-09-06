@@ -60,5 +60,68 @@ describe("database seed", () => {
       firstName: "Karolina",
       email: "karolina.syntetyczna@example.test"
     });
+
+    const medicalTests = await prisma.medicalTest.findMany({
+      include: {
+        parameters: { orderBy: [{ displayOrder: "asc" }, { code: "asc" }] },
+        requiredFields: { orderBy: [{ displayOrder: "asc" }, { code: "asc" }] }
+      },
+      orderBy: { code: "asc" }
+    });
+    expect(medicalTests).toHaveLength(5);
+    expect(medicalTests.map((test) => test.code)).toEqual([
+      "CRP",
+      "GLU",
+      "MORF",
+      "TSH",
+      "URINE"
+    ]);
+    expect(new Set(medicalTests.map((test) => test.code)).size).toBe(5);
+    expect(
+      medicalTests.map((test) => ({
+        code: test.code,
+        materialType: test.materialType,
+        active: test.active
+      }))
+    ).toEqual([
+      { code: "CRP", materialType: "SERUM", active: true },
+      { code: "GLU", materialType: "SERUM", active: true },
+      { code: "MORF", materialType: "EDTA_BLOOD", active: true },
+      { code: "TSH", materialType: "SERUM", active: true },
+      { code: "URINE", materialType: "URINE", active: true }
+    ]);
+
+    const morf = medicalTests.find((test) => test.code === "MORF");
+    expect(morf?.parameters.map((parameter) => parameter.code)).toEqual([
+      "WBC",
+      "RBC",
+      "HGB",
+      "PLT"
+    ]);
+
+    const glu = medicalTests.find((test) => test.code === "GLU");
+    expect(glu?.parameters).toEqual([
+      expect.objectContaining({
+        code: "GLU",
+        name: "Glukoza",
+        valueType: "NUMERIC",
+        unit: "mg/dL",
+        displayOrder: 1
+      })
+    ]);
+    expect(glu?.requiredFields).toEqual([
+      expect.objectContaining({
+        code: "PATIENT_PREPARED",
+        label: "Potwierdzenie przygotowania pacjenta",
+        valueType: "BOOLEAN",
+        required: true,
+        displayOrder: 1
+      })
+    ]);
+    expect(
+      medicalTests
+        .filter((test) => test.code !== "GLU")
+        .flatMap((test) => test.requiredFields)
+    ).toEqual([]);
   });
 });
