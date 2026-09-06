@@ -70,6 +70,8 @@ export async function createTestPatient(
     documentCountry?: string;
     birthDate?: string;
     gender?: "FEMALE" | "MALE";
+    phone?: string;
+    email?: string;
     active?: boolean;
   }
 ) {
@@ -85,6 +87,8 @@ export async function createTestPatient(
       documentCountry: input.documentCountry ?? null,
       birthDate: new Date(`${input.birthDate ?? "1990-01-01"}T00:00:00.000Z`),
       gender: input.gender ?? "FEMALE",
+      phone: input.phone ?? null,
+      email: input.email ?? null,
       active: input.active ?? true
     }
   });
