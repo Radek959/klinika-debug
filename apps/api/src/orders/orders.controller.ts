@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -161,6 +161,7 @@ export class OrdersController {
   }
 
   @Post(":orderId/samples")
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "Rejestracja pobrania próbki",
     description:
@@ -214,6 +215,7 @@ export class OrdersController {
   }
 
   @Post(":orderId/send")
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "Wysłanie zlecenia do laboratorium",
     description:
