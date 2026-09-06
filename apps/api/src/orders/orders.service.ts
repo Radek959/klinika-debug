@@ -4,14 +4,25 @@ import {
   calculateRequiredMaterials,
   findDuplicateMedicalTestSelections,
   validateOrderAdditionalData,
+  normalizeSearch,
+  parseDate,
+  normalizeCreatedToDate,
+  validateDateRange,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
-  type OrderValidationFieldError
+  type OrderValidationFieldError,
+  type OrdersListValidationError
 } from "@klinika/domain";
-import type { CreateOrderRequest, OrderResponse } from "@klinika/api-contracts";
+import type {
+  CreateOrderRequest,
+  OrderResponse,
+  OrdersListResponse,
+  OrdersListParams,
+  OrderDetailsResponse
+} from "@klinika/api-contracts";
 import { ApiErrorException } from "../common/errors/api-error.exception";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { toOrderResponse } from "./orders.mapper";
+import { toOrderResponse, toOrderListResponse, toOrderDetailsResponse } from "./orders.mapper";
 
 type MedicalTestWithRequiredFields = MedicalTest & {
   requiredFields: Array<{
@@ -115,6 +126,299 @@ export class OrdersService {
     });
 
     return toOrderResponse(result.order, result.orderTests, result.samples);
+  }
+
+  async list(
+    workspaceId: string,
+    params: OrdersListParams
+  ): Promise<OrdersListResponse> {
+    const validationErrors = this.validateListParams(params);
+    if (validationErrors.length > 0) {
+      throw new ApiErrorException(
+        HttpStatus.BAD_REQUEST,
+        "VALIDATION_ERROR",
+        "Żądanie zawiera nieprawidłowe dane.",
+        validationErrors.map((error) => ({
+          field: error.field,
+          code: error.code,
+          message: this.listParamErrorMessage(error.code)
+        }))
+      );
+    }
+
+    const page = params.page ?? 1;
+    const pageSize = Math.min(params.pageSize ?? 20, 100);
+    const skip = (page - 1) * pageSize;
+
+    const normalizedSearchTerm = normalizeSearch(params.search);
+    const sortField = params.sort ?? "updatedAt";
+    const sortOrder = params.order ?? "desc";
+
+    const where = this.buildWhereClause(workspaceId, params, normalizedSearchTerm);
+    const orderBy = this.buildOrderBy(sortField, sortOrder);
+
+    const [items, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        include: {
+          patient: true,
+          tests: {
+            include: {
+              medicalTest: {
+                select: { code: true, name: true, materialType: true }
+              }
+            }
+          },
+          samples: true
+        },
+        orderBy,
+        skip,
+        take: pageSize
+      }),
+      this.prisma.order.count({ where })
+    ]);
+
+    return toOrderListResponse(items, page, pageSize, total);
+  }
+
+  async getById(workspaceId: string, orderId: string): Promise<OrderDetailsResponse> {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, workspaceId },
+      include: {
+        patient: true,
+        tests: {
+          include: {
+            medicalTest: {
+              select: { code: true, name: true, materialType: true }
+            }
+          },
+          orderBy: {
+            medicalTest: { code: "asc" }
+          }
+        },
+        samples: {
+          orderBy: {
+            materialType: "asc"
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      throw new ApiErrorException(
+        HttpStatus.NOT_FOUND,
+        "ORDER_NOT_FOUND",
+        "Nie znaleziono zlecenia."
+      );
+    }
+
+    return toOrderDetailsResponse(order);
+  }
+
+  private validateListParams(params: OrdersListParams): OrdersListValidationError[] {
+    const errors: OrdersListValidationError[] = [];
+
+    if (params.page !== undefined && (params.page < 1 || !Number.isInteger(params.page))) {
+      errors.push({ field: "page", code: "INVALID_PAGE" });
+    }
+
+    if (
+      params.pageSize !== undefined &&
+      (params.pageSize < 1 || params.pageSize > 100 || !Number.isInteger(params.pageSize))
+    ) {
+      errors.push({ field: "pageSize", code: "INVALID_PAGE_SIZE" });
+    }
+
+    if (
+      params.status &&
+      ![
+        "DRAFT",
+        "SAMPLE_COLLECTION_IN_PROGRESS",
+        "SAMPLE_COLLECTED",
+        "SENT_TO_LAB",
+        "PROCESSING",
+        "PARTIAL",
+        "COMPLETED",
+        "REJECTED",
+        "TECHNICAL_ERROR"
+      ].includes(params.status)
+    ) {
+      errors.push({ field: "status", code: "INVALID_STATUS" });
+    }
+
+    if (params.priority && !["ROUTINE", "URGENT"].includes(params.priority)) {
+      errors.push({ field: "priority", code: "INVALID_PRIORITY" });
+    }
+
+    if (
+      params.materialType &&
+      !["EDTA_BLOOD", "SERUM", "URINE"].includes(params.materialType)
+    ) {
+      errors.push({ field: "materialType", code: "INVALID_MATERIAL_TYPE" });
+    }
+
+    if (
+      params.sort &&
+      ![
+        "createdAt",
+        "updatedAt",
+        "status",
+        "priority",
+        "patientLastName"
+      ].includes(params.sort)
+    ) {
+      errors.push({ field: "sort", code: "INVALID_SORT_FIELD" });
+    }
+
+    if (params.order && !["asc", "desc"].includes(params.order)) {
+      errors.push({ field: "order", code: "INVALID_ORDER" });
+    }
+
+    // Validate dates
+    let createdFromDate: Date | null = null;
+    let createdToDate: Date | null = null;
+
+    try {
+      createdFromDate = parseDate(params.createdFrom, "createdFrom");
+    } catch (error) {
+      errors.push(error as OrdersListValidationError);
+    }
+
+    try {
+      createdToDate = parseDate(params.createdTo, "createdTo");
+    } catch (error) {
+      errors.push(error as OrdersListValidationError);
+    }
+
+    // Only validate date range if both dates were parsed successfully
+    if (createdFromDate && createdToDate) {
+      const rangeErrors = validateDateRange(createdFromDate, createdToDate);
+      errors.push(...rangeErrors);
+    }
+
+    return errors;
+  }
+
+  private buildWhereClause(
+    workspaceId: string,
+    params: OrdersListParams,
+    normalizedSearchTerm: string | null
+  ): Prisma.OrderWhereInput {
+    const where: Prisma.OrderWhereInput = {
+      workspaceId
+    };
+
+    if (params.status) {
+      where.status = params.status;
+    }
+
+    if (params.priority) {
+      where.priority = params.priority;
+    }
+
+    if (params.patientId) {
+      where.patientId = params.patientId;
+    }
+
+    if (normalizedSearchTerm) {
+      where.OR = [
+        { id: { contains: normalizedSearchTerm } },
+        { externalOrderId: { contains: normalizedSearchTerm } },
+        { correlationId: { contains: normalizedSearchTerm } },
+        { patient: { firstName: { contains: normalizedSearchTerm } } },
+        { patient: { lastName: { contains: normalizedSearchTerm } } },
+        { patient: { pesel: { contains: normalizedSearchTerm } } },
+        { patient: { documentNumber: { contains: normalizedSearchTerm } } },
+        {
+          tests: {
+            some: {
+              medicalTest: {
+                OR: [
+                  { code: { contains: normalizedSearchTerm } },
+                  { name: { contains: normalizedSearchTerm } }
+                ]
+              }
+            }
+          }
+        }
+      ];
+    }
+
+    if (params.materialType) {
+      where.samples = {
+        some: { materialType: params.materialType }
+      };
+    }
+
+    // Handle date range
+    let createdFromDate: Date | null = null;
+    let createdToDate: Date | null = null;
+
+    try {
+      createdFromDate = parseDate(params.createdFrom, "createdFrom");
+      createdToDate = parseDate(params.createdTo, "createdTo");
+    } catch {
+      // Validation errors are handled in validateListParams
+      return where;
+    }
+
+    if (createdFromDate) {
+      where.createdAt = { gte: createdFromDate };
+    }
+
+    if (createdToDate) {
+      const nextDay = normalizeCreatedToDate(createdToDate);
+      if (createdFromDate) {
+        where.createdAt = { gte: createdFromDate, lt: nextDay };
+      } else {
+        where.createdAt = { lt: nextDay };
+      }
+    }
+
+    return where;
+  }
+
+  private buildOrderBy(
+    sortField: string,
+    sortOrder: string
+  ): Prisma.OrderOrderByWithRelationInput | Prisma.OrderOrderByWithRelationInput[] {
+    const order = sortOrder === "asc" ? "asc" : "desc";
+
+    switch (sortField) {
+      case "createdAt":
+        return [{ createdAt: order }, { id: "asc" }];
+      case "updatedAt":
+        return [{ updatedAt: order }, { id: "asc" }];
+      case "status":
+        return [{ status: order }, { id: "asc" }];
+      case "priority":
+        return [{ priority: order }, { id: "asc" }];
+      case "patientLastName":
+        // Sort by patient lastName, then firstName, then order id
+        return [
+          { patient: { lastName: order } },
+          { patient: { firstName: order } },
+          { id: "asc" }
+        ];
+      default:
+        return [{ updatedAt: "desc" }, { id: "asc" }];
+    }
+  }
+
+  private listParamErrorMessage(code: string): string {
+    const messages: Record<string, string> = {
+      INVALID_PAGE: "Numer strony musi być liczbą dodatnią.",
+      INVALID_PAGE_SIZE: "Liczba elementów na stronie musi być od 1 do 100.",
+      INVALID_STATUS: "Niepoprawna wartość statusu.",
+      INVALID_PRIORITY: "Niepoprawna wartość priorytetu.",
+      INVALID_MATERIAL_TYPE: "Niepoprawny rodzaj materiału.",
+      INVALID_SORT_FIELD: "Niepoprawne pole sortowania.",
+      INVALID_ORDER: "Kierunek sortowania musi być 'asc' lub 'desc'.",
+      INVALID_DATE_FORMAT: "Data musi być w formacie YYYY-MM-DD.",
+      INVALID_DATE_RANGE:
+        "Data początkowa nie może być późniejsza niż data końcowa."
+    };
+    return messages[code] ?? "Żądanie zawiera nieprawidłowe dane.";
   }
 
   private async validateOrderInput(input: CreateOrderRequest): Promise<

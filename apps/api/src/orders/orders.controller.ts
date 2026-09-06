@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -8,14 +8,23 @@ import {
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
-  ApiUnprocessableEntityResponse
+  ApiUnprocessableEntityResponse,
+  ApiOkResponse
 } from "@nestjs/swagger";
-import type { AuthenticatedUser, OrderResponse } from "@klinika/api-contracts";
+import type {
+  AuthenticatedUser,
+  OrderResponse,
+  OrdersListResponse,
+  OrderDetailsResponse
+} from "@klinika/api-contracts";
 import { AuthGuard } from "../auth/auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { ApiErrorResponseDto } from "../common/errors/api-error-response.dto";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { OrderResponseDto } from "./dto/order-response.dto";
+import { OrdersListQueryDto } from "./dto/orders-list-query.dto";
+import { OrdersListResponseDto } from "./dto/orders-list-response.dto";
+import { OrderDetailsResponseDto } from "./dto/order-details-response.dto";
 import { OrdersService } from "./orders.service";
 
 @ApiTags("Zlecenia")
@@ -91,5 +100,60 @@ export class OrdersController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<OrderResponse> {
     return this.ordersService.create(user.workspace.id, user.id, body);
+  }
+
+  @Get()
+  @ApiOperation({
+    summary: "Lista zleceń z bieżącego workspace'u",
+    description:
+      "Zwraca paginowaną listę zleceń z filtrowaniem, wyszukiwaniem i sortowaniem. Obsługuje filtry po statusie, priorytecie, pacjencie, rodzaju materiału i zakresie dat. Wyszukiwanie działa bez rozróżniania wielkości liter po identyfikatorach, danych pacjenta i kodach badań."
+  })
+  @ApiOkResponse({
+    type: OrdersListResponseDto,
+    description: "Paginowana lista zleceń."
+  })
+  @ApiBadRequestResponse({
+    type: ApiErrorResponseDto,
+    description: "Niepoprawne parametry zapytania."
+  })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorResponseDto,
+    description: "Brak poprawnego tokenu Bearer konta personelu."
+  })
+  async list(
+    @Query() query: OrdersListQueryDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrdersListResponse> {
+    return this.ordersService.list(user.workspace.id, query);
+  }
+
+  @Get(":orderId")
+  @ApiOperation({
+    summary: "Szczegóły zlecenia",
+    description:
+      "Zwraca pełne dane zlecenia, w tym informacje o pacjencie, badaniach i próbkach. Zlecenie musi należeć do bieżącego workspace'u."
+  })
+  @ApiOkResponse({
+    type: OrderDetailsResponseDto,
+    description: "Szczegółowe dane zlecenia."
+  })
+  @ApiBadRequestResponse({
+    type: ApiErrorResponseDto,
+    description: "Niepoprawny identyfikator zlecenia."
+  })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorResponseDto,
+    description: "Brak poprawnego tokenu Bearer konta personelu."
+  })
+  @ApiNotFoundResponse({
+    type: ApiErrorResponseDto,
+    description:
+      "Zlecenie nie istnieje albo należy do innego workspace'u."
+  })
+  async getById(
+    @Param("orderId") orderId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderDetailsResponse> {
+    return this.ordersService.getById(user.workspace.id, orderId);
   }
 }
