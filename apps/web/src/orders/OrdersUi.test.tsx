@@ -1,9 +1,12 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
+  MedicalTestCatalogItem,
   MedicalTestsListResponse,
   OrderDetailsResponse,
-  OrderListItem
+  OrderListItem,
+  PatientListItem,
+  PatientsListResponse
 } from "@klinika/api-contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
@@ -19,6 +22,25 @@ const authenticatedUser = {
     slug: "klinika-pokazowa"
   }
 };
+
+const annaPatient = patientListItem({
+  id: "patient-1",
+  firstName: "Anna",
+  lastName: "Nowak",
+  pesel: "44051401458"
+});
+
+const janPatient = patientListItem({
+  id: "patient-2",
+  firstName: "Jan",
+  lastName: "Kowalski-Bardzo-Długie-Nazwisko",
+  identifierType: "OTHER_DOCUMENT",
+  pesel: null,
+  documentType: "Paszport",
+  documentNumber: "DOC123456789",
+  documentCountry: "PL",
+  birthDate: "1981-03-04"
+});
 
 const orderListItem: OrderListItem = {
   id: "order-1",
@@ -47,58 +69,33 @@ const orderListItem: OrderListItem = {
   updatedAt: "2026-09-01T10:00:00.000Z"
 };
 
-function orderDetails(overrides: Partial<OrderDetailsResponse> = {}): OrderDetailsResponse {
-  return {
-    id: "order-1",
-    patientId: "patient-1",
-    patient: {
-      id: "patient-1",
-      firstName: "Anna",
-      lastName: "Nowak",
-      identifierType: "PESEL",
-      pesel: "44051401458",
-      documentType: null,
-      documentNumber: null,
-      documentCountry: null,
-      birthDate: "1990-01-01",
-      gender: "FEMALE",
-      active: true
-    },
-    priority: "ROUTINE",
-    status: "SAMPLE_COLLECTED",
-    tests: [{ id: "order-test-1", medicalTestId: "test-crp", code: "CRP", name: "CRP", materialType: "SERUM", additionalData: null }],
-    samples: [
-      { id: "sample-1", materialType: "SERUM", status: "REQUIRED", barcode: null, collectedAt: null, collectedByUserId: null, rejectionCode: null, rejectionReason: null }
-    ],
-    externalOrderId: null,
-    correlationId: null,
-    sentAt: null,
-    estimatedCompletionAt: null,
-    createdByUserId: "user-1",
-    createdAt: "2026-09-01T10:00:00.000Z",
-    updatedAt: "2026-09-01T10:00:00.000Z",
-    results: [],
-    ...overrides
-  };
-}
+const catalogItems: MedicalTestCatalogItem[] = [
+  medicalTest({ id: "test-morf", code: "MORF", name: "Morfologia krwi", materialType: "EDTA_BLOOD" }),
+  medicalTest({ id: "test-crp", code: "CRP", name: "CRP", materialType: "SERUM" }),
+  medicalTest({ id: "test-tsh", code: "TSH", name: "TSH", materialType: "SERUM" }),
+  medicalTest({
+    id: "test-glu",
+    code: "GLU",
+    name: "Glukoza z bardzo długą nazwą kontrolną",
+    materialType: "SERUM",
+    requiredFields: [
+      {
+        code: "fastingConfirmed",
+        label: "Potwierdzenie przygotowania pacjenta",
+        valueType: "BOOLEAN",
+        required: true,
+        displayOrder: 1
+      }
+    ]
+  }),
+  medicalTest({ id: "test-urine", code: "URINE", name: "Badanie ogólne moczu", materialType: "URINE" })
+];
 
 const medicalTestsResponse: MedicalTestsListResponse = {
-  items: [
-    {
-      id: "test-crp",
-      code: "CRP",
-      name: "CRP",
-      description: "Białko C-reaktywne",
-      materialType: "SERUM",
-      estimatedDurationMinutes: 60,
-      active: true,
-      parameters: [{ code: "CRP", name: "CRP", valueType: "NUMERIC", unit: "mg/L", displayOrder: 1 }],
-      requiredFields: []
-    }
-  ],
+  items: catalogItems,
   page: 1,
   pageSize: 100,
-  total: 1,
+  total: catalogItems.length,
   totalPages: 1
 };
 
@@ -206,44 +203,463 @@ describe("interfejs zleceń", () => {
     expect(await screen.findByText("EXT-123")).toBeInTheDocument();
   });
 
-  it("tworzy nowe zlecenie z katalogu badań", async () => {
-    window.history.pushState({}, "", "/orders/new");
-    let createdPayload: unknown;
-
-    mockFetch(({ url, init }) => {
-      if (url === "/api/v1/auth/me") {
-        return json({ user: authenticatedUser });
-      }
-      if (url === "/api/v1/tests?pageSize=100") {
-        return json(medicalTestsResponse);
-      }
-      if (url === "/api/v1/orders" && init?.method === "POST") {
-        createdPayload = JSON.parse(String(init.body));
-        return json({ id: "order-2" }, 201);
-      }
-      if (url === "/api/v1/orders/order-2") {
-        return json(orderDetails({ id: "order-2" }));
-      }
-      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
-    });
-
-    render(<App />);
+  it("nie pokazuje ręcznego pola technicznego patientId", async () => {
+    renderNewOrder();
 
     expect(await screen.findByRole("heading", { name: "Nowe zlecenie" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Identyfikator pacjenta")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Pacjent" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dodaj nowego pacjenta" })).toHaveAttribute("href", "/patients/new");
+  });
 
-    await userEvent.type(screen.getByLabelText("Identyfikator pacjenta"), "patient-1");
-    await userEvent.click(await screen.findByLabelText(/CRP/));
+  it("wyszukuje wyłącznie aktywnych pacjentów małą stroną wyników", async () => {
+    const patientRequests: string[] = [];
+    renderNewOrder(({ url }) => {
+      if (url.startsWith("/api/v1/patients?")) {
+        patientRequests.push(url);
+        return json(patientsResponse([annaPatient]));
+      }
+      return undefined;
+    });
+
+    await userEvent.click(await screen.findByRole("combobox", { name: "Pacjent" }));
+
+    await waitFor(() => expect(patientRequests.length).toBeGreaterThan(0));
+    const params = new URL(patientRequests[0], "http://localhost").searchParams;
+    expect(params.get("active")).toBe("true");
+    expect(params.get("page")).toBe("1");
+    expect(params.get("pageSize")).toBe("10");
+  });
+
+  it("przekazuje wpisany tekst do wyszukiwania pacjentów", async () => {
+    const patientRequests: string[] = [];
+    renderNewOrder(({ url }) => {
+      if (url.startsWith("/api/v1/patients?")) {
+        patientRequests.push(url);
+        return json(patientsResponse([annaPatient]));
+      }
+      return undefined;
+    });
+
+    await userEvent.type(await screen.findByRole("combobox", { name: "Pacjent" }), "Nowak");
+
+    await waitFor(() => {
+      expect(
+        patientRequests.some((url) => new URL(url, "http://localhost").searchParams.get("search") === "Nowak")
+      ).toBe(true);
+    });
+  });
+
+  it("pokazuje loading wyszukiwania pacjentów", async () => {
+    const deferred = createDeferred<Response>();
+    renderNewOrder(({ url }) => {
+      if (url.startsWith("/api/v1/patients?")) {
+        return deferred.promise;
+      }
+      return undefined;
+    });
+
+    await userEvent.type(await screen.findByRole("combobox", { name: "Pacjent" }), "Anna");
+
+    expect(await screen.findByText("Ładowanie pacjentów...")).toBeInTheDocument();
+    deferred.resolve(json(patientsResponse([annaPatient])));
+    expect(await screen.findByText("Nowak Anna")).toBeInTheDocument();
+  });
+
+  it("pokazuje brak wyników wyszukiwania pacjentów", async () => {
+    renderNewOrder(({ url }) => {
+      if (url.startsWith("/api/v1/patients?")) {
+        return json(patientsResponse([]));
+      }
+      return undefined;
+    });
+
+    await userEvent.type(await screen.findByRole("combobox", { name: "Pacjent" }), "Brak");
+
+    expect(await screen.findByText("Brak wyników dla podanych danych.")).toBeInTheDocument();
+  });
+
+  it("obsługuje błąd wyszukiwania pacjentów i ponowienie", async () => {
+    let calls = 0;
+    renderNewOrder(({ url }) => {
+      if (url.startsWith("/api/v1/patients?")) {
+        calls += 1;
+        return calls === 1
+          ? jsonError(503, "PATIENTS_UNAVAILABLE", "Nie udało się pobrać pacjentów.", "corr-patients")
+          : json(patientsResponse([annaPatient]));
+      }
+      return undefined;
+    });
+
+    await userEvent.type(await screen.findByRole("combobox", { name: "Pacjent" }), "Anna");
+
+    expect(await screen.findByText(/corr-patients/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Ponów wyszukiwanie" }));
+
+    expect(await screen.findByText("Nowak Anna")).toBeInTheDocument();
+  });
+
+  it("pozwala wybrać i wyczyścić pacjenta bez ujawniania technicznego ID", async () => {
+    renderNewOrder();
+
+    await selectPatientByMouse("Anna");
+
+    expect(screen.getByLabelText("Wybrany pacjent")).toHaveTextContent("Nowak Anna");
+    expect(screen.getByText("PESEL: ******01458")).toBeInTheDocument();
+    expect(screen.queryByText("patient-1")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Wyczyść wybór" }));
+
+    expect(screen.getByRole("combobox", { name: "Pacjent" })).toHaveValue("");
+  });
+
+  it("obsługuje wybór pacjenta klawiaturą", async () => {
+    renderNewOrder(({ url }) => {
+      if (url.startsWith("/api/v1/patients?")) {
+        return json(patientsResponse([annaPatient, janPatient]));
+      }
+      return undefined;
+    });
+
+    const input = await screen.findByRole("combobox", { name: "Pacjent" });
+    await userEvent.type(input, "Kow");
+    expect(await screen.findByText("Nowak Anna")).toBeInTheDocument();
+
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+
+    expect(screen.getByLabelText("Wybrany pacjent")).toHaveTextContent(
+      "Kowalski-Bardzo-Długie-Nazwisko Jan"
+    );
+  });
+
+  it("ignoruje starszą odpowiedź wyszukiwania pacjentów", async () => {
+    const responses = new Map<string, Deferred<Response>>();
+    renderNewOrder(({ url }) => {
+      if (url.startsWith("/api/v1/patients?")) {
+        const search = new URL(url, "http://localhost").searchParams.get("search") ?? "";
+        const deferred = createDeferred<Response>();
+        responses.set(search, deferred);
+        return deferred.promise;
+      }
+      return undefined;
+    });
+
+    const input = await screen.findByRole("combobox", { name: "Pacjent" });
+    await userEvent.type(input, "Anna");
+    await waitFor(() => expect(responses.has("Anna")).toBe(true));
+    await userEvent.clear(input);
+    await userEvent.type(input, "Jan");
+    await waitFor(() => expect(responses.has("Jan")).toBe(true));
+
+    responses.get("Jan")?.resolve(json(patientsResponse([janPatient])));
+    expect(await screen.findByText("Kowalski-Bardzo-Długie-Nazwisko Jan")).toBeInTheDocument();
+
+    responses.get("Anna")?.resolve(json(patientsResponse([annaPatient])));
+    await waitFor(() => {
+      expect(screen.queryByText("Nowak Anna")).not.toBeInTheDocument();
+    });
+  });
+
+  it("wyświetla katalog badań i zaznacza badanie normalnym checkboxem", async () => {
+    renderNewOrder();
+
+    const crpCheckbox = await screen.findByLabelText(/CRP/);
+    expect(crpCheckbox).toHaveAttribute("type", "checkbox");
+    expect(crpCheckbox).toHaveClass("order-checkbox");
+    expect(screen.getByText("Surowica")).toBeInTheDocument();
+    expect(screen.getAllByText("5 min").length).toBeGreaterThan(0);
+
+    await userEvent.click(crpCheckbox);
+    expect(screen.getByLabelText(/CRP/)).toBeChecked();
+    await userEvent.click(screen.getByLabelText(/CRP/));
+    expect(screen.getByLabelText(/CRP/)).not.toBeChecked();
+  });
+
+  it("pokazuje wymagane pola pod zaznaczonym badaniem i zachowuje false w payloadzie", async () => {
+    let createdPayload: unknown;
+    renderNewOrder(({ url, init }) => {
+      if (url === "/api/v1/orders" && init?.method === "POST") {
+        createdPayload = JSON.parse(String(init.body));
+        return json(orderDetails({ id: "order-2" }), 201);
+      }
+      return undefined;
+    });
+
+    await selectPatientByMouse("Anna");
+    await userEvent.click(await screen.findByLabelText(/Glukoza/));
+
+    const additionalField = screen.getByLabelText("Potwierdzenie przygotowania pacjenta");
+    expect(additionalField).toHaveAttribute("type", "checkbox");
+    expect(additionalField).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Utwórz zlecenie" })).toBeEnabled();
+
     await userEvent.click(screen.getByRole("button", { name: "Utwórz zlecenie" }));
 
     await waitFor(() => {
       expect(createdPayload).toMatchObject({
         patientId: "patient-1",
-        priority: "ROUTINE",
-        tests: [{ medicalTestId: "test-crp" }]
+        tests: [
+          {
+            medicalTestId: "test-glu",
+            additionalData: { fastingConfirmed: false }
+          }
+        ]
       });
     });
   });
+
+  it("usuwa dane dodatkowe po odznaczeniu badania", async () => {
+    let createdPayload: unknown;
+    renderNewOrder(({ url, init }) => {
+      if (url === "/api/v1/orders" && init?.method === "POST") {
+        createdPayload = JSON.parse(String(init.body));
+        return json(orderDetails({ id: "order-2" }), 201);
+      }
+      return undefined;
+    });
+
+    await selectPatientByMouse("Anna");
+    await userEvent.click(await screen.findByLabelText(/Glukoza/));
+    await userEvent.click(screen.getByLabelText("Potwierdzenie przygotowania pacjenta"));
+    await userEvent.click(screen.getByLabelText(/Glukoza/));
+    expect(screen.queryByLabelText("Potwierdzenie przygotowania pacjenta")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText(/CRP/));
+    await userEvent.click(screen.getByRole("button", { name: "Utwórz zlecenie" }));
+
+    await waitFor(() => {
+      expect(createdPayload).toMatchObject({ tests: [{ medicalTestId: "test-crp" }] });
+      expect(JSON.stringify(createdPayload)).not.toContain("fastingConfirmed");
+    });
+  });
+
+  it("mapuje błąd API do pola dodatkowego badania", async () => {
+    renderNewOrder(({ url, init }) => {
+      if (url === "/api/v1/orders" && init?.method === "POST") {
+        return jsonError(422, "ORDER_VALIDATION", "Nie udało się zapisać zlecenia.", "corr-order", [
+          {
+            field: "tests.0.additionalData.fastingConfirmed",
+            code: "REQUIRED_CONFIRMATION",
+            message: "Potwierdzenie jest wymagane."
+          }
+        ]);
+      }
+      return undefined;
+    });
+
+    await selectPatientByMouse("Anna");
+    await userEvent.click(await screen.findByLabelText(/Glukoza/));
+    await userEvent.click(screen.getByRole("button", { name: "Utwórz zlecenie" }));
+
+    const additionalField = await screen.findByLabelText("Potwierdzenie przygotowania pacjenta");
+    expect(additionalField).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Potwierdzenie jest wymagane.")).toBeInTheDocument();
+    expect(screen.getByText(/corr-order/)).toBeInTheDocument();
+  });
+
+  it("pokazuje podsumowanie pacjenta, badań i pogrupowanych próbek w stabilnej kolejności", async () => {
+    renderNewOrder();
+
+    await selectPatientByMouse("Anna");
+    await userEvent.click(await screen.findByLabelText(/Badanie ogólne moczu/));
+    await userEvent.click(screen.getByLabelText(/CRP/));
+    await userEvent.click(screen.getByLabelText(/Morfologia krwi/));
+
+    const summary = within(screen.getByRole("region", { name: "Podsumowanie zlecenia" }));
+    expect(summary.getByText("Nowak Anna")).toBeInTheDocument();
+    expect(summary.getByText("Rutynowe")).toBeInTheDocument();
+    expect(summary.getByText("Liczba badań: 3")).toBeInTheDocument();
+    expect(summary.getByText("Morfologia krwi (MORF)")).toBeInTheDocument();
+    expect(summary.getByText("CRP (CRP)")).toBeInTheDocument();
+    expect(summary.getByText("Badanie ogólne moczu (URINE)")).toBeInTheDocument();
+
+    const materials = summary.getByText("Wymagane próbki").nextElementSibling;
+    expect(materials?.textContent).toMatch(/Krew \(EDTA\).*Surowica.*Mocz/);
+  });
+
+  it("blokuje zapis niekompletnego formularza i pokazuje czego brakuje", async () => {
+    renderNewOrder();
+
+    expect(await screen.findByRole("button", { name: "Utwórz zlecenie" })).toBeDisabled();
+    expect(screen.getByText("wybierz pacjenta")).toBeInTheDocument();
+    expect(screen.getByText("zaznacz co najmniej jedno badanie")).toBeInTheDocument();
+  });
+
+  it("wysyła poprawny payload i przekierowuje do szczegółów po sukcesie", async () => {
+    let createdPayload: unknown;
+    renderNewOrder(({ url, init }) => {
+      if (url === "/api/v1/orders" && init?.method === "POST") {
+        createdPayload = JSON.parse(String(init.body));
+        return json(orderDetails({ id: "order-2" }), 201);
+      }
+      if (url === "/api/v1/orders/order-2") {
+        return json(orderDetails({ id: "order-2" }));
+      }
+      return undefined;
+    });
+
+    await selectPatientByMouse("Anna");
+    await userEvent.selectOptions(screen.getByLabelText("Priorytet"), "URGENT");
+    await userEvent.click(await screen.findByLabelText(/CRP/));
+    await userEvent.click(screen.getByRole("button", { name: "Utwórz zlecenie" }));
+
+    await waitFor(() => {
+      expect(createdPayload).toEqual({
+        patientId: "patient-1",
+        priority: "URGENT",
+        tests: [{ medicalTestId: "test-crp" }]
+      });
+    });
+    expect(await screen.findByText("Zlecenie zostało utworzone.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })).toBeInTheDocument();
+  });
+
+  it("nie traci danych po błędzie zapisu", async () => {
+    renderNewOrder(({ url, init }) => {
+      if (url === "/api/v1/orders" && init?.method === "POST") {
+        return jsonError(500, "ORDER_SAVE_FAILED", "Nie udało się utworzyć zlecenia.", "corr-save");
+      }
+      return undefined;
+    });
+
+    await selectPatientByMouse("Anna");
+    await userEvent.click(await screen.findByLabelText(/CRP/));
+    await userEvent.click(screen.getByRole("button", { name: "Utwórz zlecenie" }));
+
+    expect(await screen.findByText(/corr-save/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Wybrany pacjent")).toHaveTextContent("Nowak Anna");
+    expect(screen.getByLabelText(/CRP/)).toBeChecked();
+  });
 });
+
+async function selectPatientByMouse(search: string) {
+  await userEvent.type(await screen.findByRole("combobox", { name: "Pacjent" }), search);
+  await userEvent.click(await screen.findByText("Nowak Anna"));
+}
+
+function renderNewOrder(
+  override?: (request: { url: string; init?: RequestInit }) => Response | Promise<Response> | undefined
+) {
+  window.history.pushState({}, "", "/orders/new");
+  mockFetch((request) => {
+    const overridden = override?.(request);
+    if (overridden) {
+      return overridden;
+    }
+    const { url, init } = request;
+    if (url === "/api/v1/auth/me") {
+      return json({ user: authenticatedUser });
+    }
+    if (url === "/api/v1/tests?pageSize=100") {
+      return json(medicalTestsResponse);
+    }
+    if (url.startsWith("/api/v1/patients?")) {
+      return json(patientsResponse([annaPatient]));
+    }
+    if (url === "/api/v1/orders" && init?.method === "POST") {
+      return json(orderDetails({ id: "order-2" }), 201);
+    }
+    if (url === "/api/v1/orders/order-2") {
+      return json(orderDetails({ id: "order-2" }));
+    }
+    return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+  });
+
+  render(<App />);
+}
+
+function orderDetails(overrides: Partial<OrderDetailsResponse> = {}): OrderDetailsResponse {
+  return {
+    id: "order-1",
+    patientId: "patient-1",
+    patient: {
+      id: "patient-1",
+      firstName: "Anna",
+      lastName: "Nowak",
+      identifierType: "PESEL",
+      pesel: "44051401458",
+      documentType: null,
+      documentNumber: null,
+      documentCountry: null,
+      birthDate: "1990-01-01",
+      gender: "FEMALE",
+      active: true
+    },
+    priority: "ROUTINE",
+    status: "SAMPLE_COLLECTED",
+    tests: [{ id: "order-test-1", medicalTestId: "test-crp", code: "CRP", name: "CRP", materialType: "SERUM", additionalData: null }],
+    samples: [
+      { id: "sample-1", materialType: "SERUM", status: "REQUIRED", barcode: null, collectedAt: null, collectedByUserId: null, rejectionCode: null, rejectionReason: null }
+    ],
+    externalOrderId: null,
+    correlationId: null,
+    sentAt: null,
+    estimatedCompletionAt: null,
+    createdByUserId: "user-1",
+    createdAt: "2026-09-01T10:00:00.000Z",
+    updatedAt: "2026-09-01T10:00:00.000Z",
+    results: [],
+    ...overrides
+  };
+}
+
+function patientListItem(overrides: Partial<PatientListItem> = {}): PatientListItem {
+  return {
+    id: "patient-1",
+    firstName: "Anna",
+    lastName: "Nowak",
+    identifierType: "PESEL",
+    pesel: "44051401458",
+    documentType: null,
+    documentNumber: null,
+    documentCountry: null,
+    birthDate: "1990-01-01",
+    gender: "FEMALE",
+    active: true,
+    createdAt: "2026-09-01T10:00:00.000Z",
+    updatedAt: "2026-09-01T10:00:00.000Z",
+    ...overrides
+  };
+}
+
+function patientsResponse(items: PatientListItem[]): PatientsListResponse {
+  return {
+    items,
+    page: 1,
+    pageSize: 10,
+    total: items.length,
+    totalPages: items.length ? 1 : 0
+  };
+}
+
+function medicalTest(
+  overrides: Partial<MedicalTestCatalogItem> & Pick<MedicalTestCatalogItem, "id" | "code" | "name" | "materialType">
+): MedicalTestCatalogItem {
+  return {
+    description: "Opis badania",
+    estimatedDurationMinutes: 5,
+    active: true,
+    parameters: [],
+    requiredFields: [],
+    ...overrides
+  };
+}
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
 
 function mockFetch(
   handler: (request: { url: string; init?: RequestInit }) => Response | Promise<Response>
