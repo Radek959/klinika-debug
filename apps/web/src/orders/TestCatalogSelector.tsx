@@ -92,7 +92,7 @@ function TestCatalogRow({
             <span>{test.code}</span>
           </span>
         </label>
-        <dl className="order-test-meta" aria-label={`Informacje o badaniu ${test.name}`}>
+        <dl className="order-test-meta">
           <div>
             <dt>Materiał</dt>
             <dd>{materialTypeLabels[test.materialType]}</dd>
