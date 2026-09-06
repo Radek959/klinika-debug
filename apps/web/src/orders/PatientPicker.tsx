@@ -153,8 +153,8 @@ export function PatientPicker({ token, selectedPatient, onChange }: PatientPicke
           <span className="summary-label">Pacjent</span>
           <strong>{patientDisplayName(selectedPatient)}</strong>
           <span className="patient-picker-meta">
-            Data urodzenia: {formatDateOnly(selectedPatient.birthDate)} ·{" "}
-            {maskPatientIdentifier(selectedPatient)}
+            <span>Data urodzenia: {formatDateOnly(selectedPatient.birthDate)}</span>
+            <span>{maskPatientIdentifier(selectedPatient)}</span>
           </span>
         </div>
         <div className="patient-picker-actions">
