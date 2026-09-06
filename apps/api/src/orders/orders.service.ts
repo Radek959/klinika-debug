@@ -412,30 +412,70 @@ export class OrdersService {
 
     const simulatorResult = this.labSimulator.acceptOrder({ workspaceId, orderId });
 
-    const updatedOrder = await this.prisma.$transaction(async (tx) => {
-      await tx.idempotencyKey.create({
-        data: {
-          workspaceId,
-          orderId,
-          key: idempotencyKey,
-          requestHash,
-          responseStatus: HttpStatus.ACCEPTED,
-          responseBody: {
-            externalOrderId: simulatorResult.externalOrderId,
-            estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString()
+    let updatedOrder;
+    try {
+      updatedOrder = await this.prisma.$transaction(async (tx) => {
+        await tx.idempotencyKey.create({
+          data: {
+            workspaceId,
+            orderId,
+            key: idempotencyKey,
+            requestHash,
+            responseStatus: HttpStatus.OK,
+            responseBody: {
+              externalOrderId: simulatorResult.externalOrderId,
+              estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString()
+            }
           }
-        }
-      });
+        });
 
-      return tx.order.update({
-        where: { id: orderId },
-        data: {
-          status: "SENT_TO_LAB",
-          externalOrderId: simulatorResult.externalOrderId,
-          correlationId,
-          sentAt: new Date(),
-          estimatedCompletionAt: simulatorResult.estimatedCompletionAt
-        },
+        return tx.order.update({
+          where: { id: orderId },
+          data: {
+            status: "SENT_TO_LAB",
+            externalOrderId: simulatorResult.externalOrderId,
+            correlationId,
+            sentAt: new Date(),
+            estimatedCompletionAt: simulatorResult.estimatedCompletionAt
+          },
+          include: {
+            tests: {
+              include: {
+                medicalTest: { select: { code: true, name: true, materialType: true } }
+              },
+              orderBy: {
+                medicalTest: { code: "asc" }
+              }
+            },
+            samples: {
+              orderBy: {
+                materialType: "asc"
+              }
+            }
+          }
+        });
+      });
+    } catch (error) {
+      if (!this.isPrismaUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const concurrentKey = await this.prisma.idempotencyKey.findUnique({
+        where: { workspaceId_key: { workspaceId, key: idempotencyKey } }
+      });
+      if (!concurrentKey) {
+        throw error;
+      }
+      if (concurrentKey.requestHash !== requestHash) {
+        throw new ApiErrorException(
+          HttpStatus.CONFLICT,
+          "IDEMPOTENCY_KEY_CONFLICT",
+          "Zlecenie zostało już wysłane z innymi danymi."
+        );
+      }
+
+      const concurrentOrder = await this.prisma.order.findFirst({
+        where: { id: orderId, workspaceId },
         include: {
           tests: {
             include: {
@@ -452,7 +492,12 @@ export class OrdersService {
           }
         }
       });
-    });
+      if (!concurrentOrder) {
+        throw error;
+      }
+
+      return toOrderResponse(concurrentOrder, concurrentOrder.tests, concurrentOrder.samples);
+    }
 
     return toOrderResponse(updatedOrder, updatedOrder.tests, updatedOrder.samples);
   }

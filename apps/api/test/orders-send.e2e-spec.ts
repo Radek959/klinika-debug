@@ -153,6 +153,10 @@ describe("orders send api", () => {
 
     const keys = await prisma.idempotencyKey.count({ where: { orderId: order.id } });
     expect(keys).toBe(1);
+    const idempotencyRecord = await prisma.idempotencyKey.findFirstOrThrow({
+      where: { orderId: order.id }
+    });
+    expect(idempotencyRecord.responseStatus).toBe(200);
   });
 
   it("jest idempotentne przy ponownym żądaniu z tymi samymi danymi", async () => {
