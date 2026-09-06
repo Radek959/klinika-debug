@@ -19,9 +19,12 @@ export class LabJobsScheduler implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     this.timer = setInterval(() => {
-      this.tick().catch((error) =>
-        this.logger.error("Błąd przetwarzania kolejki lab_jobs", error)
-      );
+      this.tick().catch((error) => {
+        this.logger.error(
+          "Błąd przetwarzania kolejki lab_jobs",
+          error instanceof Error ? error.stack ?? error.message : String(error)
+        );
+      });
     }, this.getPollIntervalMs());
     this.timer.unref?.();
   }
@@ -36,7 +39,10 @@ export class LabJobsScheduler implements OnModuleInit, OnModuleDestroy {
     await this.releaseStaleLocks();
 
     const dueJobs = await this.prisma.labJob.findMany({
-      where: { status: "PENDING", executeAt: { lte: new Date() } },
+      where: {
+        status: { in: ["PENDING", "FAILED"] },
+        executeAt: { lte: new Date() }
+      },
       take: MAX_JOBS_PER_TICK,
       orderBy: { executeAt: "asc" }
     });
@@ -48,7 +54,7 @@ export class LabJobsScheduler implements OnModuleInit, OnModuleDestroy {
 
   private async processJob(jobId: string): Promise<void> {
     const claimed = await this.prisma.labJob.updateMany({
-      where: { id: jobId, status: "PENDING" },
+      where: { id: jobId, status: { in: ["PENDING", "FAILED"] } },
       data: { status: "PROCESSING", lockedAt: new Date(), attempts: { increment: 1 } }
     });
     if (claimed.count === 0) {
@@ -65,13 +71,19 @@ export class LabJobsScheduler implements OnModuleInit, OnModuleDestroy {
       await this.labCallbacks.processResults(
         job.payload as unknown as LabResultsWebhookRequest
       );
-      await this.prisma.labJob.update({ where: { id: jobId }, data: { status: "DONE" } });
+      await this.prisma.labJob.update({
+        where: { id: jobId },
+        data: { status: "DONE", lockedAt: null, lastError: null }
+      });
     } catch (error) {
+      const retryDelayMs = Math.min(60_000, 1_000 * Math.max(job.attempts, 1));
       await this.prisma.labJob.update({
         where: { id: jobId },
         data: {
-          status: "FAILED",
-          lastError: error instanceof Error ? error.message : String(error)
+          status: "PENDING",
+          lockedAt: null,
+          lastError: error instanceof Error ? error.message : String(error),
+          executeAt: new Date(Date.now() + retryDelayMs)
         }
       });
     }

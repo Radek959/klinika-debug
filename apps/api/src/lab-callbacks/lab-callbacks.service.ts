@@ -42,6 +42,18 @@ export class LabCallbacksService {
     const nextStatus = this.resolveNextOrderStatus(order.status, order.tests, completedMedicalTestIds);
 
     await this.prisma.$transaction(async (tx) => {
+      const createdEvent = await tx.processedLabEvent.createMany({
+        data: {
+          workspaceId: order.workspaceId,
+          orderId: order.id,
+          eventId: payload.eventId
+        },
+        skipDuplicates: true
+      });
+      if (createdEvent.count === 0) {
+        return;
+      }
+
       const resultedAt = new Date();
       for (const testResult of payload.results) {
         for (const parameter of testResult.parameters) {
@@ -90,14 +102,6 @@ export class LabCallbacksService {
       }
 
       await tx.order.update({ where: { id: order.id }, data: dataToUpdate });
-
-      await tx.processedLabEvent.create({
-        data: {
-          workspaceId: order.workspaceId,
-          orderId: order.id,
-          eventId: payload.eventId
-        }
-      });
     });
   }
 
@@ -112,11 +116,13 @@ export class LabCallbacksService {
     );
     const nextStatus = determineOrderStatusAfterResults(projectedStatuses);
 
+    const effectiveCurrentStatus =
+      currentStatus === "SENT_TO_LAB" ? "PROCESSING" : currentStatus;
     const transitionAllowed =
-      currentStatus === "SENT_TO_LAB"
-        ? canTransitionOrderStatus("SENT_TO_LAB", "PROCESSING") &&
-          canTransitionOrderStatus("PROCESSING", nextStatus)
-        : canTransitionOrderStatus(currentStatus, nextStatus);
+      currentStatus === effectiveCurrentStatus
+        ? canTransitionOrderStatus(currentStatus, nextStatus)
+        : canTransitionOrderStatus(currentStatus, effectiveCurrentStatus) &&
+          canTransitionOrderStatus(effectiveCurrentStatus, nextStatus);
 
     if (!transitionAllowed) {
       throw new ApiErrorException(
