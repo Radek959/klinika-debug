@@ -25,6 +25,14 @@ export interface CreateOrderRequest {
   tests: CreateOrderTestRequest[];
 }
 
+// ============ SAMPLE REGISTRATION REQUEST ============
+
+export interface RegisterSampleRequest {
+  materialType: MaterialType;
+  barcode: string;
+  collectedAt: string;
+}
+
 // ============ RESPONSE TYPES ============
 
 export interface OrderTestResponse {
