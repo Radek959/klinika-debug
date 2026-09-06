@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import type { PatientListItem } from "@klinika/api-contracts";
 import { ApiClientError, listPatients } from "../api/client";
@@ -104,7 +105,7 @@ export function PatientPicker({ token, selectedPatient, onChange }: PatientPicke
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setIsOpen(true);
