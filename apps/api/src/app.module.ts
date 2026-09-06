@@ -7,6 +7,7 @@ import { getEnvFilePaths } from "./config/repo-paths";
 import { validateEnvironment } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
 import { PatientsModule } from "./patients/patients.module";
+import { TestsCatalogModule } from "./tests-catalog/tests-catalog.module";
 
 @Module({
   imports: [
@@ -18,7 +19,8 @@ import { PatientsModule } from "./patients/patients.module";
     PrismaModule,
     HealthModule,
     AuthModule,
-    PatientsModule
+    PatientsModule,
+    TestsCatalogModule
   ]
 })
 export class AppModule implements NestModule {

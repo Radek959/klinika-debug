@@ -19,6 +19,7 @@
     "test:safety": "node scripts/test-database-safety.spec.cjs",
     "test:integration": "node scripts/run-with-test-database.cjs jest-e2e",
     "test:migration:patients": "node scripts/test-patient-migration.cjs",
+    "test:migration:orders": "node scripts/test-orders-foundation-migration.cjs",
     "test:production-start": "node scripts/smoke-production-start.cjs",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",

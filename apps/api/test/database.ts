@@ -16,9 +16,15 @@ export function configureTestEnvironment() {
 }
 
 export async function resetTestDatabase(prisma: PrismaClient) {
+  await prisma.sample.deleteMany();
+  await prisma.orderTest.deleteMany();
+  await prisma.order.deleteMany();
   await prisma.userSession.deleteMany();
   await prisma.guardian.deleteMany();
   await prisma.patient.deleteMany();
+  await prisma.medicalTestRequiredField.deleteMany();
+  await prisma.testParameter.deleteMany();
+  await prisma.medicalTest.deleteMany();
   await prisma.user.deleteMany();
   await prisma.workspace.deleteMany();
 }

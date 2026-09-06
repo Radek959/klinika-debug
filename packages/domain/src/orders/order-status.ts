@@ -1,0 +1,35 @@
+export type OrderStatus =
+  | "DRAFT"
+  | "SAMPLE_COLLECTION_IN_PROGRESS"
+  | "SAMPLE_COLLECTED"
+  | "SENT_TO_LAB"
+  | "PROCESSING"
+  | "PARTIAL"
+  | "COMPLETED"
+  | "REJECTED"
+  | "TECHNICAL_ERROR";
+
+export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
+  DRAFT: ["SAMPLE_COLLECTION_IN_PROGRESS", "SAMPLE_COLLECTED"],
+  SAMPLE_COLLECTION_IN_PROGRESS: ["SAMPLE_COLLECTED"],
+  SAMPLE_COLLECTED: ["SENT_TO_LAB"],
+  SENT_TO_LAB: ["PROCESSING", "TECHNICAL_ERROR"],
+  PROCESSING: ["PARTIAL", "COMPLETED", "REJECTED", "TECHNICAL_ERROR"],
+  PARTIAL: ["PARTIAL", "COMPLETED", "REJECTED", "TECHNICAL_ERROR"],
+  COMPLETED: [],
+  REJECTED: [],
+  TECHNICAL_ERROR: [
+    "SENT_TO_LAB",
+    "PROCESSING",
+    "PARTIAL",
+    "COMPLETED",
+    "REJECTED"
+  ]
+};
+
+export function canTransitionOrderStatus(
+  from: OrderStatus,
+  to: OrderStatus
+) {
+  return ORDER_STATUS_TRANSITIONS[from].includes(to);
+}
