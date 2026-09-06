@@ -1,10 +1,24 @@
-import type { LoginResponse, MeResponse } from "@klinika/api-contracts";
+import type {
+  CreatePatientRequest,
+  LoginResponse,
+  MeResponse,
+  PatientResponse,
+  PatientsListResponse,
+  UpdatePatientRequest
+} from "@klinika/api-contracts";
+
+export interface ApiFieldError {
+  field: string;
+  code: string;
+  message: string;
+}
 
 interface ApiErrorResponse {
   error?: {
     code?: string;
     message?: string;
     correlationId?: string;
+    fieldErrors?: ApiFieldError[];
   };
 }
 
@@ -12,7 +26,9 @@ export class ApiClientError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly correlationId?: string
+    readonly code?: string,
+    readonly correlationId?: string,
+    readonly fieldErrors: ApiFieldError[] = []
   ) {
     super(message);
   }
@@ -33,6 +49,58 @@ export async function getCurrentUser(token: string) {
   });
 }
 
+export interface PatientsListParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  active?: boolean;
+  identifierType?: string;
+  sort?: string;
+  order?: string;
+}
+
+export async function listPatients(token: string, params: PatientsListParams) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") {
+      search.set(key, String(value));
+    }
+  });
+
+  return request<PatientsListResponse>(`/api/v1/patients?${search.toString()}`, {
+    headers: authHeaders(token)
+  });
+}
+
+export async function getPatient(token: string, patientId: string) {
+  return request<PatientResponse>(`/api/v1/patients/${patientId}`, {
+    headers: authHeaders(token)
+  });
+}
+
+export async function createPatient(
+  token: string,
+  payload: CreatePatientRequest
+) {
+  return request<PatientResponse>("/api/v1/patients", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updatePatient(
+  token: string,
+  patientId: string,
+  payload: UpdatePatientRequest
+) {
+  return request<PatientResponse>(`/api/v1/patients/${patientId}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function logout(token: string) {
   await request<void>("/api/v1/auth/logout", {
     method: "POST",
@@ -40,6 +108,12 @@ export async function logout(token: string) {
       Authorization: `Bearer ${token}`
     }
   });
+}
+
+function authHeaders(token: string) {
+  return {
+    Authorization: `Bearer ${token}`
+  };
 }
 
 async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
@@ -69,7 +143,9 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
     throw new ApiClientError(
       message,
       response.status,
-      payload.error?.correlationId
+      payload.error?.code,
+      payload.error?.correlationId,
+      payload.error?.fieldErrors ?? []
     );
   }
 
