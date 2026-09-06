@@ -6,6 +6,7 @@ import { PrismaModule } from "./common/prisma/prisma.module";
 import { getEnvFilePaths } from "./config/repo-paths";
 import { validateEnvironment } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
+import { OrdersModule } from "./orders/orders.module";
 import { PatientsModule } from "./patients/patients.module";
 import { TestsCatalogModule } from "./tests-catalog/tests-catalog.module";
 
@@ -20,6 +21,7 @@ import { TestsCatalogModule } from "./tests-catalog/tests-catalog.module";
     HealthModule,
     AuthModule,
     PatientsModule,
+    OrdersModule,
     TestsCatalogModule
   ]
 })
