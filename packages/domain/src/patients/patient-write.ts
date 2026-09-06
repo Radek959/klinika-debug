@@ -14,6 +14,7 @@ export type PatientWriteValidationCode =
   | "PESEL_BIRTH_DATE_MISMATCH"
   | "PESEL_GENDER_MISMATCH"
   | "INVALID_ACTIVE_VALUE"
+  | "MAX_LENGTH_EXCEEDED"
   | PeselValidationCode;
 
 export interface PatientWriteFieldError {
@@ -89,6 +90,7 @@ const NAME_PATTERN = /^[\p{L}][\p{L} '-]*$/u;
 const PHONE_PATTERN = /^(?:\d{9}|\+48\d{9})$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DATABASE_TEXT_MAX_LENGTH = 191;
 
 export function validatePatientFinalState(
   input: PatientWriteState,
@@ -107,9 +109,21 @@ export function validatePatientFinalState(
   }
 
   const pesel = normalizeOptionalText(input.pesel);
-  let documentType = normalizeOptionalText(input.documentType);
-  let documentNumber = normalizeOptionalText(input.documentNumber);
-  let documentCountry = normalizeOptionalText(input.documentCountry);
+  let documentType = normalizeOptionalTextMax(
+    input.documentType,
+    "documentType",
+    errors
+  );
+  let documentNumber = normalizeOptionalTextMax(
+    input.documentNumber,
+    "documentNumber",
+    errors
+  );
+  let documentCountry = normalizeOptionalTextMax(
+    input.documentCountry,
+    "documentCountry",
+    errors
+  );
 
   if (identifierType === "PESEL") {
     validatePeselIdentifier(pesel, birthDate, gender, errors);
@@ -137,8 +151,43 @@ export function validatePatientFinalState(
   }
 
   const phone = normalizeOptionalText(input.phone);
-  const email = normalizeOptionalText(input.email);
+  const email = normalizeOptionalTextMax(input.email, "email", errors);
   validateContact(phone, email, "", "CONTACT_REQUIRED", errors);
+  const citizenship = normalizeOptionalTextMax(
+    input.citizenship,
+    "citizenship",
+    errors
+  );
+  const addressStreet = normalizeOptionalTextMax(
+    input.addressStreet,
+    "addressStreet",
+    errors
+  );
+  const addressBuildingNumber = normalizeOptionalTextMax(
+    input.addressBuildingNumber,
+    "addressBuildingNumber",
+    errors
+  );
+  const addressApartmentNumber = normalizeOptionalTextMax(
+    input.addressApartmentNumber,
+    "addressApartmentNumber",
+    errors
+  );
+  const addressPostalCode = normalizeOptionalTextMax(
+    input.addressPostalCode,
+    "addressPostalCode",
+    errors
+  );
+  const addressCity = normalizeOptionalTextMax(
+    input.addressCity,
+    "addressCity",
+    errors
+  );
+  const addressCountry = normalizeOptionalTextMax(
+    input.addressCountry,
+    "addressCountry",
+    errors
+  );
 
   let active = input.active;
   if (active === undefined) {
@@ -149,8 +198,15 @@ export function validatePatientFinalState(
   }
   const normalizedActive = active === false ? false : true;
 
+  const guardianWasProvided =
+    input.guardian !== undefined && input.guardian !== null;
   const guardian = validateGuardian(input.guardian, errors);
-  if (birthDate && isMinorOnDate(birthDate, referenceDate) && !guardian) {
+  if (
+    birthDate &&
+    isMinorOnDate(birthDate, referenceDate) &&
+    !guardian &&
+    !guardianWasProvided
+  ) {
     errors.push({ field: "guardian", code: "GUARDIAN_REQUIRED" });
   }
 
@@ -170,15 +226,15 @@ export function validatePatientFinalState(
       documentCountry,
       birthDate: birthDate as string,
       gender: gender as Gender,
-      citizenship: normalizeOptionalText(input.citizenship),
+      citizenship,
       phone,
       email,
-      addressStreet: normalizeOptionalText(input.addressStreet),
-      addressBuildingNumber: normalizeOptionalText(input.addressBuildingNumber),
-      addressApartmentNumber: normalizeOptionalText(input.addressApartmentNumber),
-      addressPostalCode: normalizeOptionalText(input.addressPostalCode),
-      addressCity: normalizeOptionalText(input.addressCity),
-      addressCountry: normalizeOptionalText(input.addressCountry),
+      addressStreet,
+      addressBuildingNumber,
+      addressApartmentNumber,
+      addressPostalCode,
+      addressCity,
+      addressCountry,
       active: normalizedActive,
       guardian
     }
@@ -238,7 +294,7 @@ function validateGuardian(
   const firstName = normalizeName(input.firstName, "guardian.firstName", errors);
   const lastName = normalizeName(input.lastName, "guardian.lastName", errors);
   const phone = normalizeOptionalText(input.phone);
-  const email = normalizeOptionalText(input.email);
+  const email = normalizeOptionalTextMax(input.email, "guardian.email", errors);
   validateContact(
     phone,
     email,
@@ -353,4 +409,17 @@ function normalizeOptionalText(value: string | null | undefined): string | null 
 
   const normalized = value.trim();
   return normalized.length ? normalized : null;
+}
+
+function normalizeOptionalTextMax(
+  value: string | null | undefined,
+  field: string,
+  errors: PatientWriteFieldError[]
+): string | null {
+  const normalized = normalizeOptionalText(value);
+  if (normalized && normalized.length > DATABASE_TEXT_MAX_LENGTH) {
+    errors.push({ field, code: "MAX_LENGTH_EXCEEDED" });
+    return null;
+  }
+  return normalized;
 }

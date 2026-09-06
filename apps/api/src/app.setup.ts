@@ -1,6 +1,7 @@
 import { HttpStatus, RequestMethod, ValidationPipe } from "@nestjs/common";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import type { ValidationError } from "class-validator";
 import { ApiErrorException } from "./common/errors/api-error.exception";
 import { ApiExceptionFilter } from "./common/errors/api-exception.filter";
 
@@ -22,13 +23,7 @@ export function configureApp(app: NestFastifyApplication) {
           HttpStatus.BAD_REQUEST,
           "VALIDATION_ERROR",
           "Żądanie zawiera nieprawidłowe dane.",
-          errors.flatMap((error) =>
-            Object.entries(error.constraints ?? {}).map(([code, message]) => ({
-              field: error.property,
-              code,
-              message
-            }))
-          )
+          flattenValidationErrors(errors)
         )
     })
   );
@@ -43,5 +38,25 @@ export function configureApp(app: NestFastifyApplication) {
   SwaggerModule.setup("api/docs", app, document, {
     useGlobalPrefix: false,
     customSiteTitle: "Klinika Debug API"
+  });
+}
+
+function flattenValidationErrors(
+  errors: ValidationError[],
+  parentPath = ""
+): { field: string; code: string; message: string }[] {
+  return errors.flatMap((error) => {
+    const field = parentPath ? `${parentPath}.${error.property}` : error.property;
+    const ownErrors = Object.entries(error.constraints ?? {}).map(
+      ([code, message]) => ({
+        field,
+        code,
+        message
+      })
+    );
+    return [
+      ...ownErrors,
+      ...flattenValidationErrors(error.children ?? [], field)
+    ];
   });
 }

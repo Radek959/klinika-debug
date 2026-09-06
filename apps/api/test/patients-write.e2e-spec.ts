@@ -120,19 +120,43 @@ describe("patients write api", () => {
       email: null
     }, "contact", "CONTACT_REQUIRED");
 
-    await expectPatientValidation(token, {
-      firstName: "Maja",
-      lastName: "Syntetyczna",
-      identifierType: "PESEL",
-      pesel: "18210112349",
-      birthDate: "2018-01-01",
-      gender: "FEMALE",
-      phone: "123456789",
-      guardian: {
-        firstName: "Karolina",
-        lastName: "Syntetyczna"
+    const guardianContactResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/patients",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        firstName: "Maja",
+        lastName: "Syntetyczna",
+        identifierType: "PESEL",
+        pesel: "18210112349",
+        birthDate: "2018-01-01",
+        gender: "FEMALE",
+        phone: "123456789",
+        guardian: {
+          firstName: "Karolina",
+          lastName: "Syntetyczna"
+        }
       }
-    }, "guardian.contact", "GUARDIAN_CONTACT_REQUIRED");
+    });
+
+    expect(guardianContactResponse.statusCode).toBe(422);
+    const fieldErrors = extractFieldErrors(guardianContactResponse);
+    expect(fieldErrors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "guardian.contact",
+          code: "GUARDIAN_CONTACT_REQUIRED"
+        })
+      ])
+    );
+    expect(fieldErrors).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "guardian",
+          code: "GUARDIAN_REQUIRED"
+        })
+      ])
+    );
   });
 
   it("wymaga opiekuna dla pacjenta niepełnoletniego", async () => {
@@ -147,6 +171,144 @@ describe("patients write api", () => {
       gender: "FEMALE",
       phone: "123456789"
     }, "guardian", "GUARDIAN_REQUIRED");
+  });
+
+  it("zwraca precyzyjne błędy pól opiekuna bez nadmiarowego GUARDIAN_REQUIRED", async () => {
+    const { token } = await authenticateWorkspace("staff.a");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/patients",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        firstName: "Maja",
+        lastName: "Syntetyczna",
+        identifierType: "PESEL",
+        pesel: "18210112349",
+        birthDate: "2018-01-01",
+        gender: "FEMALE",
+        phone: "123456789",
+        guardian: {
+          phone: "12",
+          email: "nie-email"
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(422);
+    const fieldErrors = extractFieldErrors(response);
+    expect(fieldErrors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "guardian.firstName", code: "REQUIRED" }),
+        expect.objectContaining({ field: "guardian.lastName", code: "REQUIRED" }),
+        expect.objectContaining({ field: "guardian.phone", code: "INVALID_PHONE" }),
+        expect.objectContaining({ field: "guardian.email", code: "INVALID_EMAIL" })
+      ])
+    );
+    expect(fieldErrors).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "guardian",
+          code: "GUARDIAN_REQUIRED"
+        })
+      ])
+    );
+  });
+
+  it("zwraca polskie błędy DTO z pełną ścieżką pola", async () => {
+    const { token } = await authenticateWorkspace("staff.a");
+
+    const guardianResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/patients",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        ...peselPayload(),
+        guardian: {
+          firstName: 123,
+          lastName: "Testowa",
+          phone: "123456789"
+        }
+      }
+    });
+
+    expect(guardianResponse.statusCode).toBe(400);
+    expect(extractFieldErrors(guardianResponse)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "guardian.firstName",
+          code: "isString",
+          message: "Pole musi być tekstem."
+        })
+      ])
+    );
+
+    const phoneResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/patients",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        ...peselPayload(),
+        phone: 123456789
+      }
+    });
+
+    expect(phoneResponse.statusCode).toBe(400);
+    expect(extractFieldErrors(phoneResponse)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "phone",
+          code: "isString",
+          message: "Pole musi być tekstem."
+        })
+      ])
+    );
+  });
+
+  it("odrzuca za długie pola tekstowe w POST i PATCH bez błędu bazy", async () => {
+    const { token, workspaceId } = await authenticateWorkspace("staff.a");
+    const tooLong = "X".repeat(192);
+
+    await expectPatientValidation(
+      token,
+      {
+        ...otherDocumentPayload(),
+        documentNumber: tooLong
+      },
+      "documentNumber",
+      "MAX_LENGTH_EXCEEDED"
+    );
+
+    const patient = await createTestPatient(prisma, {
+      workspaceId,
+      firstName: "Jan",
+      lastName: "Testowy",
+      pesel: "44051401458",
+      birthDate: "1944-05-14",
+      gender: "MALE",
+      phone: "123456789"
+    });
+
+    await expectPatientPatchValidation(
+      token,
+      patient.id,
+      { addressCity: tooLong },
+      "addressCity",
+      "MAX_LENGTH_EXCEEDED"
+    );
+    await expectPatientPatchValidation(
+      token,
+      patient.id,
+      {
+        guardian: {
+          firstName: "Maria",
+          lastName: "Testowa",
+          email: tooLong
+        }
+      },
+      "guardian.email",
+      "MAX_LENGTH_EXCEEDED"
+    );
   });
 
   it("wykrywa duplikaty PESEL-u tylko w obrębie workspace’u", async () => {
@@ -439,7 +601,7 @@ describe("patients write api", () => {
     expect(JSON.parse(response.body).error.code).toBe("PATIENT_NOT_FOUND");
   });
 
-  it("mapuje konflikt unikalności bazy na kontrolowane 409", async () => {
+  it("mapuje konflikt unikalności PESEL-u bazy na kontrolowane 409", async () => {
     const { token } = await authenticateWorkspace("staff.a");
     expect(
       (await app.inject({
@@ -463,6 +625,30 @@ describe("patients write api", () => {
 
     expect(response.statusCode).toBe(409);
     expect(JSON.parse(response.body).error.code).toBe("DUPLICATE_PESEL");
+  });
+
+  it("mapuje konflikt unikalności dokumentu bazy na kontrolowane 409", async () => {
+    const { token } = await authenticateWorkspace("staff.a");
+    expect(
+      (await app.inject({
+        method: "POST",
+        url: "/api/v1/patients",
+        headers: { authorization: `Bearer ${token}` },
+        payload: otherDocumentPayload()
+      })).statusCode
+    ).toBe(201);
+
+    jest.spyOn(prisma.patient, "findFirst").mockResolvedValueOnce(null);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/patients",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...otherDocumentPayload(), firstName: "Alicja" }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(JSON.parse(response.body).error.code).toBe("DUPLICATE_DOCUMENT");
   });
 
   it("odrzuca brak tokenu", async () => {
@@ -547,6 +733,10 @@ describe("patients write api", () => {
     };
   }
 });
+
+function extractFieldErrors(response: { body: string }) {
+  return JSON.parse(response.body).error.fieldErrors;
+}
 
 function peselPayload() {
   return {

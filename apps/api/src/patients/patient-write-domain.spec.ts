@@ -135,4 +135,59 @@ describe("patient write domain rules", () => {
       errors: [{ field: "active", code: "INVALID_ACTIVE_VALUE" }]
     });
   });
+
+  it("nie dodaje GUARDIAN_REQUIRED, gdy przekazano opiekuna z błędnymi danymi", () => {
+    const result = validatePatientFinalState(
+      {
+        firstName: "Maja",
+        lastName: "Syntetyczna",
+        identifierType: "PESEL",
+        pesel: "18210112349",
+        birthDate: "2018-01-01",
+        gender: "FEMALE",
+        phone: "123456789",
+        guardian: {
+          firstName: "Karolina",
+          lastName: "Syntetyczna"
+        }
+      },
+      new Date("2026-09-05T00:00:00.000Z")
+    );
+
+    expect(result).toMatchObject({
+      valid: false,
+      errors: [{ field: "guardian.contact", code: "GUARDIAN_CONTACT_REQUIRED" }]
+    });
+    if (!result.valid) {
+      expect(result.errors).not.toContainEqual({
+        field: "guardian",
+        code: "GUARDIAN_REQUIRED"
+      });
+    }
+  });
+
+  it("odrzuca opcjonalne pola tekstowe dłuższe niż pojemność kolumny", () => {
+    const result = validatePatientFinalState(
+      {
+        ...adultPeselPatient,
+        citizenship: "P".repeat(192),
+        addressCity: "W".repeat(192),
+        guardian: {
+          firstName: "Maria",
+          lastName: "Testowa",
+          email: "a".repeat(192)
+        }
+      },
+      new Date("2026-09-05T00:00:00.000Z")
+    );
+
+    expect(result).toMatchObject({
+      valid: false,
+      errors: expect.arrayContaining([
+        { field: "citizenship", code: "MAX_LENGTH_EXCEEDED" },
+        { field: "addressCity", code: "MAX_LENGTH_EXCEEDED" },
+        { field: "guardian.email", code: "MAX_LENGTH_EXCEEDED" }
+      ])
+    });
+  });
 });

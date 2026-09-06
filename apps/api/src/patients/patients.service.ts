@@ -65,7 +65,7 @@ export class PatientsService {
 
       return toPatientResponse(patient);
     } catch (error) {
-      throw this.mapPrismaConflict(error, validation.value);
+      throw this.mapPrismaConflict(error);
     }
   }
 
@@ -172,7 +172,7 @@ export class PatientsService {
 
       return toPatientResponse(patient);
     } catch (error) {
-      throw this.mapPrismaConflict(error, validation.value);
+      throw this.mapPrismaConflict(error);
     }
   }
 
@@ -436,10 +436,7 @@ export class PatientsService {
     );
   }
 
-  private mapPrismaConflict(
-    error: unknown,
-    patient: NormalizedPatientWriteState
-  ): never {
+  private mapPrismaConflict(error: unknown): never {
     if (error instanceof ApiErrorException) {
       throw error;
     }
@@ -449,17 +446,13 @@ export class PatientsService {
         String(error.meta?.target ?? ""),
         String(error.message ?? ""),
         String(error.sqlMessage ?? "")
-      ].join(" ");
+      ]
+        .join(" ")
+        .toLowerCase();
       if (target.includes("pesel")) {
         throw this.duplicatePeselError();
       }
       if (target.includes("document")) {
-        throw this.duplicateDocumentError();
-      }
-      if (patient.identifierType === "PESEL") {
-        throw this.duplicatePeselError();
-      }
-      if (patient.identifierType === "OTHER_DOCUMENT") {
         throw this.duplicateDocumentError();
       }
     }
@@ -532,6 +525,7 @@ export class PatientsService {
         "Data urodzenia musi być zgodna z numerem PESEL.",
       PESEL_GENDER_MISMATCH: "Płeć musi być zgodna z numerem PESEL.",
       INVALID_ACTIVE_VALUE: "W tym etapie można tylko dezaktywować pacjenta.",
+      MAX_LENGTH_EXCEEDED: "Pole przekracza maksymalną długość 191 znaków.",
       INVALID_LENGTH: "Numer PESEL musi mieć dokładnie 11 cyfr.",
       INVALID_DIGITS: "Numer PESEL może zawierać wyłącznie cyfry.",
       INVALID_BIRTH_DATE: "Numer PESEL zawiera nieprawidłową datę urodzenia.",

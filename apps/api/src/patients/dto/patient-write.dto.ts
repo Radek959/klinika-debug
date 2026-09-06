@@ -16,16 +16,31 @@ import type {
 
 const IDENTIFIER_TYPES: IdentifierType[] = ["PESEL", "OTHER_DOCUMENT"];
 const GENDERS: Gender[] = ["FEMALE", "MALE"];
+const DATABASE_TEXT_MAX_LENGTH = 191;
+const NAME_MAX_LENGTH = 60;
+const STRING_MESSAGE = "Pole musi być tekstem.";
+const BOOLEAN_MESSAGE = "Pole musi mieć wartość logiczną.";
+const IDENTIFIER_TYPE_MESSAGE =
+  "Typ identyfikatora musi mieć wartość PESEL albo OTHER_DOCUMENT.";
+const GENDER_MESSAGE = "Płeć musi mieć wartość FEMALE albo MALE.";
 
 export class PatientGuardianWriteDto {
-  @ApiPropertyOptional({ example: "Maria", description: "Imię opiekuna." })
+  @ApiPropertyOptional({
+    example: "Maria",
+    maxLength: NAME_MAX_LENGTH,
+    description: "Imię opiekuna."
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   firstName?: string | null;
 
-  @ApiPropertyOptional({ example: "Testowa", description: "Nazwisko opiekuna." })
+  @ApiPropertyOptional({
+    example: "Testowa",
+    maxLength: NAME_MAX_LENGTH,
+    description: "Nazwisko opiekuna."
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   lastName?: string | null;
 
   @ApiPropertyOptional({
@@ -34,26 +49,35 @@ export class PatientGuardianWriteDto {
     description: "Telefon opiekuna: 9 cyfr albo +48 i 9 cyfr."
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   phone?: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
     example: "opiekun@example.test",
+    maxLength: DATABASE_TEXT_MAX_LENGTH,
     description: "Adres e-mail opiekuna."
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   email?: string | null;
 }
 
 export class CreatePatientDto implements CreatePatientRequest {
-  @ApiProperty({ example: "Łukasz", description: "Imię pacjenta." })
-  @IsString()
+  @ApiProperty({
+    example: "Łukasz",
+    maxLength: NAME_MAX_LENGTH,
+    description: "Imię pacjenta."
+  })
+  @IsString({ message: STRING_MESSAGE })
   firstName!: string;
 
-  @ApiProperty({ example: "Nowak-Testowy", description: "Nazwisko pacjenta." })
-  @IsString()
+  @ApiProperty({
+    example: "Nowak-Testowy",
+    maxLength: NAME_MAX_LENGTH,
+    description: "Nazwisko pacjenta."
+  })
+  @IsString({ message: STRING_MESSAGE })
   lastName!: string;
 
   @ApiProperty({
@@ -61,7 +85,7 @@ export class CreatePatientDto implements CreatePatientRequest {
     example: "PESEL",
     description: "Typ identyfikatora pacjenta."
   })
-  @IsIn(IDENTIFIER_TYPES)
+  @IsIn(IDENTIFIER_TYPES, { message: IDENTIFIER_TYPE_MESSAGE })
   identifierType!: IdentifierType;
 
   @ApiPropertyOptional({
@@ -70,41 +94,44 @@ export class CreatePatientDto implements CreatePatientRequest {
     description: "Numer PESEL wymagany dla identifierType=PESEL."
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   pesel?: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
     example: "PASSPORT",
+    maxLength: DATABASE_TEXT_MAX_LENGTH,
     description: "Rodzaj dokumentu wymagany dla identifierType=OTHER_DOCUMENT."
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   documentType?: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
     example: "XD1234567",
+    maxLength: DATABASE_TEXT_MAX_LENGTH,
     description: "Numer dokumentu wymagany dla identifierType=OTHER_DOCUMENT."
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   documentNumber?: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
     example: "PL",
+    maxLength: DATABASE_TEXT_MAX_LENGTH,
     description: "Kraj wydania dokumentu wymagany dla identifierType=OTHER_DOCUMENT."
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   documentCountry?: string | null;
 
   @ApiProperty({
     example: "1944-05-14",
     description: "Data urodzenia w formacie YYYY-MM-DD."
   })
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   birthDate!: string;
 
   @ApiProperty({
@@ -112,12 +139,16 @@ export class CreatePatientDto implements CreatePatientRequest {
     example: "MALE",
     description: "Płeć pacjenta."
   })
-  @IsIn(GENDERS)
+  @IsIn(GENDERS, { message: GENDER_MESSAGE })
   gender!: Gender;
 
-  @ApiPropertyOptional({ nullable: true, example: "PL" })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "PL",
+    maxLength: DATABASE_TEXT_MAX_LENGTH
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   citizenship?: string | null;
 
   @ApiPropertyOptional({
@@ -126,46 +157,71 @@ export class CreatePatientDto implements CreatePatientRequest {
     description: "Telefon pacjenta: 9 cyfr albo +48 i 9 cyfr."
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   phone?: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
     example: "pacjent@example.test",
+    maxLength: DATABASE_TEXT_MAX_LENGTH,
     description: "Adres e-mail pacjenta."
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   email?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: "Testowa" })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "Testowa",
+    maxLength: DATABASE_TEXT_MAX_LENGTH
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   addressStreet?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: "12" })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "12",
+    maxLength: DATABASE_TEXT_MAX_LENGTH
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   addressBuildingNumber?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: "3" })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "3",
+    maxLength: DATABASE_TEXT_MAX_LENGTH
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   addressApartmentNumber?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: "00-001" })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "00-001",
+    maxLength: DATABASE_TEXT_MAX_LENGTH
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   addressPostalCode?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: "Warszawa" })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "Warszawa",
+    maxLength: DATABASE_TEXT_MAX_LENGTH
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   addressCity?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: "PL" })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "PL",
+    maxLength: DATABASE_TEXT_MAX_LENGTH
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: STRING_MESSAGE })
   addressCountry?: string | null;
 
   @ApiPropertyOptional({
@@ -189,6 +245,6 @@ export class UpdatePatientDto
       "Ustawienie false oznacza pacjenta jako nieaktywnego. Reaktywacja przez active=true nie jest obsługiwana w tym etapie."
   })
   @IsOptional()
-  @IsBoolean()
+  @IsBoolean({ message: BOOLEAN_MESSAGE })
   active?: boolean;
 }
