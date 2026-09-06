@@ -72,13 +72,20 @@ export function toOrderResponse(
   tests: OrderTestWithCatalog[],
   samples: Sample[]
 ): OrderResponse {
+  const sortedTests = [...tests].sort((a, b) =>
+    a.medicalTest.code.localeCompare(b.medicalTest.code)
+  );
+  const sortedSamples = [...samples].sort((a, b) =>
+    sortMaterialTypes(a.materialType, b.materialType)
+  );
+
   return {
     id: order.id,
     patientId: order.patientId,
     priority: order.priority,
     status: order.status,
-    tests: tests.map(toOrderTestResponse),
-    samples: samples.map(toOrderSampleResponse),
+    tests: sortedTests.map(toOrderTestResponse),
+    samples: sortedSamples.map(toOrderSampleResponse),
     createdByUserId: order.createdByUserId,
     externalOrderId: order.externalOrderId,
     correlationId: order.correlationId,

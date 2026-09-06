@@ -232,9 +232,16 @@ export class OrdersService {
         tests: {
           include: {
             medicalTest: { select: { code: true, name: true, materialType: true } }
+          },
+          orderBy: {
+            medicalTest: { code: "asc" }
           }
         },
-        samples: true
+        samples: {
+          orderBy: {
+            materialType: "asc"
+          }
+        }
       }
     });
 
@@ -284,15 +291,19 @@ export class OrdersService {
     }
 
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
-      await tx.sample.update({
-        where: { id: sample!.id },
-        data: {
-          barcode: input.barcode,
-          collectedAt,
-          collectedByUserId: userId,
-          status: "COLLECTED"
-        }
-      });
+      try {
+        await tx.sample.update({
+          where: { id: sample!.id },
+          data: {
+            barcode: input.barcode,
+            collectedAt,
+            collectedByUserId: userId,
+            status: "COLLECTED"
+          }
+        });
+      } catch (error) {
+        this.mapSampleRegistrationConflict(error);
+      }
 
       const samples = await tx.sample.findMany({ where: { workspaceId, orderId } });
       const nextStatus = determineOrderStatusAfterSampleCollection(
@@ -311,9 +322,16 @@ export class OrdersService {
           tests: {
             include: {
               medicalTest: { select: { code: true, name: true, materialType: true } }
+            },
+            orderBy: {
+              medicalTest: { code: "asc" }
             }
           },
-          samples: true
+          samples: {
+            orderBy: {
+              materialType: "asc"
+            }
+          }
         }
       });
     });
@@ -330,6 +348,46 @@ export class OrdersService {
         ...error,
         message: this.sampleFieldErrorMessage(error.code)
       }))
+    );
+  }
+
+  private mapSampleRegistrationConflict(error: unknown): never {
+    if (error instanceof ApiErrorException) {
+      throw error;
+    }
+
+    if (this.isPrismaUniqueConstraintError(error)) {
+      const target = [
+        String(error.meta?.target ?? ""),
+        String(error.message ?? ""),
+        String(error.sqlMessage ?? "")
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      if (target.includes("barcode")) {
+        throw this.sampleRegistrationError([{ field: "barcode", code: "DUPLICATE_BARCODE" }]);
+      }
+    }
+
+    throw error;
+  }
+
+  private isPrismaUniqueConstraintError(
+    error: unknown
+  ): error is {
+    code?: string;
+    errno?: number;
+    meta?: { target?: unknown };
+    message?: string;
+    sqlMessage?: string;
+  } {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      (("code" in error && error.code === "P2002") ||
+        ("code" in error && error.code === "ER_DUP_ENTRY") ||
+        ("errno" in error && error.errno === 1062))
     );
   }
 
