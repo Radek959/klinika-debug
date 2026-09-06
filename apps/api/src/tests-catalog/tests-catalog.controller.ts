@@ -9,11 +9,9 @@ import {
 } from "@nestjs/swagger";
 import type { MedicalTestsListResponse } from "@klinika/api-contracts";
 import { AuthGuard } from "../auth/auth.guard";
+import { ApiErrorResponseDto } from "../common/errors/api-error-response.dto";
 import { MedicalTestListQueryDto } from "./dto/medical-test-list-query.dto";
-import {
-  ApiErrorResponseDto,
-  MedicalTestsListResponseDto
-} from "./dto/medical-test-response.dto";
+import { MedicalTestsListResponseDto } from "./dto/medical-test-response.dto";
 import { TestsCatalogService } from "./tests-catalog.service";
 
 @ApiTags("Katalog badań")

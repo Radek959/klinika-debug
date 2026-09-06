@@ -260,6 +260,12 @@ describe("tests catalog api", () => {
         "application/json"
       ].schema
     ).toBeDefined();
+    expectSharedApiErrorSchema(
+      document,
+      document.paths["/api/v1/tests"].get.responses["400"].content[
+        "application/json"
+      ].schema
+    );
   });
 
   async function getTests(token: string, query: string) {
@@ -285,3 +291,56 @@ describe("tests catalog api", () => {
     };
   }
 });
+
+function expectSharedApiErrorSchema(
+  document: {
+    components: { schemas: Record<string, Record<string, unknown>> };
+  },
+  schema: { $ref?: string }
+) {
+  const apiError = resolveSchema(document, schema);
+  expect(apiError.properties).toHaveProperty("error");
+  expect(apiError.properties).not.toHaveProperty("correlationId");
+  expect(apiError.required).toEqual(["error"]);
+
+  const details = resolveSchema(
+    document,
+    (apiError.properties as Record<string, { $ref: string }>).error
+  );
+  expect(details.properties).toHaveProperty("correlationId");
+  expect(details.required).toEqual(
+    expect.arrayContaining(["code", "message", "correlationId"])
+  );
+  expect(details.required).not.toContain("fieldErrors");
+
+  const fieldErrors = (
+    details.properties as Record<
+      string,
+      { items: { $ref: string }; type: string }
+    >
+  ).fieldErrors;
+  expect(fieldErrors).toMatchObject({ type: "array" });
+  const fieldError = resolveSchema(document, fieldErrors.items);
+  expect(fieldError.properties).toHaveProperty("field");
+  expect(fieldError.properties).toHaveProperty("code");
+  expect(fieldError.properties).toHaveProperty("message");
+}
+
+function resolveSchema(
+  document: {
+    components: { schemas: Record<string, Record<string, unknown>> };
+  },
+  schema: { $ref?: string; allOf?: { $ref?: string }[] }
+) {
+  if (!schema.$ref && schema.allOf?.length) {
+    return resolveSchema(document, schema.allOf[0]);
+  }
+
+  expect(schema.$ref).toBeDefined();
+  const name = schema.$ref!.replace("#/components/schemas/", "");
+  expect(document.components.schemas[name]).toBeDefined();
+  return document.components.schemas[name] as {
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
