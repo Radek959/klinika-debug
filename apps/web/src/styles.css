@@ -92,6 +92,11 @@ input {
   background: #ffffff;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+}
+
 select {
   width: 100%;
   border: 1px solid #c8d5cd;
@@ -269,6 +274,8 @@ button:disabled {
 
 .filters-panel,
 .patient-form fieldset,
+.order-form fieldset,
+.order-summary,
 .data-section,
 .empty-state {
   border: 1px solid #d8e2db;
@@ -338,17 +345,20 @@ th {
   margin-top: 18px;
 }
 
-.patient-form {
+.patient-form,
+.order-form {
   display: grid;
   gap: 18px;
 }
 
-.patient-form fieldset {
+.patient-form fieldset,
+.order-form fieldset {
   display: grid;
   gap: 14px;
 }
 
-.patient-form legend {
+.patient-form legend,
+.order-form legend {
   padding: 0 6px;
   color: #25362d;
   font-size: 1.1rem;
@@ -436,6 +446,266 @@ th {
   padding-left: 26px;
 }
 
+.order-patient-priority-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.patient-picker {
+  position: relative;
+  display: grid;
+  gap: 8px;
+}
+
+.patient-picker-control {
+  position: relative;
+}
+
+.patient-picker-control input {
+  padding-right: 104px;
+}
+
+.patient-picker-clear {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  color: #256450;
+  background: #e8f0eb;
+  font-size: 0.88rem;
+}
+
+.patient-picker-status {
+  min-height: 22px;
+  color: #52635b;
+  font-size: 0.92rem;
+}
+
+.patient-picker-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border-left: 4px solid #b42318;
+  padding: 10px 12px;
+  color: #8f1b13;
+  background: #fff3f0;
+}
+
+.patient-picker-error p {
+  margin: 0;
+}
+
+.patient-picker-list {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  border: 1px solid #c8d5cd;
+  border-radius: 8px;
+  padding: 6px;
+  background: #ffffff;
+  box-shadow: 0 16px 36px rgba(28, 45, 36, 0.14);
+  list-style: none;
+}
+
+.patient-picker-list li {
+  display: grid;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.patient-picker-list li span,
+.patient-picker-meta {
+  color: #52635b;
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.patient-picker-list li.is-highlighted,
+.patient-picker-list li:hover {
+  background: #e8f0eb;
+}
+
+.patient-picker-new-link {
+  justify-self: start;
+  color: #256450;
+  font-weight: 700;
+}
+
+.patient-picker-selected {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #c8d5cd;
+  border-radius: 8px;
+  padding: 14px;
+  background: #f9fbfa;
+}
+
+.patient-picker-selected > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.patient-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.summary-label {
+  color: #52635b;
+  font-size: 0.86rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.order-test-catalog {
+  display: grid;
+  gap: 10px;
+}
+
+.order-test-row {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #d8e2db;
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.order-test-row.is-selected {
+  border-color: #256450;
+  background: #f7fbf8;
+}
+
+.order-test-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.order-test-checkbox-row,
+.order-additional-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.order-checkbox {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+}
+
+.order-test-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.order-test-title strong {
+  overflow-wrap: anywhere;
+}
+
+.order-test-title span {
+  color: #52635b;
+  font-weight: 800;
+}
+
+.order-test-meta,
+.order-summary-grid {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.order-test-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.order-test-meta div,
+.order-summary-grid div {
+  display: grid;
+  gap: 3px;
+}
+
+.order-test-meta dt,
+.order-summary-grid dt {
+  color: #52635b;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.order-test-meta dd,
+.order-summary-grid dd {
+  margin: 0;
+}
+
+.order-required-fields {
+  display: grid;
+  gap: 10px;
+  border-left: 3px solid #d8e2db;
+  padding-left: 16px;
+}
+
+.order-required-field {
+  display: grid;
+  gap: 6px;
+}
+
+.order-summary h2 {
+  margin: 0 0 14px;
+  font-size: 1.15rem;
+}
+
+.order-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.order-summary-grid dd {
+  display: grid;
+  gap: 6px;
+}
+
+.order-summary-grid dd span {
+  color: #52635b;
+}
+
+.order-summary-list,
+.order-form-missing ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.order-form-missing {
+  border-left: 4px solid #8a4a11;
+  padding: 12px 14px;
+  color: #5d340d;
+  background: #fff7e8;
+}
+
+.order-form-missing strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
 .sample-form {
   display: grid;
   gap: 8px;
@@ -466,6 +736,26 @@ th {
 .workspace-summary span {
   margin: 0;
   color: #52635b;
+}
+
+@media (max-width: 760px) {
+  .order-patient-priority-grid,
+  .order-test-main,
+  .order-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-picker-selected {
+    flex-direction: column;
+  }
+
+  .patient-picker-actions {
+    justify-content: stretch;
+  }
+
+  .patient-picker-actions > * {
+    flex: 1 1 180px;
+  }
 }
 
 @media (max-width: 520px) {
