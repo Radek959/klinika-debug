@@ -23,8 +23,9 @@ System służy wyłącznie do demonstracji i nauki testowania. Nie wolno używa�
 - [Dokumentacja produktowa](docs/dokumentacja-produktowa.md)
 - [Specyfikacja MVP](docs/specyfikacja-mvp.md)
 - [Architektura techniczna](docs/architektura-techniczna.md)
+- [Plan implementacji](docs/implementation/README.md)
 
-## Lokalne uruchomienie Etapu 1
+## Lokalne uruchomienie
 
 Wymagania:
 
@@ -50,7 +51,7 @@ Frontend w trybie developerskim można uruchomić w drugim terminalu:
 npm run dev:web
 ```
 
-Domyślne syntetyczne konto Etapu 1:
+Domyślne syntetyczne konto lokalne:
 
 - login: `staff.demo`
 - hasło: `HasloTestowe123!`
@@ -113,4 +114,8 @@ Jeżeli lokalnie nie ma MySQL albo Dockera, testy integracyjne i smoke test prod
 
 ## Status
 
-Projekt ma szkielet Etapu 1: monorepo npm workspaces, React + Vite, NestJS + Fastify, Prisma + MySQL, logowanie, sesje, healthchecki, OpenAPI i podstawowe testy.
+Projekt ma działający fundament aplikacji i deploymentu: monorepo npm workspaces, React + Vite, NestJS + Fastify, Prisma + MySQL, healthchecki, OpenAPI, konfigurację builda pod Hostinger oraz podstawowe bramki jakości.
+
+Na `main` istnieją już między innymi: logowanie i sesje, izolacja workspace'ów, obsługa pacjentów, katalog badań, tworzenie zleceń, lista i szczegóły zleceń, rejestracja próbek, wysyłka do laboratorium, trwała kolejka zadań w MySQL, scheduler, callback z wynikami oraz prezentacja wyników w UI.
+
+Nie cały zakres MVP jest ukończony. Aktualny stan etapów, statusy i rekomendowany następny PR są opisane w [planie implementacji](docs/implementation/README.md).
