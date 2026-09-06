@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { ApiFieldError } from "../api/client";
 import {
@@ -73,29 +73,41 @@ export function EditPatientPage({ token }: { token: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
-  const [generalError, setGeneralError] = useState<string | null>(null);
+  const [generalError, setGeneralError] = useState<FormLoadError | null>(null);
+  const requestId = useRef(0);
 
   useEffect(() => {
     if (!patientId) {
       return;
     }
 
+    const controller = new AbortController();
+    const currentRequest = requestId.current + 1;
+    requestId.current = currentRequest;
     setIsLoading(true);
     setGeneralError(null);
-    void getPatient(token, patientId)
+    setInitialState(null);
+    setState(null);
+    void getPatient(token, patientId, controller.signal)
       .then((patient) => {
-        const formState = patientToFormState(patient);
-        setInitialState(formState);
-        setState(formState);
-      })
-      .catch((caught) => {
-        if (caught instanceof ApiClientError && caught.code === "PATIENT_NOT_FOUND") {
-          setGeneralError("Nie znaleziono pacjenta.");
-        } else {
-          setGeneralError(toGeneralError(caught));
+        if (requestId.current === currentRequest) {
+          const formState = patientToFormState(patient);
+          setInitialState(formState);
+          setState(formState);
         }
       })
-      .finally(() => setIsLoading(false));
+      .catch((caught) => {
+        if (requestId.current === currentRequest && !isAbortError(caught)) {
+          setGeneralError(toLoadError(caught));
+        }
+      })
+      .finally(() => {
+        if (requestId.current === currentRequest) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => controller.abort();
   }, [patientId, token]);
 
   const isDirty = useMemo(() => {
@@ -117,7 +129,9 @@ export function EditPatientPage({ token }: { token: string }) {
         state: { message: "Dane pacjenta zostały zapisane." }
       });
     } catch (caught) {
-      handleFormError(caught, setFieldErrors, setGeneralError);
+      handleFormError(caught, setFieldErrors, (error) => {
+        setGeneralError(error ? { title: "Nie udało się zapisać pacjenta", message: error } : null);
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -130,8 +144,8 @@ export function EditPatientPage({ token }: { token: string }) {
   if (!state || !initialState) {
     return (
       <section className="empty-state" role="alert">
-        <h1>Nie znaleziono pacjenta</h1>
-        <p>{generalError ?? "Nie udało się pobrać danych pacjenta."}</p>
+        <h1>{generalError?.title ?? "Nie udało się pobrać danych pacjenta"}</h1>
+        <p>{generalError?.message ?? "Nie udało się pobrać danych pacjenta."}</p>
         <Link to="/patients">Wróć do listy</Link>
       </section>
     );
@@ -154,11 +168,37 @@ export function EditPatientPage({ token }: { token: string }) {
         submitLabel="Zapisz zmiany"
         isSubmitting={isSubmitting}
         fieldErrors={fieldErrors}
-        generalError={generalError}
+        generalError={generalError?.message}
         isDirty={isDirty}
       />
     </>
   );
+}
+
+interface FormLoadError {
+  title: string;
+  message: string;
+}
+
+function toLoadError(caught: unknown): FormLoadError {
+  if (
+    caught instanceof ApiClientError &&
+    (caught.code === "PATIENT_NOT_FOUND" || caught.status === 404)
+  ) {
+    return {
+      title: "Nie znaleziono pacjenta",
+      message: "Nie znaleziono pacjenta."
+    };
+  }
+
+  return {
+    title: "Nie udało się pobrać danych pacjenta",
+    message: toGeneralError(caught)
+  };
+}
+
+function isAbortError(caught: unknown) {
+  return caught instanceof DOMException && caught.name === "AbortError";
 }
 
 function handleFormError(

@@ -78,6 +78,11 @@ label {
   font-weight: 700;
 }
 
+.field {
+  display: grid;
+  gap: 8px;
+}
+
 input {
   width: 100%;
   border: 1px solid #c8d5cd;
@@ -269,7 +274,7 @@ button:disabled {
 
 .filters-panel {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(150px, 1fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 14px;
   align-items: end;
   margin-bottom: 18px;

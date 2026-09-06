@@ -59,7 +59,11 @@ export interface PatientsListParams {
   order?: string;
 }
 
-export async function listPatients(token: string, params: PatientsListParams) {
+export async function listPatients(
+  token: string,
+  params: PatientsListParams,
+  signal?: AbortSignal
+) {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== "") {
@@ -68,13 +72,19 @@ export async function listPatients(token: string, params: PatientsListParams) {
   });
 
   return request<PatientsListResponse>(`/api/v1/patients?${search.toString()}`, {
-    headers: authHeaders(token)
+    headers: authHeaders(token),
+    signal
   });
 }
 
-export async function getPatient(token: string, patientId: string) {
+export async function getPatient(
+  token: string,
+  patientId: string,
+  signal?: AbortSignal
+) {
   return request<PatientResponse>(`/api/v1/patients/${patientId}`, {
-    headers: authHeaders(token)
+    headers: authHeaders(token),
+    signal
   });
 }
 
@@ -129,7 +139,10 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
       ...init,
       headers
     });
-  } catch {
+  } catch (caught) {
+    if (caught instanceof DOMException && caught.name === "AbortError") {
+      throw caught;
+    }
     throw new ApiClientError(
       "Nie udało się połączyć z serwerem. Sprawdź połączenie i spróbuj ponownie.",
       0

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import type { PatientResponse } from "@klinika/api-contracts";
@@ -12,13 +12,19 @@ import {
   identifierTypeLabels
 } from "../ui/labels";
 
+interface LoadError {
+  title: string;
+  message: string;
+}
+
 export function PatientDetailsPage({ token }: { token: string }) {
   const { patientId } = useParams();
   const location = useLocation();
   const [patient, setPatient] = useState<PatientResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeactivating, setIsDeactivating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
+  const requestId = useRef(0);
   const [success, setSuccess] = useState<string | null>(
     (location.state as { message?: string } | null)?.message ?? null
   );
@@ -28,18 +34,30 @@ export function PatientDetailsPage({ token }: { token: string }) {
       return;
     }
 
+    const controller = new AbortController();
+    const currentRequest = requestId.current + 1;
+    requestId.current = currentRequest;
     setIsLoading(true);
     setError(null);
-    void getPatient(token, patientId)
-      .then(setPatient)
-      .catch((caught) => {
-        if (caught instanceof ApiClientError && caught.code === "PATIENT_NOT_FOUND") {
-          setError("Nie znaleziono pacjenta.");
-        } else {
-          setError(toDetailsError(caught));
+    setPatient(null);
+    void getPatient(token, patientId, controller.signal)
+      .then((response) => {
+        if (requestId.current === currentRequest) {
+          setPatient(response);
         }
       })
-      .finally(() => setIsLoading(false));
+      .catch((caught) => {
+        if (requestId.current === currentRequest && !isAbortError(caught)) {
+          setError(toLoadError(caught));
+        }
+      })
+      .finally(() => {
+        if (requestId.current === currentRequest) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => controller.abort();
   }, [patientId, token]);
 
   async function deactivate() {
@@ -60,7 +78,10 @@ export function PatientDetailsPage({ token }: { token: string }) {
       setPatient(updated);
       setSuccess("Pacjent został oznaczony jako nieaktywny.");
     } catch (caught) {
-      setError(toDetailsError(caught));
+      setError({
+        title: "Nie udało się zapisać danych pacjenta",
+        message: toApiMessage(caught)
+      });
     } finally {
       setIsDeactivating(false);
     }
@@ -73,8 +94,8 @@ export function PatientDetailsPage({ token }: { token: string }) {
   if (error && !patient) {
     return (
       <section className="empty-state" role="alert">
-        <h1>Nie znaleziono pacjenta</h1>
-        <p>{error}</p>
+        <h1>{error.title}</h1>
+        <p>{error.message}</p>
         <Link to="/patients">Wróć do listy</Link>
       </section>
     );
@@ -107,7 +128,7 @@ export function PatientDetailsPage({ token }: { token: string }) {
       ) : null}
       {error ? (
         <p className="form-error" role="alert">
-          {error}
+          {error.message}
         </p>
       ) : null}
 
@@ -135,7 +156,7 @@ export function PatientDetailsPage({ token }: { token: string }) {
           <DataRow label="Kraj" value={patient.addressCountry ?? "Nie podano"} />
         </DataSection>
 
-        <DataSection title="Opiekun">
+        <DataSection title="Opiekun" asList={Boolean(patient.guardian)}>
           {patient.guardian ? (
             <>
               <DataRow label="Imię" value={patient.guardian.firstName} />
@@ -172,15 +193,17 @@ export function PatientDetailsPage({ token }: { token: string }) {
 
 function DataSection({
   title,
-  children
+  children,
+  asList = true
 }: {
   title: string;
   children: ReactNode;
+  asList?: boolean;
 }) {
   return (
     <section className="data-section">
       <h2>{title}</h2>
-      <dl className="data-list">{children}</dl>
+      {asList ? <dl className="data-list">{children}</dl> : children}
     </section>
   );
 }
@@ -194,11 +217,43 @@ function DataRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function toDetailsError(caught: unknown) {
+function toLoadError(caught: unknown): LoadError {
+  if (
+    caught instanceof ApiClientError &&
+    (caught.code === "PATIENT_NOT_FOUND" || caught.status === 404)
+  ) {
+    return {
+      title: "Nie znaleziono pacjenta",
+      message: "Nie znaleziono pacjenta."
+    };
+  }
+
+  if (
+    !(caught instanceof ApiClientError) ||
+    caught.status === 0 ||
+    caught.status >= 500
+  ) {
+    return {
+      title: "Nie udało się pobrać danych pacjenta",
+      message: toApiMessage(caught)
+    };
+  }
+
+  return {
+    title: "Nie udało się pobrać danych pacjenta",
+    message: toApiMessage(caught)
+  };
+}
+
+function toApiMessage(caught: unknown) {
   if (caught instanceof ApiClientError) {
     return caught.correlationId
       ? `${caught.message} Identyfikator błędu: ${caught.correlationId}`
       : caught.message;
   }
   return "Nie udało się pobrać danych pacjenta.";
+}
+
+function isAbortError(caught: unknown) {
+  return caught instanceof DOMException && caught.name === "AbortError";
 }

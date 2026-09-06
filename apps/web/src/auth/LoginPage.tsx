@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ApiClientError, login } from "../api/client";
 import { saveToken } from "./authStorage";
 import type { AuthenticatedUser } from "@klinika/api-contracts";
@@ -8,6 +9,8 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onAuthenticated }: LoginPageProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +25,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
       const response = await login(loginName, password);
       saveToken(response.token);
       onAuthenticated(response.user);
+      navigate(getSafeReturnPath(location.state), { replace: true });
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.correlationId) {
         setError(`${caught.message} Identyfikator: ${caught.correlationId}`);
@@ -83,4 +87,22 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
       </section>
     </main>
   );
+}
+
+function getSafeReturnPath(state: unknown) {
+  const from =
+    state && typeof state === "object" && "from" in state
+      ? (state as { from?: unknown }).from
+      : undefined;
+
+  if (
+    typeof from === "string" &&
+    from.startsWith("/") &&
+    !from.startsWith("//") &&
+    !from.startsWith("/\\")
+  ) {
+    return from;
+  }
+
+  return "/";
 }

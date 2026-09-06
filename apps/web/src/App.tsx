@@ -59,7 +59,7 @@ export function App() {
           path="/login"
           element={
             user ? (
-              <Navigate to="/" replace />
+              <AuthenticatedRedirect />
             ) : (
               <LoginPage onAuthenticated={setUser} />
             )
@@ -90,6 +90,11 @@ export function App() {
   );
 }
 
+function AuthenticatedRedirect() {
+  const location = useLocation();
+  return <Navigate to={getSafeReturnPath(location.state)} replace />;
+}
+
 function RequireAuth({
   user,
   children
@@ -99,7 +104,31 @@ function RequireAuth({
 }) {
   const location = useLocation();
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}` }}
+      />
+    );
   }
   return children;
+}
+
+function getSafeReturnPath(state: unknown) {
+  const from =
+    state && typeof state === "object" && "from" in state
+      ? (state as { from?: unknown }).from
+      : undefined;
+
+  if (
+    typeof from === "string" &&
+    from.startsWith("/") &&
+    !from.startsWith("//") &&
+    !from.startsWith("/\\")
+  ) {
+    return from;
+  }
+
+  return "/";
 }

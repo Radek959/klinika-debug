@@ -29,10 +29,12 @@ export function PatientListPage({ token }: { token: string }) {
   };
 
   useEffect(() => {
+    const controller = new AbortController();
     const currentRequest = requestId.current + 1;
     requestId.current = currentRequest;
     setIsLoading(true);
     setError(null);
+    setData(null);
 
     void listPatients(token, {
       page: filters.page,
@@ -47,7 +49,7 @@ export function PatientListPage({ token }: { token: string }) {
       identifierType: filters.identifierType || undefined,
       sort: filters.sort,
       order: filters.order
-    })
+    }, controller.signal)
       .then((response) => {
         if (requestId.current === currentRequest) {
           setData(response);
@@ -57,6 +59,9 @@ export function PatientListPage({ token }: { token: string }) {
         if (requestId.current !== currentRequest) {
           return;
         }
+        if (isAbortError(caught)) {
+          return;
+        }
         setError(toListError(caught));
       })
       .finally(() => {
@@ -64,6 +69,8 @@ export function PatientListPage({ token }: { token: string }) {
           setIsLoading(false);
         }
       });
+
+    return () => controller.abort();
   }, [
     token,
     filters.page,
@@ -210,6 +217,10 @@ export function PatientListPage({ token }: { token: string }) {
       ) : null}
     </>
   );
+}
+
+function isAbortError(caught: unknown) {
+  return caught instanceof DOMException && caught.name === "AbortError";
 }
 
 function PatientRow({ patient }: { patient: PatientListItem }) {

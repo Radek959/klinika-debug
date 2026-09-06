@@ -111,6 +111,9 @@ export function toUpdatePatientPayload(
 
   Object.entries(currentPayload).forEach(([key, value]) => {
     const typedKey = key as keyof PatientWriteRequest;
+    if (typedKey === "guardian") {
+      return;
+    }
     if (!isEqualValue(value, initialPayload[typedKey])) {
       diff[typedKey] = value as never;
     }
@@ -126,8 +129,9 @@ export function toUpdatePatientPayload(
     }
   }
 
-  if (!shouldSendGuardian(current) && initial.guardianEnabled) {
-    diff.guardian = null;
+  const guardianDiff = getGuardianDiff(current, initial);
+  if (guardianDiff.changed) {
+    diff.guardian = guardianDiff.value;
   }
 
   return diff;
@@ -184,6 +188,40 @@ function guardianPayload(state: PatientFormState): GuardianRequest {
 
 function shouldSendGuardian(state: PatientFormState) {
   return state.guardianEnabled || isMinorPatient(state);
+}
+
+function getGuardianDiff(
+  current: PatientFormState,
+  initial: PatientFormState
+): { changed: false } | { changed: true; value: GuardianRequest | null } {
+  const currentHasGuardian = shouldSendGuardian(current);
+  const initialHasGuardian = shouldSendGuardian(initial);
+
+  if (!currentHasGuardian && initialHasGuardian) {
+    return { changed: true, value: null };
+  }
+
+  if (currentHasGuardian && !initialHasGuardian) {
+    return { changed: true, value: guardianPayload(current) };
+  }
+
+  if (!currentHasGuardian || !initialHasGuardian) {
+    return { changed: false };
+  }
+
+  const currentGuardian = guardianPayload(current);
+  const initialGuardian = guardianPayload(initial);
+  const value: GuardianRequest = {};
+
+  (["firstName", "lastName", "phone", "email"] as const).forEach((field) => {
+    if (!isEqualValue(currentGuardian[field], initialGuardian[field])) {
+      value[field] = currentGuardian[field];
+    }
+  });
+
+  return Object.keys(value).length > 0
+    ? { changed: true, value }
+    : { changed: false };
 }
 
 function isEqualValue(a: unknown, b: unknown) {
