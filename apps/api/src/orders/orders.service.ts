@@ -8,17 +8,22 @@ import {
   parseDate,
   normalizeCreatedToDate,
   validateDateRange,
+  canTransitionOrderStatus,
+  validateCollectedAt,
+  determineOrderStatusAfterSampleCollection,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
   type OrderValidationFieldError,
-  type OrdersListValidationError
+  type OrdersListValidationError,
+  type OrderStatus
 } from "@klinika/domain";
 import type {
   CreateOrderRequest,
   OrderResponse,
   OrdersListResponse,
   OrdersListParams,
-  OrderDetailsResponse
+  OrderDetailsResponse,
+  RegisterSampleRequest
 } from "@klinika/api-contracts";
 import { ApiErrorException } from "../common/errors/api-error.exception";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -213,6 +218,193 @@ export class OrdersService {
     }
 
     return toOrderDetailsResponse(order);
+  }
+
+  async registerSample(
+    workspaceId: string,
+    orderId: string,
+    userId: string,
+    input: RegisterSampleRequest
+  ): Promise<OrderResponse> {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, workspaceId },
+      include: {
+        tests: {
+          include: {
+            medicalTest: { select: { code: true, name: true, materialType: true } }
+          },
+          orderBy: {
+            medicalTest: { code: "asc" }
+          }
+        },
+        samples: {
+          orderBy: {
+            materialType: "asc"
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      throw new ApiErrorException(
+        HttpStatus.NOT_FOUND,
+        "ORDER_NOT_FOUND",
+        "Nie znaleziono zlecenia."
+      );
+    }
+
+    const fieldErrors: { field: string; code: string }[] = [];
+
+    const editableStatuses: OrderStatus[] = [
+      "DRAFT",
+      "SAMPLE_COLLECTION_IN_PROGRESS"
+    ];
+    if (!editableStatuses.includes(order.status)) {
+      fieldErrors.push({ field: "status", code: "ORDER_NOT_EDITABLE" });
+    }
+
+    const sample = order.samples.find(
+      (candidate) => candidate.materialType === input.materialType
+    );
+    if (!sample) {
+      fieldErrors.push({ field: "materialType", code: "MATERIAL_TYPE_NOT_REQUIRED" });
+    } else if (sample.status !== "REQUIRED") {
+      fieldErrors.push({ field: "materialType", code: "SAMPLE_ALREADY_COLLECTED" });
+    }
+
+    const collectedAt = new Date(input.collectedAt);
+    if (sample && fieldErrors.length === 0) {
+      fieldErrors.push(...validateCollectedAt(collectedAt, order.createdAt));
+    }
+
+    if (fieldErrors.length === 0) {
+      const duplicateBarcode = await this.prisma.sample.findFirst({
+        where: { workspaceId, barcode: input.barcode }
+      });
+      if (duplicateBarcode) {
+        fieldErrors.push({ field: "barcode", code: "DUPLICATE_BARCODE" });
+      }
+    }
+
+    if (fieldErrors.length > 0) {
+      throw this.sampleRegistrationError(fieldErrors);
+    }
+
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      try {
+        await tx.sample.update({
+          where: { id: sample!.id },
+          data: {
+            barcode: input.barcode,
+            collectedAt,
+            collectedByUserId: userId,
+            status: "COLLECTED"
+          }
+        });
+      } catch (error) {
+        this.mapSampleRegistrationConflict(error);
+      }
+
+      const samples = await tx.sample.findMany({ where: { workspaceId, orderId } });
+      const nextStatus = determineOrderStatusAfterSampleCollection(
+        samples.map((current) => current.status)
+      );
+
+      const statusToPersist =
+        nextStatus !== order.status && canTransitionOrderStatus(order.status, nextStatus)
+          ? nextStatus
+          : order.status;
+
+      return tx.order.update({
+        where: { id: orderId },
+        data: { status: statusToPersist },
+        include: {
+          tests: {
+            include: {
+              medicalTest: { select: { code: true, name: true, materialType: true } }
+            },
+            orderBy: {
+              medicalTest: { code: "asc" }
+            }
+          },
+          samples: {
+            orderBy: {
+              materialType: "asc"
+            }
+          }
+        }
+      });
+    });
+
+    return toOrderResponse(updatedOrder, updatedOrder.tests, updatedOrder.samples);
+  }
+
+  private sampleRegistrationError(errors: { field: string; code: string }[]) {
+    return new ApiErrorException(
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "SAMPLE_REGISTRATION_ERROR",
+      "Nie udało się zarejestrować próbki.",
+      errors.map((error) => ({
+        ...error,
+        message: this.sampleFieldErrorMessage(error.code)
+      }))
+    );
+  }
+
+  private mapSampleRegistrationConflict(error: unknown): never {
+    if (error instanceof ApiErrorException) {
+      throw error;
+    }
+
+    if (this.isPrismaUniqueConstraintError(error)) {
+      const target = [
+        String(error.meta?.target ?? ""),
+        String(error.message ?? ""),
+        String(error.sqlMessage ?? "")
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      if (target.includes("barcode")) {
+        throw this.sampleRegistrationError([{ field: "barcode", code: "DUPLICATE_BARCODE" }]);
+      }
+    }
+
+    throw error;
+  }
+
+  private isPrismaUniqueConstraintError(
+    error: unknown
+  ): error is {
+    code?: string;
+    errno?: number;
+    meta?: { target?: unknown };
+    message?: string;
+    sqlMessage?: string;
+  } {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      (("code" in error && error.code === "P2002") ||
+        ("code" in error && error.code === "ER_DUP_ENTRY") ||
+        ("errno" in error && error.errno === 1062))
+    );
+  }
+
+  private sampleFieldErrorMessage(code: string): string {
+    const messages: Record<string, string> = {
+      ORDER_NOT_EDITABLE:
+        "Próbki można rejestrować wyłącznie dla zlecenia oczekującego na pobranie próbek.",
+      MATERIAL_TYPE_NOT_REQUIRED:
+        "Wskazany rodzaj materiału nie jest wymagany w tym zleceniu.",
+      SAMPLE_ALREADY_COLLECTED:
+        "Próbka tego rodzaju materiału została już zarejestrowana.",
+      DUPLICATE_BARCODE: "Kod kreskowy jest już użyty w tej placówce.",
+      COLLECTED_AT_IN_FUTURE: "Data pobrania nie może być w przyszłości.",
+      COLLECTED_AT_BEFORE_ORDER:
+        "Data pobrania nie może być wcześniejsza niż utworzenie zlecenia."
+    };
+    return messages[code] ?? "Rejestracja próbki zawiera nieprawidłowe dane.";
   }
 
   private validateListParams(params: OrdersListParams): OrdersListValidationError[] {

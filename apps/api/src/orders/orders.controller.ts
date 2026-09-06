@@ -25,6 +25,7 @@ import { OrderResponseDto } from "./dto/order-response.dto";
 import { OrdersListQueryDto } from "./dto/orders-list-query.dto";
 import { OrdersListResponseDto } from "./dto/orders-list-response.dto";
 import { OrderDetailsResponseDto } from "./dto/order-details-response.dto";
+import { RegisterSampleDto } from "./dto/register-sample.dto";
 import { OrdersService } from "./orders.service";
 
 @ApiTags("Zlecenia")
@@ -155,5 +156,58 @@ export class OrdersController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<OrderDetailsResponse> {
     return this.ordersService.getById(user.workspace.id, orderId);
+  }
+
+  @Post(":orderId/samples")
+  @ApiOperation({
+    summary: "Rejestracja pobrania próbki",
+    description:
+      "Rejestruje kod kreskowy i czas pobrania dla wymaganej próbki zlecenia. Po zarejestrowaniu wszystkich wymaganych próbek zlecenie automatycznie zmienia status na SAMPLE_COLLECTED, a po pierwszej z kolejnych próbek na SAMPLE_COLLECTION_IN_PROGRESS."
+  })
+  @ApiBody({
+    type: RegisterSampleDto,
+    examples: {
+      serum: {
+        summary: "Rejestracja próbki surowicy",
+        value: {
+          materialType: "SERUM",
+          barcode: "SMP-2026-00042",
+          collectedAt: "2026-09-06T10:15:00.000Z"
+        }
+      }
+    }
+  })
+  @ApiOkResponse({
+    type: OrderResponseDto,
+    description: "Zlecenie zaktualizowane po zarejestrowaniu próbki."
+  })
+  @ApiBadRequestResponse({
+    type: ApiErrorResponseDto,
+    description: "Niepoprawna struktura requestu."
+  })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorResponseDto,
+    description: "Brak poprawnego tokenu Bearer konta personelu."
+  })
+  @ApiNotFoundResponse({
+    type: ApiErrorResponseDto,
+    description: "Zlecenie nie istnieje albo należy do innego workspace'u."
+  })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorResponseDto,
+    description:
+      "Rejestracja próbki narusza reguły biznesowe, np. zlecenie nie przyjmuje już próbek, rodzaj materiału nie jest wymagany, próbka została już zarejestrowana, kod kreskowy jest zajęty albo data pobrania jest spoza dozwolonego zakresu."
+  })
+  async registerSample(
+    @Param("orderId") orderId: string,
+    @Body() body: RegisterSampleDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderResponse> {
+    return this.ordersService.registerSample(
+      user.workspace.id,
+      orderId,
+      user.id,
+      body
+    );
   }
 }

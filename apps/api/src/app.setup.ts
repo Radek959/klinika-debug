@@ -68,11 +68,13 @@ function mapValidationErrorCode(field: string, classValidatorCode: string): stri
     pageSize: { min: "INVALID_PAGE_SIZE", max: "INVALID_PAGE_SIZE", isInt: "INVALID_PAGE_SIZE" },
     status: { isEnum: "INVALID_STATUS" },
     priority: { isEnum: "INVALID_PRIORITY" },
-    materialType: { isEnum: "INVALID_MATERIAL_TYPE" },
+    materialType: { isEnum: "INVALID_MATERIAL_TYPE", isIn: "INVALID_MATERIAL_TYPE" },
     createdFrom: { custom: "INVALID_DATE" },
     createdTo: { custom: "INVALID_DATE" },
     sort: { isEnum: "INVALID_SORT" },
-    order: { isEnum: "INVALID_ORDER" }
+    order: { isEnum: "INVALID_ORDER" },
+    barcode: { isString: "BARCODE_REQUIRED", isNotEmpty: "BARCODE_REQUIRED" },
+    collectedAt: { isISO8601: "INVALID_DATE_FORMAT" }
   };
 
   return codeMap[field]?.[classValidatorCode] ?? classValidatorCode;
