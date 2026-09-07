@@ -746,7 +746,14 @@ export class OrdersService {
       correlationId,
       tests: order.tests.map((test) => ({
         medicalTestId: test.medicalTestId,
+        materialType: test.medicalTest.materialType,
         parameters: test.medicalTest.parameters
+      })),
+      // Symulator dostaje tylko identyfikator i rodzaj materiału próbki —
+      // bez kodu kreskowego, danych pacjenta i innych danych wrażliwych.
+      samples: order.samples.map((sample) => ({
+        sampleId: sample.id,
+        materialType: sample.materialType
       }))
     });
 

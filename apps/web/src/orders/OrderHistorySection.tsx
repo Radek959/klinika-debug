@@ -238,6 +238,19 @@ function describeDetails(details: OrderHistoryEventDetails): string | null {
       const statusLabel = details.callbackStatus === "COMPLETED" ? "kompletny" : "częściowy";
       return `Wynik (${statusLabel}) dla: ${testCodes || "brak kodów"}. Liczba wyników: ${details.resultCount}.`;
     }
+    case "LAB_SAMPLE_REJECTED": {
+      const parts = [
+        `Odrzucony materiał: ${materialTypeLabels[details.materialType]}`,
+        `Przyczyna: ${details.rejectionReason} (${details.rejectionCode})`
+      ];
+      if (details.rejectedTestCodes.length) {
+        parts.push(`Badania odrzucone: ${details.rejectedTestCodes.join(", ")}`);
+      }
+      if (details.completedTestCodes.length) {
+        parts.push(`Badania wykonane: ${details.completedTestCodes.join(", ")}`);
+      }
+      return `${parts.join(". ")}.`;
+    }
     case "TECHNICAL_ERROR":
       return details.reason;
     default:

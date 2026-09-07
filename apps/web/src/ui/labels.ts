@@ -6,6 +6,7 @@ import type {
   OrderHistoryEventType,
   OrderPriority,
   OrderStatus,
+  OrderTestStatus,
   ResultFlag,
   SampleStatus
 } from "@klinika/api-contracts";
@@ -50,6 +51,12 @@ export const sampleStatusLabels: Record<SampleStatus, string> = {
   REJECTED: "Odrzucona"
 };
 
+export const orderTestStatusLabels: Record<OrderTestStatus, string> = {
+  PENDING: "Oczekuje",
+  COMPLETED: "Wykonane",
+  REJECTED: "Odrzucone"
+};
+
 export const materialTypeLabels: Record<MaterialType, string> = {
   EDTA_BLOOD: "Krew (EDTA)",
   SERUM: "Surowica",
@@ -70,6 +77,7 @@ export const orderHistoryEventTypeLabels: Record<OrderHistoryEventType, string> 
   ORDER_SENT_TO_LAB: "Wysłano do laboratorium",
   LAB_ORDER_ACCEPTED: "Laboratorium przyjęło zlecenie",
   LAB_RESULT_RECEIVED: "Odebrano wynik",
+  LAB_SAMPLE_REJECTED: "Laboratorium odrzuciło próbkę",
   TECHNICAL_ERROR: "Wystąpił błąd techniczny"
 };
 

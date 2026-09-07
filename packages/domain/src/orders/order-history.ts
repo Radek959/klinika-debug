@@ -8,6 +8,7 @@ export type OrderHistoryEventType =
   | "ORDER_SENT_TO_LAB"
   | "LAB_ORDER_ACCEPTED"
   | "LAB_RESULT_RECEIVED"
+  | "LAB_SAMPLE_REJECTED"
   | "TECHNICAL_ERROR";
 
 export type OrderHistoryActorType = "STAFF" | "SYSTEM" | "LAB";
@@ -57,6 +58,26 @@ export interface LabResultReceivedDetails {
   callbackStatus: "PARTIAL" | "COMPLETED";
   resultCount: number;
   testCodes: string[];
+  previousStatus: OrderStatus;
+  newStatus: OrderStatus;
+}
+
+/**
+ * Szczegóły zdarzenia odrzucenia próbki przez laboratorium.
+ *
+ * Zakres pól jest celowo zamknięty. Nie zapisujemy tu PESEL-u, imienia,
+ * nazwiska, danych kontaktowych pacjenta, kodu kreskowego próbki, pełnego
+ * payloadu callbacka ani sekretu webhooka.
+ */
+export interface LabSampleRejectedDetails {
+  eventId: string;
+  externalOrderId: string;
+  materialType: OrderMaterialType;
+  sampleId: string;
+  rejectionCode: string;
+  rejectionReason: string;
+  completedTestCodes: string[];
+  rejectedTestCodes: string[];
   previousStatus: OrderStatus;
   newStatus: OrderStatus;
 }
@@ -191,6 +212,32 @@ export function buildLabResultReceivedDetails(input: {
     callbackStatus: input.callbackStatus,
     resultCount: input.resultCount,
     testCodes: [...input.testCodes].sort(),
+    previousStatus: input.previousStatus,
+    newStatus: input.newStatus
+  };
+}
+
+export function buildLabSampleRejectedDetails(input: {
+  eventId: string;
+  externalOrderId: string;
+  materialType: OrderMaterialType;
+  sampleId: string;
+  rejectionCode: string;
+  rejectionReason: string;
+  completedTestCodes: string[];
+  rejectedTestCodes: string[];
+  previousStatus: OrderStatus;
+  newStatus: OrderStatus;
+}): LabSampleRejectedDetails {
+  return {
+    eventId: input.eventId,
+    externalOrderId: input.externalOrderId,
+    materialType: input.materialType,
+    sampleId: input.sampleId,
+    rejectionCode: input.rejectionCode,
+    rejectionReason: input.rejectionReason,
+    completedTestCodes: [...input.completedTestCodes].sort(),
+    rejectedTestCodes: [...input.rejectedTestCodes].sort(),
     previousStatus: input.previousStatus,
     newStatus: input.newStatus
   };

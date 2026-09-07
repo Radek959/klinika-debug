@@ -1,5 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from "@nestjs/common";
 import {
+  ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiHeader,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -27,9 +29,18 @@ export class LabCallbacksController {
   @ApiOperation({
     summary: "Odbiór wyników z laboratorium",
     description:
-      "Webhook przyjmujący wyniki badań od symulatora laboratorium. Uwierzytelnienie jest niezależne od kont personelu. Ponowne dostarczenie tego samego eventId nie duplikuje wyników."
+      "Webhook przyjmujący wyniki badań od symulatora laboratorium. Uwierzytelnienie jest niezależne od kont personelu. Ponowne dostarczenie tego samego eventId nie duplikuje wyników.\n\nStatus `REJECTED` oznacza terminalne odrzucenie co najmniej jednej próbki zlecenia: wymaga niepustej listy `rejectedSamples`, pustej listy `pendingMedicalTestIds` i może zawierać wyniki badań wykonanych z nieodrzuconych próbek. Statusy `PARTIAL` i `COMPLETED` nie dopuszczają listy `rejectedSamples`."
   })
   @ApiNoContentResponse({ description: "Wyniki zostały przyjęte i zapisane." })
+  @ApiBadRequestResponse({
+    type: ApiErrorResponseDto,
+    description:
+      "Payload callbacka narusza kontrakt, na przykład brak `rejectedSamples` dla statusu REJECTED albo wskazanie próbki spoza zlecenia."
+  })
+  @ApiConflictResponse({
+    type: ApiErrorResponseDto,
+    description: "Zlecenie jest w statusie terminalnym i nie przyjmuje już callbacków."
+  })
   @ApiUnauthorizedResponse({
     type: ApiErrorResponseDto,
     description: "Brak albo nieprawidłowy sekret webhooka."

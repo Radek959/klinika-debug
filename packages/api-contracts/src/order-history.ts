@@ -7,6 +7,7 @@ export type OrderHistoryEventType =
   | "ORDER_SENT_TO_LAB"
   | "LAB_ORDER_ACCEPTED"
   | "LAB_RESULT_RECEIVED"
+  | "LAB_SAMPLE_REJECTED"
   | "TECHNICAL_ERROR";
 
 export type OrderHistoryActorType = "STAFF" | "SYSTEM" | "LAB";
@@ -60,6 +61,25 @@ export interface LabResultReceivedHistoryDetails {
   newStatus: OrderStatus;
 }
 
+/**
+ * Szczegóły zdarzenia odrzucenia próbki przez laboratorium.
+ *
+ * Zakres pól jest celowo zamknięty i nie zawiera danych pacjenta, kodu
+ * kreskowego próbki, pełnego payloadu callbacka ani sekretu webhooka.
+ */
+export interface LabSampleRejectedHistoryDetails {
+  eventId: string;
+  externalOrderId: string;
+  materialType: MaterialType;
+  sampleId: string;
+  rejectionCode: string;
+  rejectionReason: string;
+  completedTestCodes: string[];
+  rejectedTestCodes: string[];
+  previousStatus: OrderStatus;
+  newStatus: OrderStatus;
+}
+
 export interface TechnicalErrorHistoryDetails {
   reason: string;
   previousStatus: OrderStatus;
@@ -73,6 +93,7 @@ export type OrderHistoryEventDetails =
   | ({ eventType: "ORDER_SENT_TO_LAB" } & OrderSentToLabHistoryDetails)
   | ({ eventType: "LAB_ORDER_ACCEPTED" } & LabOrderAcceptedHistoryDetails)
   | ({ eventType: "LAB_RESULT_RECEIVED" } & LabResultReceivedHistoryDetails)
+  | ({ eventType: "LAB_SAMPLE_REJECTED" } & LabSampleRejectedHistoryDetails)
   | ({ eventType: "TECHNICAL_ERROR" } & TechnicalErrorHistoryDetails);
 
 export interface OrderHistoryItem {

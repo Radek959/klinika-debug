@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import type { MaterialType, OrderDetailsResponse } from "@klinika/api-contracts";
+import type {
+  MaterialType,
+  OrderDetailsResponse,
+  OrderSampleResponse,
+  OrderTestStatus
+} from "@klinika/api-contracts";
 import type { ApiFieldError } from "../api/client";
 import { ApiClientError, getOrder, registerSample, sendOrderToLab } from "../api/client";
 import { PageHeader } from "../layout/AppLayout";
@@ -9,6 +14,7 @@ import {
   materialTypeLabels,
   orderPriorityLabels,
   orderStatusLabels,
+  orderTestStatusLabels,
   resultFlagLabels,
   sampleStatusLabels
 } from "../ui/labels";
@@ -109,7 +115,8 @@ export function OrderDetailsPage({ token }: { token: string }) {
         <ul>
           {order.tests.map((test) => (
             <li key={test.medicalTestId}>
-              {test.name} ({test.code}) — {materialTypeLabels[test.materialType]}
+              {test.name} ({test.code}) — {materialTypeLabels[test.materialType]} —{" "}
+              <span className="status-badge">{orderTestStatusLabels[test.status]}</span>
             </li>
           ))}
         </ul>
@@ -123,6 +130,7 @@ export function OrderDetailsPage({ token }: { token: string }) {
               <tr>
                 <th>Materiał</th>
                 <th>Status</th>
+                <th>Przyczyna odrzucenia</th>
                 <th>Rejestracja</th>
               </tr>
             </thead>
@@ -132,8 +140,7 @@ export function OrderDetailsPage({ token }: { token: string }) {
                   key={sample.materialType}
                   token={token}
                   orderId={order.id}
-                  materialType={sample.materialType}
-                  status={sample.status}
+                  sample={sample}
                   onRegistered={() => {
                     setSuccess("Próbka została zarejestrowana.");
                     reload();
@@ -179,7 +186,7 @@ export function OrderDetailsPage({ token }: { token: string }) {
       <section className="data-section">
         <h2>Wyniki</h2>
         {order.results.length === 0 ? (
-          <p className="muted">Brak wyników. Wyniki pojawią się automatycznie po ich odebraniu.</p>
+          <p className="muted">{describeMissingResults(order)}</p>
         ) : (
           order.results.map((result) => {
             const test = order.tests.find((item) => item.medicalTestId === result.medicalTestId);
@@ -224,16 +231,16 @@ export function OrderDetailsPage({ token }: { token: string }) {
 function SampleRow({
   token,
   orderId,
-  materialType,
-  status,
+  sample,
   onRegistered
 }: {
   token: string;
   orderId: string;
-  materialType: MaterialType;
-  status: string;
+  sample: OrderSampleResponse;
   onRegistered: () => void;
 }) {
+  const materialType: MaterialType = sample.materialType;
+  const status = sample.status;
   const [barcode, setBarcode] = useState("");
   const [collectedAt, setCollectedAt] = useState(() => toLocalDateTimeInputValue(new Date()));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -270,6 +277,16 @@ function SampleRow({
         <span className="status-badge">
           {sampleStatusLabels[status as keyof typeof sampleStatusLabels] ?? status}
         </span>
+      </td>
+      <td>
+        {status === "REJECTED" && sample.rejectionReason ? (
+          <span>
+            {sample.rejectionReason}
+            {sample.rejectionCode ? ` (${sample.rejectionCode})` : ""}
+          </span>
+        ) : (
+          <span className="muted">—</span>
+        )}
       </td>
       <td>
         {status === "REQUIRED" ? (
@@ -350,6 +367,21 @@ function SendToLabAction({
       ) : null}
     </section>
   );
+}
+
+/**
+ * Zlecenie odrzucone przez laboratorium nigdy nie doczeka się już wyników dla
+ * badań zależnych od odrzuconego materiału, więc domyślny komunikat
+ * "wyniki pojawią się automatycznie" byłby dla personelu mylący.
+ */
+function describeMissingResults(order: OrderDetailsResponse): string {
+  const hasRejectedTests = order.tests.some(
+    (test) => (test.status as OrderTestStatus) === "REJECTED"
+  );
+  if (order.status === "REJECTED" || hasRejectedTests) {
+    return "Brak wyników — laboratorium odrzuciło wymagane próbki.";
+  }
+  return "Brak wyników. Wyniki pojawią się automatycznie po ich odebraniu.";
 }
 
 function toLocalDateTimeInputValue(date: Date) {

@@ -25,6 +25,14 @@ export class OrderTestResponseDto {
 
   @ApiProperty({
     description:
+      "Status badania w zleceniu. `PENDING` — oczekuje na wynik, `COMPLETED` — wykonane, `REJECTED` — niewykonane, bo laboratorium odrzuciło wymagany materiał.",
+    enum: ["PENDING", "COMPLETED", "REJECTED"],
+    example: "PENDING"
+  })
+  status!: "PENDING" | "COMPLETED" | "REJECTED";
+
+  @ApiProperty({
+    description:
       "Zwalidowane i znormalizowane dane dodatkowe zapisane dla badania.",
     nullable: true,
     example: { PATIENT_PREPARED: false }

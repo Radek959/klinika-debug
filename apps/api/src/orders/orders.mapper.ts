@@ -206,6 +206,7 @@ function toOrderTestResponse(test: OrderTestWithCatalog): OrderTestResponse {
     code: test.medicalTest.code,
     name: test.medicalTest.name,
     materialType: test.medicalTest.materialType,
+    status: test.status,
     additionalData: test.additionalData as OrderAdditionalData | null
   };
 }

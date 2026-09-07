@@ -18,6 +18,8 @@ export type SampleStatus =
   | "ACCEPTED"
   | "REJECTED";
 
+export type OrderTestStatus = "PENDING" | "COMPLETED" | "REJECTED";
+
 export type MaterialType = "EDTA_BLOOD" | "SERUM" | "URINE";
 
 export type TestParameterValueType = "NUMERIC" | "TEXT";

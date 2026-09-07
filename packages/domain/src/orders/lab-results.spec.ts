@@ -133,4 +133,16 @@ describe("lab results domain", () => {
       expect(offsets.finalCallbackOffsetMs).toBe(7);
     });
   });
+
+  describe("determineOrderStatusAfterResults z badaniem odrzuconym", () => {
+    it("nie uznaje badania REJECTED za wykonane", () => {
+      expect(determineOrderStatusAfterResults(["COMPLETED", "REJECTED"])).toBe("PARTIAL");
+    });
+
+    it("nadal zwraca COMPLETED, gdy wszystkie badania mają wynik", () => {
+      expect(determineOrderStatusAfterResults(["COMPLETED", "COMPLETED"])).toBe(
+        "COMPLETED"
+      );
+    });
+  });
 });

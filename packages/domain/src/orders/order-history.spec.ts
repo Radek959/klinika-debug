@@ -1,6 +1,7 @@
 import {
   buildLabOrderAcceptedDetails,
   buildLabResultReceivedDetails,
+  buildLabSampleRejectedDetails,
   buildOrderCreatedDetails,
   buildOrderSentToLabDetails,
   buildOrderUpdatedDetails,
@@ -169,5 +170,63 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
       newStatus: "COMPLETED"
     });
     expect(JSON.stringify(details)).not.toMatch(/parameter|value|unit/i);
+  });
+
+  describe("buildLabSampleRejectedDetails", () => {
+    const input = {
+      eventId: "evt-rejected-1",
+      externalOrderId: "EXT-1",
+      materialType: "EDTA_BLOOD" as const,
+      sampleId: "sample-1",
+      rejectionCode: "HEMOLYZED",
+      rejectionReason: "Próbka zhemolizowana",
+      completedTestCodes: ["URINE", "CRP"],
+      rejectedTestCodes: ["MORF"],
+      previousStatus: "PROCESSING" as const,
+      newStatus: "REJECTED" as const
+    };
+
+    it("buduje komplet bezpiecznych szczegółów i sortuje kody badań", () => {
+      expect(buildLabSampleRejectedDetails(input)).toEqual({
+        eventId: "evt-rejected-1",
+        externalOrderId: "EXT-1",
+        materialType: "EDTA_BLOOD",
+        sampleId: "sample-1",
+        rejectionCode: "HEMOLYZED",
+        rejectionReason: "Próbka zhemolizowana",
+        completedTestCodes: ["CRP", "URINE"],
+        rejectedTestCodes: ["MORF"],
+        previousStatus: "PROCESSING",
+        newStatus: "REJECTED"
+      });
+    });
+
+    it("nie przepuszcza danych wrażliwych ani pełnego payloadu", () => {
+      // Pola spoza kontraktu nie mogą trafić do historii.
+      const contaminatedInput = {
+        ...input,
+        pesel: "44051401458",
+        barcode: "SMP-1",
+        payload: { secret: "x" }
+      };
+      const details = buildLabSampleRejectedDetails(contaminatedInput);
+
+      const serialized = JSON.stringify(details);
+      expect(serialized).not.toMatch(/pesel|barcode|payload|secret/i);
+      expect(Object.keys(details).sort()).toEqual(
+        [
+          "completedTestCodes",
+          "eventId",
+          "externalOrderId",
+          "materialType",
+          "newStatus",
+          "previousStatus",
+          "rejectedTestCodes",
+          "rejectionCode",
+          "rejectionReason",
+          "sampleId"
+        ].sort()
+      );
+    });
   });
 });

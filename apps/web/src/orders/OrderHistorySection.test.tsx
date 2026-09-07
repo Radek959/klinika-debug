@@ -45,6 +45,53 @@ describe("OrderHistorySection", () => {
     expect(screen.queryByText("ORDER_SENT_TO_LAB")).not.toBeInTheDocument();
   });
 
+  it("pokazuje odrzucenie próbki po polsku, bez surowych enumów", async () => {
+    mockHistoryResponse(
+      historyResponse([
+        historyItem({
+          eventType: "LAB_SAMPLE_REJECTED",
+          actorType: "LAB",
+          actorUserId: null,
+          correlationId: "corr-999",
+          integrationEventId: "evt-rejected-1",
+          previousStatus: "SENT_TO_LAB",
+          newStatus: "REJECTED",
+          details: {
+            eventType: "LAB_SAMPLE_REJECTED",
+            eventId: "evt-rejected-1",
+            externalOrderId: "EXT-1",
+            materialType: "EDTA_BLOOD",
+            sampleId: "sample-1",
+            rejectionCode: "HEMOLYZED",
+            rejectionReason: "Próbka zhemolizowana",
+            completedTestCodes: ["CRP"],
+            rejectedTestCodes: ["MORF"],
+            previousStatus: "SENT_TO_LAB",
+            newStatus: "REJECTED"
+          }
+        })
+      ])
+    );
+
+    render(<OrderHistorySection token="token" orderId="order-1" refreshKey={0} />);
+
+    expect(
+      await screen.findByText("Laboratorium odrzuciło próbkę")
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Odrzucony materiał: Krew \(EDTA\)/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Przyczyna: Próbka zhemolizowana \(HEMOLYZED\)/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Badania odrzucone: MORF/)).toBeInTheDocument();
+    expect(screen.getByText(/Badania wykonane: CRP/)).toBeInTheDocument();
+    expect(
+      screen.getByText("Zmiana statusu: Wysłane do laboratorium → Odrzucone")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("LAB_SAMPLE_REJECTED")).not.toBeInTheDocument();
+    expect(screen.queryByText(/SAMPLE_REJECTED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/EDTA_BLOOD/)).not.toBeInTheDocument();
+  });
+
   it("pokazuje pustą historię", async () => {
     mockHistoryResponse(historyResponse([]));
 
