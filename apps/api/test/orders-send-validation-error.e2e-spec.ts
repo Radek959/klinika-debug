@@ -7,7 +7,6 @@ import { closeTestApp, createTestApp } from "./test-app";
 import {
   configureTestEnvironment,
   createStaffUser,
-  createTestPatient,
   resetTestDatabase
 } from "./database";
 
@@ -84,7 +83,7 @@ describe("orders send api — scenariusz VALIDATION_ERROR", () => {
   });
 
   it("nie ujawnia danych pacjenta, kodów kreskowych ani nazwy scenariusza", async () => {
-    const { token, orderId } = await createSendableOrder("SMP-VE-0003");
+    const { token, orderId, patient } = await createSendableOrder("SMP-VE-0003");
 
     const response = await sendOrder(token, orderId);
 
@@ -93,7 +92,11 @@ describe("orders send api — scenariusz VALIDATION_ERROR", () => {
     expect(response.body).not.toContain(':"VALIDATION_ERROR"');
     expect(response.body).not.toContain("scenario");
     expect(response.body).not.toContain("SMP-VE-0003");
-    expect(response.body).not.toContain("Nowak");
+    expect(response.body).not.toContain(patient.lastName);
+    expect(response.body).not.toContain(patient.firstName);
+    if (patient.pesel) {
+      expect(response.body).not.toContain(patient.pesel);
+    }
   });
 
   it("pozostawia zlecenie w SAMPLE_COLLECTED z pustymi polami integracji", async () => {
@@ -411,15 +414,15 @@ describe("orders send api — scenariusz VALIDATION_ERROR", () => {
     return JSON.parse(response.body).token as string;
   }
 
-  /** Tworzy zlecenie gotowe do wysyłki: status SAMPLE_COLLECTED, jedna próbka. */
+  /**
+   * Tworzy zlecenie gotowe do wysyłki: status SAMPLE_COLLECTED, jedna próbka.
+   * Korzysta z pacjenta z seeda, żeby nie duplikować numeru PESEL w workspace.
+   */
   async function createSendableOrder(barcode: string) {
     const token = await login();
     const user = await prisma.user.findUniqueOrThrow({ where: { login: "staff.demo" } });
-    const patient = await createTestPatient(prisma, {
-      workspaceId: user.workspaceId,
-      firstName: "Anna",
-      lastName: "Nowak",
-      pesel: "02270803624"
+    const patient = await prisma.patient.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, active: true }
     });
     const medicalTest = await prisma.medicalTest.findFirstOrThrow({
       where: { code: "CRP" }
@@ -451,7 +454,7 @@ describe("orders send api — scenariusz VALIDATION_ERROR", () => {
     expect(sampleResponse.statusCode).toBe(200);
     expect(JSON.parse(sampleResponse.body).status).toBe("SAMPLE_COLLECTED");
 
-    return { token, orderId };
+    return { token, orderId, patient };
   }
 
   async function readOrderTestStatuses(orderId: string) {
