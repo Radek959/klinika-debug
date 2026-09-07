@@ -189,18 +189,26 @@ describe("orders send api — scenariusz TIMEOUT", () => {
 
   it("ten sam klucz z innym hashem zwraca 409, a po wyczerpaniu prób ten sam klucz zwraca terminalny 504", async () => {
     const { token, orderId } = await createSendableOrder("SMP-TO-0006");
+    expect((await sendOrder(token, orderId)).statusCode).toBe(504);
 
-    const [first, conflict] = await Promise.all([
-      sendOrder(token, orderId),
-      sendOrder(token, orderId, { additionalData: { extraField: "conflict" } })
-    ]);
+    // Zmiana danych zlecenia (kod kreskowy próbki) zmienia hash requestu
+    // wysyłki — dokładnie ten sam mechanizm co w scenariuszach RATE_LIMIT
+    // i SERVER_ERROR.
+    await prisma.sample.updateMany({
+      where: { orderId },
+      data: { barcode: "SMP-TO-0006-INNY" }
+    });
 
-    expect(first.statusCode).toBe(504);
+    const conflict = await sendOrder(token, orderId);
     expect(conflict.statusCode).toBe(409);
     expect(JSON.parse(conflict.body).error).toMatchObject({
       code: "IDEMPOTENCY_KEY_CONFLICT"
     });
 
+    await prisma.sample.updateMany({
+      where: { orderId },
+      data: { barcode: "SMP-TO-0006" }
+    });
     await runAllRetries(orderId);
 
     const finalConflict = await sendOrder(token, orderId);

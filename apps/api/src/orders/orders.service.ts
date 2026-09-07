@@ -1359,11 +1359,19 @@ export class OrdersService {
     workspaceId: string,
     orderId: string
   ): Promise<ApiErrorException> {
+    // Bez filtra statusu: zadanie wyczerpanych prób zostaje jako `FAILED` (nie
+    // jest usuwane), więc dopiero tu rozstrzygamy, czy jest wciąż aktywne, czy
+    // terminalne — w obu przypadkach `scenario` mówi, czy to SERVER_ERROR, czy
+    // TIMEOUT.
     const job = await this.prisma.labSendRetryJob.findFirst({
-      where: { workspaceId, orderId, status: { in: ["PENDING", "PROCESSING"] } }
+      where: { workspaceId, orderId }
     });
 
-    if (!job) {
+    const isActive = job?.status === "PENDING" || job?.status === "PROCESSING";
+    if (!isActive) {
+      if (job?.scenario === "TIMEOUT") {
+        return this.timeoutTerminalError();
+      }
       return this.serverTerminalError();
     }
 
@@ -1414,6 +1422,14 @@ export class OrdersService {
       LAB_SEND_TIMEOUT_MESSAGE,
       undefined,
       { "Retry-After": String(Math.max(0, Math.trunc(retryAfterSeconds))) }
+    );
+  }
+
+  private timeoutTerminalError(): ApiErrorException {
+    return new ApiErrorException(
+      HttpStatus.GATEWAY_TIMEOUT,
+      LAB_SEND_TIMEOUT_ERROR_CODE,
+      "Laboratorium pozostaje niedostępne po automatycznych ponowieniach. Zlecenie oznaczono jako błąd techniczny."
     );
   }
 
@@ -1503,11 +1519,15 @@ export class OrdersService {
       }))
     });
 
-    if (!simulatorResult.accepted && simulatorResult.rejectionType === "SERVER_ERROR") {
+    if (
+      !simulatorResult.accepted &&
+      (simulatorResult.rejectionType === "SERVER_ERROR" ||
+        simulatorResult.rejectionType === "TIMEOUT")
+    ) {
       await this.handleFailedSendRetry({
         job,
         previousStatus: order.status,
-        serverError: simulatorResult
+        failure: simulatorResult
       });
       return;
     }
@@ -1613,23 +1633,24 @@ export class OrdersService {
       attemptNumber: number;
       correlationId: string;
       idempotencyKey: string;
+      scenario: string;
     };
     previousStatus: OrderStatus;
-    serverError: LabSimulatorOrderServerError;
+    failure: LabSimulatorOrderServerError | LabSimulatorOrderTimeout;
   }): Promise<void> {
-    const { job, serverError } = input;
+    const { job, failure } = input;
     const nextAttemptNumber = job.attemptNumber + 1;
 
     if (
       canScheduleLabSendRetry(nextAttemptNumber) &&
-      serverError.nextRetryAt &&
-      serverError.nextAttemptNumber === nextAttemptNumber
+      failure.nextRetryAt &&
+      failure.nextAttemptNumber === nextAttemptNumber
     ) {
       await this.scheduleNextFailedSendRetry({
         job,
         nextAttemptNumber,
-        nextRetryAt: serverError.nextRetryAt,
-        retryAfterSeconds: serverError.retryAfterSeconds ?? 0
+        nextRetryAt: failure.nextRetryAt,
+        retryAfterSeconds: failure.retryAfterSeconds ?? 0
       });
       return;
     }
@@ -1648,6 +1669,7 @@ export class OrdersService {
       attemptNumber: number;
       correlationId: string;
       idempotencyKey: string;
+      scenario: string;
     };
     nextAttemptNumber: number;
     nextRetryAt: Date;
@@ -1677,7 +1699,10 @@ export class OrdersService {
           workspaceId_key: { workspaceId: job.workspaceId, key: job.idempotencyKey }
         },
         data: {
-          responseStatus: HttpStatus.SERVICE_UNAVAILABLE,
+          responseStatus:
+            job.scenario === "TIMEOUT"
+              ? HttpStatus.GATEWAY_TIMEOUT
+              : HttpStatus.SERVICE_UNAVAILABLE,
           responseBody: {
             state: PENDING_SEND_RETRY_STATE,
             attemptNumber: input.nextAttemptNumber,
@@ -1712,6 +1737,7 @@ export class OrdersService {
       attemptNumber: number;
       correlationId: string;
       idempotencyKey: string;
+      scenario: string;
     };
     previousStatus: OrderStatus;
   }): Promise<void> {
@@ -1734,7 +1760,10 @@ export class OrdersService {
           workspaceId_key: { workspaceId: job.workspaceId, key: job.idempotencyKey }
         },
         data: {
-          responseStatus: HttpStatus.SERVICE_UNAVAILABLE,
+          responseStatus:
+            job.scenario === "TIMEOUT"
+              ? HttpStatus.GATEWAY_TIMEOUT
+              : HttpStatus.SERVICE_UNAVAILABLE,
           responseBody: {
             state: "TECHNICAL_ERROR",
             attemptNumber: job.attemptNumber,
