@@ -222,7 +222,7 @@ describe("orders send api — scenariusz TIMEOUT", () => {
     return JSON.parse(response.body).token as string;
   }
 
-  async function createSendableOrder(sampleCode: string) {
+  async function createSendableOrder(barcode: string) {
     const token = await login();
     const user = await prisma.user.findUniqueOrThrow({ where: { login: "staff.demo" } });
     const patient = await prisma.patient.findFirstOrThrow({
@@ -244,17 +244,22 @@ describe("orders send api — scenariusz TIMEOUT", () => {
         tests: [{ medicalTestId: testId.id }]
       }
     });
+    expect(order.statusCode).toBe(201);
 
-    const orderId = JSON.parse(order.body).id;
+    const orderId = JSON.parse(order.body).id as string;
 
-    await app.inject({
+    const sampleResponse = await app.inject({
       method: "POST",
-      url: `/api/v1/orders/${orderId}/sample-registration`,
+      url: `/api/v1/orders/${orderId}/samples`,
       headers: { authorization: `Bearer ${token}` },
       payload: {
-        samples: [{ sampleCode, materialType: "SERUM" }]
+        materialType: "SERUM",
+        barcode,
+        collectedAt: new Date().toISOString()
       }
     });
+    expect(sampleResponse.statusCode).toBe(200);
+    expect(JSON.parse(sampleResponse.body).status).toBe("SAMPLE_COLLECTED");
 
     return { token, orderId, patient };
   }
