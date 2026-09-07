@@ -743,6 +743,7 @@ export class OrdersService {
     const simulatorResult = this.labSimulator.acceptOrder({
       workspaceId,
       orderId,
+      correlationId,
       tests: order.tests.map((test) => ({
         medicalTestId: test.medicalTestId,
         parameters: test.medicalTest.parameters
@@ -766,15 +767,17 @@ export class OrdersService {
           }
         });
 
-        await tx.labJob.create({
-          data: {
-            workspaceId,
-            orderId,
-            scenario: simulatorResult.job.scenario,
-            payload: simulatorResult.job.payload as unknown as Prisma.InputJsonValue,
-            executeAt: simulatorResult.job.executeAt
-          }
-        });
+        for (const job of simulatorResult.jobs) {
+          await tx.labJob.create({
+            data: {
+              workspaceId,
+              orderId,
+              scenario: job.scenario,
+              payload: job.payload as unknown as Prisma.InputJsonValue,
+              executeAt: job.executeAt
+            }
+          });
+        }
 
         const sentAt = new Date();
         const updated = await tx.order.update({
@@ -831,7 +834,7 @@ export class OrdersService {
           details: buildLabOrderAcceptedDetails({
             externalOrderId: simulatorResult.externalOrderId,
             estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString(),
-            scenario: simulatorResult.job.scenario
+            scenario: simulatorResult.jobs[0].scenario
           })
         });
 

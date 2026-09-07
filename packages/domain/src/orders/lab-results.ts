@@ -58,3 +58,64 @@ export function determineOrderStatusAfterResults(
     ? "COMPLETED"
     : "PARTIAL";
 }
+
+export interface PartialSuccessTestSplit {
+  firstBatchTestIds: string[];
+  secondBatchTestIds: string[];
+}
+
+/**
+ * Dzieli badania zlecenia na dwa niepuste podzbiory dla scenariusza symulatora
+ * PARTIAL_SUCCESS. Podział jest deterministyczny (sortowanie po medicalTestId),
+ * a nie losowy, więc ten sam zestaw badań zawsze daje ten sam podział.
+ *
+ * Wymaga co najmniej dwóch badań. Dla zlecenia z jednym badaniem nie da się
+ * zbudować dwóch niepustych podzbiorów badań (i domyślnie nie dzieli się
+ * pojedynczego badania po parametrach) — wywołujący powinien w takim
+ * przypadku zastosować jawny fallback do scenariusza SUCCESS zamiast
+ * wywoływać tę funkcję.
+ */
+export function splitMedicalTestIdsForPartialSuccess(
+  medicalTestIds: string[]
+): PartialSuccessTestSplit {
+  if (medicalTestIds.length < 2) {
+    throw new Error(
+      "Podział na wynik częściowy wymaga co najmniej dwóch badań w zleceniu."
+    );
+  }
+
+  const sortedIds = [...medicalTestIds].sort();
+  const splitIndex = Math.ceil(sortedIds.length / 2);
+
+  return {
+    firstBatchTestIds: sortedIds.slice(0, splitIndex),
+    secondBatchTestIds: sortedIds.slice(splitIndex)
+  };
+}
+
+export interface PartialSuccessCallbackOffsets {
+  firstCallbackOffsetMs: number;
+  finalCallbackOffsetMs: number;
+}
+
+/**
+ * Wyznacza opóźnienia (od chwili przyjęcia zlecenia) dla pierwszego callbacka
+ * z wynikiem częściowym oraz dla callbacka końcowego scenariusza
+ * PARTIAL_SUCCESS. `finalCallbackOffsetMs` odpowiada skonfigurowanemu
+ * `LAB_SIMULATOR_DELAY_MS` (czas do przewidywanego zakończenia realizacji).
+ * Pierwszy callback jest zaplanowany około połowy tego czasu wcześniej.
+ *
+ * Końcowe opóźnienie jest zawsze co najmniej 1 ms, a pierwsze opóźnienie jest
+ * zawsze o co najmniej 1 ms mniejsze — dzięki temu kolejność wykonania
+ * callbacków pozostaje deterministyczna nawet przy bardzo małych wartościach
+ * `LAB_SIMULATOR_DELAY_MS` używanych w testach.
+ */
+export function computePartialSuccessCallbackOffsets(
+  totalDelayMs: number
+): PartialSuccessCallbackOffsets {
+  const finalCallbackOffsetMs = Math.max(totalDelayMs, 1);
+  const halfOffsetMs = Math.floor(finalCallbackOffsetMs / 2);
+  const firstCallbackOffsetMs = Math.min(halfOffsetMs, finalCallbackOffsetMs - 1);
+
+  return { firstCallbackOffsetMs, finalCallbackOffsetMs };
+}

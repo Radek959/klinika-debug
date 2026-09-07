@@ -242,12 +242,359 @@ describe("lab results webhook and scheduler", () => {
     const completedOrder = await waitForOrderStatus(order.id, "COMPLETED", 8000);
     expect(completedOrder.status).toBe("COMPLETED");
     expect(completedOrder.externalOrderId).not.toBeNull();
+    expect(completedOrder.correlationId).not.toBeNull();
 
     const resultCount = await prisma.result.count({ where: { orderId: order.id } });
     expect(resultCount).toBe(1);
 
-    const labJob = await prisma.labJob.findFirstOrThrow({ where: { orderId: order.id } });
-    expect(labJob.status).toBe("DONE");
+    const labJob = await waitForLabJobStatus(order.id, "DONE", 8000);
+    const jobPayload = labJob.payload as unknown as { correlationId: string | null };
+    expect(jobPayload.correlationId).not.toBeNull();
+    expect(jobPayload.correlationId).toBe(completedOrder.correlationId);
+
+    const resultReceivedEvent = await prisma.orderHistory.findFirstOrThrow({
+      where: { orderId: order.id, eventType: "LAB_RESULT_RECEIVED" }
+    });
+    expect(resultReceivedEvent.correlationId).not.toBeNull();
+    expect(resultReceivedEvent.correlationId).toBe(completedOrder.correlationId);
+  });
+
+  describe("scenariusz symulatora PARTIAL_SUCCESS", () => {
+    const ORIGINAL_SCENARIO = process.env.LAB_SIMULATOR_SCENARIO;
+
+    afterEach(() => {
+      if (ORIGINAL_SCENARIO === undefined) {
+        delete process.env.LAB_SIMULATOR_SCENARIO;
+      } else {
+        process.env.LAB_SIMULATOR_SCENARIO = ORIGINAL_SCENARIO;
+      }
+    });
+
+    it("przechodzi SENT_TO_LAB -> PARTIAL -> COMPLETED przez dwa zaplanowane zadania lab_jobs", async () => {
+      const { token, patientId, tests } = await setupDefaultOrderData();
+      const order = await createOrderAndParse(token, {
+        patientId,
+        priority: "ROUTINE",
+        tests: [{ medicalTestId: tests.MORF.id }, { medicalTestId: tests.CRP.id }]
+      });
+      await registerSample(token, order.id, {
+        materialType: "EDTA_BLOOD",
+        barcode: "SMP-PARTIAL-0001",
+        collectedAt: nowIso()
+      });
+      await registerSample(token, order.id, {
+        materialType: "SERUM",
+        barcode: "SMP-PARTIAL-0002",
+        collectedAt: nowIso()
+      });
+
+      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      const sendResponse = await sendOrder(token, order.id);
+      expect(sendResponse.statusCode).toBe(200);
+      const sendBody = JSON.parse(sendResponse.body);
+      expect(sendBody.status).toBe("SENT_TO_LAB");
+
+      const sentOrder = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(sentOrder.correlationId).not.toBeNull();
+      expect(sentOrder.correlationId).not.toBe("");
+
+      const jobs = await prisma.labJob.findMany({
+        where: { orderId: order.id },
+        orderBy: { executeAt: "asc" }
+      });
+      expect(jobs).toHaveLength(2);
+      expect(jobs.every((job) => job.scenario === "PARTIAL_SUCCESS")).toBe(true);
+      expect(jobs[0].executeAt.getTime()).toBeLessThan(jobs[1].executeAt.getTime());
+
+      const firstPayload = jobs[0].payload as unknown as {
+        eventId: string;
+        status: string;
+        correlationId: string | null;
+        pendingMedicalTestIds: string[];
+        results: Array<{ medicalTestId: string }>;
+      };
+      const secondPayload = jobs[1].payload as unknown as {
+        eventId: string;
+        status: string;
+        correlationId: string | null;
+        pendingMedicalTestIds: string[];
+        results: Array<{ medicalTestId: string }>;
+      };
+      expect(firstPayload.status).toBe("PARTIAL");
+      expect(secondPayload.status).toBe("COMPLETED");
+      expect(firstPayload.eventId).not.toBe(secondPayload.eventId);
+      expect(firstPayload.results.length).toBeGreaterThan(0);
+      expect(firstPayload.results.length).toBeLessThan(2);
+      expect(secondPayload.pendingMedicalTestIds).toEqual([]);
+      const allTestIds = [
+        ...firstPayload.results.map((r) => r.medicalTestId),
+        ...secondPayload.results.map((r) => r.medicalTestId)
+      ].sort();
+      expect(allTestIds).toEqual([tests.CRP.id, tests.MORF.id].sort());
+
+      // Oba zaplanowane callbacki muszą mieć dokładnie ten sam correlationId
+      // co Order.correlationId zapisany podczas wysyłki — nie może to być null.
+      expect(firstPayload.correlationId).not.toBeNull();
+      expect(firstPayload.correlationId).toBe(sentOrder.correlationId);
+      expect(secondPayload.correlationId).toBe(sentOrder.correlationId);
+
+      await waitForOrderStatus(order.id, "PARTIAL", 8000);
+      const afterFirstJob = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(afterFirstJob.status).toBe("PARTIAL");
+
+      const resultsAfterFirstJob = await prisma.result.findMany({ where: { orderId: order.id } });
+      expect(resultsAfterFirstJob.length).toBeGreaterThan(0);
+
+      const detailsAfterPartial = await app.inject({
+        method: "GET",
+        url: `/api/v1/orders/${order.id}`,
+        headers: { authorization: `Bearer ${token}` }
+      });
+      expect(detailsAfterPartial.statusCode).toBe(200);
+      expect(JSON.parse(detailsAfterPartial.body).results.length).toBeGreaterThan(0);
+
+      const completedOrder = await waitForOrderStatus(order.id, "COMPLETED", 8000);
+      expect(completedOrder.status).toBe("COMPLETED");
+
+      const finalResults = await prisma.result.findMany({ where: { orderId: order.id } });
+      const finalResultTestIds = new Set(finalResults.map((result) => result.medicalTestId));
+      expect(finalResultTestIds.has(tests.CRP.id)).toBe(true);
+      expect(finalResultTestIds.has(tests.MORF.id)).toBe(true);
+
+      for (const partialResult of resultsAfterFirstJob) {
+        const stillPresent = finalResults.find(
+          (result) =>
+            result.medicalTestId === partialResult.medicalTestId &&
+            result.parameterCode === partialResult.parameterCode
+        );
+        expect(stillPresent?.value).toBe(partialResult.value);
+      }
+
+      const orderTests = await prisma.orderTest.findMany({ where: { orderId: order.id } });
+      expect(orderTests.every((orderTest) => orderTest.status === "COMPLETED")).toBe(true);
+
+      const doneJobs = await waitForAllLabJobsStatus(order.id, "DONE", 8000);
+      expect(doneJobs).toHaveLength(2);
+
+      const historyEvents = await prisma.orderHistory.findMany({
+        where: { orderId: order.id },
+        orderBy: { sequence: "asc" }
+      });
+      const eventTypes = historyEvents.map((event) => event.eventType);
+      expect(eventTypes.filter((type) => type === "LAB_RESULT_RECEIVED")).toHaveLength(2);
+      const partialTransition = historyEvents.find(
+        (event) => event.previousStatus === "SENT_TO_LAB" && event.newStatus === "PARTIAL"
+      );
+      const completionTransition = historyEvents.find(
+        (event) => event.previousStatus === "PARTIAL" && event.newStatus === "COMPLETED"
+      );
+      expect(partialTransition).toBeDefined();
+      expect(completionTransition).toBeDefined();
+
+      const resultReceivedEvents = historyEvents.filter(
+        (event) => event.eventType === "LAB_RESULT_RECEIVED"
+      );
+      expect(resultReceivedEvents.every((event) => event.correlationId !== null)).toBe(true);
+      expect(resultReceivedEvents.every((event) => event.correlationId === sentOrder.correlationId)).toBe(
+        true
+      );
+    }, 15000);
+
+    it("nie tworzy dodatkowych zadań przy ponownej wysyłce z tym samym kluczem idempotencji", async () => {
+      const { token, patientId, tests } = await setupDefaultOrderData();
+      const order = await createOrderAndParse(token, {
+        patientId,
+        priority: "ROUTINE",
+        tests: [{ medicalTestId: tests.MORF.id }, { medicalTestId: tests.CRP.id }]
+      });
+      await registerSample(token, order.id, {
+        materialType: "EDTA_BLOOD",
+        barcode: "SMP-PARTIAL-0003",
+        collectedAt: nowIso()
+      });
+      await registerSample(token, order.id, {
+        materialType: "SERUM",
+        barcode: "SMP-PARTIAL-0004",
+        collectedAt: nowIso()
+      });
+
+      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      const first = await sendOrder(token, order.id);
+      expect(first.statusCode).toBe(200);
+      const second = await sendOrder(token, order.id);
+      expect(second.statusCode).toBe(200);
+
+      const jobCount = await prisma.labJob.count({ where: { orderId: order.id } });
+      expect(jobCount).toBe(2);
+    });
+
+    it("nie duplikuje wyników ani historii przy ponownym przetworzeniu tego samego eventId zadania częściowego", async () => {
+      const { token, patientId, tests } = await setupDefaultOrderData();
+      const order = await createOrderAndParse(token, {
+        patientId,
+        priority: "ROUTINE",
+        tests: [{ medicalTestId: tests.MORF.id }, { medicalTestId: tests.CRP.id }]
+      });
+      await registerSample(token, order.id, {
+        materialType: "EDTA_BLOOD",
+        barcode: "SMP-PARTIAL-0005",
+        collectedAt: nowIso()
+      });
+      await registerSample(token, order.id, {
+        materialType: "SERUM",
+        barcode: "SMP-PARTIAL-0006",
+        collectedAt: nowIso()
+      });
+
+      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      const sendResponse = await sendOrder(token, order.id);
+      const externalOrderId = JSON.parse(sendResponse.body).externalOrderId as string;
+
+      const partialJob = await prisma.labJob.findFirstOrThrow({
+        where: { orderId: order.id },
+        orderBy: { executeAt: "asc" }
+      });
+      const partialPayload = partialJob.payload as unknown as Record<string, unknown>;
+
+      const firstDelivery = await webhook(partialPayload);
+      expect(firstDelivery.statusCode).toBe(204);
+      const resultCountAfterFirstDelivery = await prisma.result.count({
+        where: { orderId: order.id }
+      });
+      expect(resultCountAfterFirstDelivery).toBeGreaterThan(0);
+
+      const duplicateDelivery = await webhook(partialPayload);
+      expect(duplicateDelivery.statusCode).toBe(204);
+
+      const resultCount = await prisma.result.count({ where: { orderId: order.id } });
+      expect(resultCount).toBe(resultCountAfterFirstDelivery);
+
+      const eventCount = await prisma.processedLabEvent.count({
+        where: { orderId: order.id, eventId: partialPayload.eventId as string }
+      });
+      expect(eventCount).toBe(1);
+
+      const receivedEventsCount = await prisma.orderHistory.count({
+        where: { orderId: order.id, eventType: "LAB_RESULT_RECEIVED" }
+      });
+      expect(receivedEventsCount).toBe(1);
+
+      const orderAfterDuplicate = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(orderAfterDuplicate.status).toBe("PARTIAL");
+      expect(externalOrderId).toBe(orderAfterDuplicate.externalOrderId);
+    });
+
+    it("stosuje fallback do SUCCESS dla zlecenia z jednym badaniem zamiast sztucznego wyniku PARTIAL", async () => {
+      const { token, patientId, tests } = await setupDefaultOrderData();
+      const order = await createOrderAndParse(token, {
+        patientId,
+        priority: "ROUTINE",
+        tests: [{ medicalTestId: tests.CRP.id }]
+      });
+      await registerSample(token, order.id, {
+        materialType: "SERUM",
+        barcode: "SMP-PARTIAL-0007",
+        collectedAt: nowIso()
+      });
+
+      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      const sendResponse = await sendOrder(token, order.id);
+      expect(sendResponse.statusCode).toBe(200);
+
+      const sentOrder = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+
+      const jobs = await prisma.labJob.findMany({ where: { orderId: order.id } });
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].scenario).toBe("SUCCESS");
+      const payload = jobs[0].payload as unknown as {
+        status: string;
+        correlationId: string | null;
+        pendingMedicalTestIds: string[];
+      };
+      expect(payload.status).toBe("COMPLETED");
+      expect(payload.pendingMedicalTestIds).toEqual([]);
+      expect(payload.correlationId).not.toBeNull();
+      expect(payload.correlationId).toBe(sentOrder.correlationId);
+
+      const completedOrder = await waitForOrderStatus(order.id, "COMPLETED", 8000);
+      expect(completedOrder.status).toBe("COMPLETED");
+    });
+
+    it("nie zmienia zachowania scenariusza SUCCESS, gdy LAB_SIMULATOR_SCENARIO=SUCCESS", async () => {
+      const { token, patientId, tests } = await setupDefaultOrderData();
+      const order = await createOrderAndParse(token, {
+        patientId,
+        priority: "ROUTINE",
+        tests: [{ medicalTestId: tests.MORF.id }, { medicalTestId: tests.CRP.id }]
+      });
+      await registerSample(token, order.id, {
+        materialType: "EDTA_BLOOD",
+        barcode: "SMP-PARTIAL-0008",
+        collectedAt: nowIso()
+      });
+      await registerSample(token, order.id, {
+        materialType: "SERUM",
+        barcode: "SMP-PARTIAL-0009",
+        collectedAt: nowIso()
+      });
+
+      process.env.LAB_SIMULATOR_SCENARIO = "SUCCESS";
+      const sendResponse = await sendOrder(token, order.id);
+      expect(sendResponse.statusCode).toBe(200);
+
+      const jobs = await prisma.labJob.findMany({ where: { orderId: order.id } });
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].scenario).toBe("SUCCESS");
+
+      const completedOrder = await waitForOrderStatus(order.id, "COMPLETED", 8000);
+      expect(completedOrder.status).toBe("COMPLETED");
+    });
+
+    it("izoluje zadania PARTIAL_SUCCESS między workspace'ami", async () => {
+      const { token, patientId, tests } = await setupDefaultOrderData();
+      const order = await createOrderAndParse(token, {
+        patientId,
+        priority: "ROUTINE",
+        tests: [{ medicalTestId: tests.MORF.id }, { medicalTestId: tests.CRP.id }]
+      });
+      await registerSample(token, order.id, {
+        materialType: "EDTA_BLOOD",
+        barcode: "SMP-PARTIAL-0010",
+        collectedAt: nowIso()
+      });
+      await registerSample(token, order.id, {
+        materialType: "SERUM",
+        barcode: "SMP-PARTIAL-0011",
+        collectedAt: nowIso()
+      });
+
+      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      const sendResponse = await sendOrder(token, order.id);
+      expect(sendResponse.statusCode).toBe(200);
+
+      const otherWorkspace = await prisma.workspace.create({
+        data: { slug: "obca-klinika-partial", name: "Obca Klinika Partial" }
+      });
+
+      const jobsInOwnWorkspace = await prisma.labJob.count({
+        where: { orderId: order.id, workspaceId: { not: otherWorkspace.id } }
+      });
+      const jobsLeakedToOtherWorkspace = await prisma.labJob.count({
+        where: { workspaceId: otherWorkspace.id }
+      });
+      expect(jobsInOwnWorkspace).toBe(2);
+      expect(jobsLeakedToOtherWorkspace).toBe(0);
+
+      await waitForOrderStatus(order.id, "COMPLETED", 8000);
+      const resultsLeakedToOtherWorkspace = await prisma.result.count({
+        where: { workspaceId: otherWorkspace.id }
+      });
+      const historyLeakedToOtherWorkspace = await prisma.orderHistory.count({
+        where: { workspaceId: otherWorkspace.id }
+      });
+      expect(resultsLeakedToOtherWorkspace).toBe(0);
+      expect(historyLeakedToOtherWorkspace).toBe(0);
+    });
   });
 
   it("publikuje endpoint webhooka w OpenAPI", async () => {
@@ -272,6 +619,36 @@ describe("lab results webhook and scheduler", () => {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     throw new Error(`Zlecenie nie osiągnęło statusu ${status} w ciągu ${timeoutMs}ms.`);
+  }
+
+  // Order.status przechodzi na docelową wartość wewnątrz transakcji
+  // LabCallbacksService.processResults, a LabJob.status jest ustawiany na
+  // "DONE" dopiero po jej zakończeniu, osobnym zapytaniem w schedulerze.
+  // Między tymi dwoma zapisami jest krótkie okno, więc odczyt LabJob musi
+  // być odpytywany, a nie sprawdzany od razu po zaobserwowaniu statusu
+  // zlecenia — inaczej test jest niedeterministycznie flaky.
+  async function waitForLabJobStatus(orderId: string, status: string, timeoutMs: number) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const labJob = await prisma.labJob.findFirstOrThrow({ where: { orderId } });
+      if (labJob.status === status) {
+        return labJob;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`Zadanie lab_jobs nie osiągnęło statusu ${status} w ciągu ${timeoutMs}ms.`);
+  }
+
+  async function waitForAllLabJobsStatus(orderId: string, status: string, timeoutMs: number) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const jobs = await prisma.labJob.findMany({ where: { orderId } });
+      if (jobs.length > 0 && jobs.every((job) => job.status === status)) {
+        return jobs;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`Zadania lab_jobs nie osiągnęły statusu ${status} w ciągu ${timeoutMs}ms.`);
   }
 
   async function login() {
