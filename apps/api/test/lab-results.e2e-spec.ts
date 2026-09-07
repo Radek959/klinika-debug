@@ -247,8 +247,7 @@ describe("lab results webhook and scheduler", () => {
     const resultCount = await prisma.result.count({ where: { orderId: order.id } });
     expect(resultCount).toBe(1);
 
-    const labJob = await prisma.labJob.findFirstOrThrow({ where: { orderId: order.id } });
-    expect(labJob.status).toBe("DONE");
+    const labJob = await waitForLabJobStatus(order.id, "DONE", 8000);
     const jobPayload = labJob.payload as unknown as { correlationId: string | null };
     expect(jobPayload.correlationId).not.toBeNull();
     expect(jobPayload.correlationId).toBe(completedOrder.correlationId);
@@ -374,8 +373,8 @@ describe("lab results webhook and scheduler", () => {
       const orderTests = await prisma.orderTest.findMany({ where: { orderId: order.id } });
       expect(orderTests.every((orderTest) => orderTest.status === "COMPLETED")).toBe(true);
 
-      const doneJobs = await prisma.labJob.findMany({ where: { orderId: order.id } });
-      expect(doneJobs.every((job) => job.status === "DONE")).toBe(true);
+      const doneJobs = await waitForAllLabJobsStatus(order.id, "DONE", 8000);
+      expect(doneJobs).toHaveLength(2);
 
       const historyEvents = await prisma.orderHistory.findMany({
         where: { orderId: order.id },
@@ -620,6 +619,36 @@ describe("lab results webhook and scheduler", () => {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     throw new Error(`Zlecenie nie osiągnęło statusu ${status} w ciągu ${timeoutMs}ms.`);
+  }
+
+  // Order.status przechodzi na docelową wartość wewnątrz transakcji
+  // LabCallbacksService.processResults, a LabJob.status jest ustawiany na
+  // "DONE" dopiero po jej zakończeniu, osobnym zapytaniem w schedulerze.
+  // Między tymi dwoma zapisami jest krótkie okno, więc odczyt LabJob musi
+  // być odpytywany, a nie sprawdzany od razu po zaobserwowaniu statusu
+  // zlecenia — inaczej test jest niedeterministycznie flaky.
+  async function waitForLabJobStatus(orderId: string, status: string, timeoutMs: number) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const labJob = await prisma.labJob.findFirstOrThrow({ where: { orderId } });
+      if (labJob.status === status) {
+        return labJob;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`Zadanie lab_jobs nie osiągnęło statusu ${status} w ciągu ${timeoutMs}ms.`);
+  }
+
+  async function waitForAllLabJobsStatus(orderId: string, status: string, timeoutMs: number) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const jobs = await prisma.labJob.findMany({ where: { orderId } });
+      if (jobs.length > 0 && jobs.every((job) => job.status === status)) {
+        return jobs;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`Zadania lab_jobs nie osiągnęły statusu ${status} w ciągu ${timeoutMs}ms.`);
   }
 
   async function login() {
