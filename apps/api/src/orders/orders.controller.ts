@@ -335,7 +335,10 @@ export class OrdersController {
       "powstaje klucz idempotencji, a wysyłkę można ponowić. " +
       "Laboratorium może też chwilowo ograniczyć liczbę żądań i odpowiedzieć kodem 429 " +
       "(LAB_RATE_LIMITED). Wtedy Klinika Debug planuje automatyczne ponowienie wysyłki, a zlecenie " +
-      "pozostaje tymczasowo w statusie SAMPLE_COLLECTED."
+      "pozostaje tymczasowo w statusie SAMPLE_COLLECTED. Przy chwilowej niedostępności laboratorium " +
+      "(HTTP 503, LAB_SERVER_ERROR) system wykonuje maksymalnie trzy automatyczne ponowienia po 15, " +
+      "30 i 60 sekundach. Jeżeli wszystkie zakończą się błędem 5xx, zlecenie przechodzi do " +
+      "TECHNICAL_ERROR."
   })
   @ApiOkResponse({
     type: OrderResponseDto,
@@ -438,6 +441,44 @@ export class OrdersController {
             code: "LAB_RATE_LIMITED",
             message:
               "Laboratorium chwilowo ograniczyło liczbę żądań. Wysyłka zostanie ponowiona automatycznie.",
+            correlationId: "8d0c8cad-9c1b-4d7b-9e3b-0c48288d4fb7"
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 503,
+    type: ApiErrorResponseDto,
+    description:
+      "Laboratorium jest chwilowo niedostępne i nie przyjęło zlecenia. Klinika Debug zapisuje jedno " +
+      "trwałe zadanie automatycznego ponowienia wysyłki i ponawia komunikację maksymalnie trzy razy: " +
+      "po 15, 30 i 60 sekundach. Początkowa próba ręczna nie jest liczona jako ponowienie. Do czasu " +
+      "wyczerpania prób zlecenie pozostaje w statusie SAMPLE_COLLECTED, a pola integracji " +
+      "(externalOrderId, sentAt, estimatedCompletionAt) są puste. Po trzeciej nieudanej próbie " +
+      "automatycznej zlecenie przechodzi do TECHNICAL_ERROR, zadanie retry ma stan terminalny i nie " +
+      "powstaje callback ani wynik. Powtórzone ręczne wywołanie w trakcie oczekiwania nie tworzy " +
+      "duplikatu zadania, tylko zwraca bieżący błąd z aktualnym Retry-After. error.correlationId jest " +
+      "równy nagłówkowi X-Correlation-ID odpowiedzi.",
+    headers: {
+      "Retry-After": {
+        description:
+          "Liczba pełnych sekund do automatycznego ponowienia wysyłki. Obecna w odpowiedzi oczekującej na kolejne ponowienie.",
+        schema: { type: "integer", minimum: 0, example: 15 }
+      },
+      "X-Correlation-ID": {
+        description: "Identyfikator korelacji żądania, ten sam co error.correlationId.",
+        schema: { type: "string", example: "8d0c8cad-9c1b-4d7b-9e3b-0c48288d4fb7" }
+      }
+    },
+    examples: {
+      chwilowaNiedostepnoscLaboratorium: {
+        summary: "Laboratorium chwilowo niedostępne",
+        value: {
+          error: {
+            code: "LAB_SERVER_ERROR",
+            message:
+              "Laboratorium jest chwilowo niedostępne. Wysyłka zostanie ponowiona automatycznie.",
             correlationId: "8d0c8cad-9c1b-4d7b-9e3b-0c48288d4fb7"
           }
         }

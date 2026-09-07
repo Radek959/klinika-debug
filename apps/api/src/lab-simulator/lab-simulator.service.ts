@@ -11,6 +11,8 @@ import {
   FIRST_LAB_SEND_ATTEMPT_NUMBER,
   LAB_RATE_LIMITED_ERROR_CODE,
   LAB_RATE_LIMITED_MESSAGE,
+  LAB_SERVER_ERROR_CODE,
+  LAB_SERVER_ERROR_MESSAGE,
   type LabOrderValidationFieldError,
   type OrderMaterialType
 } from "@klinika/domain";
@@ -127,10 +129,30 @@ export interface LabSimulatorOrderRateLimited {
   nextAttemptNumber: number;
 }
 
+/**
+ * Kontrolowany błąd `5xx` laboratorium przed przyjęciem zlecenia.
+ *
+ * Wariant nie zawiera `externalOrderId`, `estimatedCompletionAt` ani zadań
+ * callbacka, bo laboratorium nie przyjęło zlecenia. Informacja o następnym
+ * terminie jest obecna tylko wtedy, gdy harmonogram dopuszcza kolejne
+ * automatyczne ponowienie.
+ */
+export interface LabSimulatorOrderServerError {
+  accepted: false;
+  rejectionType: "SERVER_ERROR";
+  statusCode: 503;
+  errorCode: typeof LAB_SERVER_ERROR_CODE;
+  message: string;
+  retryAfterSeconds: number | null;
+  nextRetryAt: Date | null;
+  nextAttemptNumber: number | null;
+}
+
 export type LabSimulatorOrderResult =
   | LabSimulatorOrderAccepted
   | LabSimulatorOrderRejected
-  | LabSimulatorOrderRateLimited;
+  | LabSimulatorOrderRateLimited
+  | LabSimulatorOrderServerError;
 
 // Domyślny tryb CLEAN/SUCCESS: 300 sekund do przewidywanego zakończenia realizacji.
 const DEFAULT_ESTIMATED_COMPLETION_DELAY_MS = 300_000;
@@ -156,6 +178,10 @@ export class LabSimulatorService {
     // niezależny od stanu pamięci procesu.
     if (scenario === "RATE_LIMIT" && attemptNumber === FIRST_LAB_SEND_ATTEMPT_NUMBER) {
       return this.buildRateLimitedResult(attemptNumber);
+    }
+
+    if (scenario === "SERVER_ERROR") {
+      return this.buildServerErrorResult(attemptNumber);
     }
 
     const externalOrderId = `EXT-${randomUUID()}`;
@@ -236,6 +262,28 @@ export class LabSimulatorService {
       retryAfterSeconds: computeRetryAfterSeconds({ now, executeAt: nextRetryAt }),
       nextRetryAt,
       nextAttemptNumber
+    };
+  }
+
+  private buildServerErrorResult(attemptNumber: number): LabSimulatorOrderServerError {
+    const now = new Date();
+    const nextAttemptNumber = attemptNumber + 1;
+    const nextRetryAt = computeLabSendRetryExecuteAt({
+      now,
+      attemptNumber: nextAttemptNumber
+    });
+
+    return {
+      accepted: false,
+      rejectionType: "SERVER_ERROR",
+      statusCode: 503,
+      errorCode: LAB_SERVER_ERROR_CODE,
+      message: LAB_SERVER_ERROR_MESSAGE,
+      retryAfterSeconds: nextRetryAt
+        ? computeRetryAfterSeconds({ now, executeAt: nextRetryAt })
+        : null,
+      nextRetryAt,
+      nextAttemptNumber: nextRetryAt ? nextAttemptNumber : null
     };
   }
 

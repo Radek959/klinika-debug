@@ -7,12 +7,10 @@
  * harmonogramu — zarówno API, jak i scheduler liczą terminy z tych samych
  * stałych, więc nie da się rozjechać opóźnień między warstwami.
  *
- * Zakres aktualnie zaimplementowanego przepływu jest węższy niż harmonogram:
- * scenariusz `RATE_LIMIT` zwraca `429` wyłącznie dla pierwszej próby, a druga
- * (automatyczna) próba jest przyjmowana jak `SUCCESS`. Wyczerpanie wszystkich
- * prób i przejście zlecenia w `TECHNICAL_ERROR` nie są jeszcze zaimplementowane
- * — harmonogram jest tu przygotowany i przetestowany jako fundament dla
- * kolejnych scenariuszy (`SERVER_ERROR`, `TIMEOUT`).
+ * Scenariusz `RATE_LIMIT` zwraca `429` wyłącznie dla pierwszej próby, a druga
+ * (automatyczna) próba jest przyjmowana jak `SUCCESS`. Scenariusz `SERVER_ERROR`
+ * zużywa trzy automatyczne ponowienia, po czym zamyka zlecenie statusem
+ * `TECHNICAL_ERROR`.
  */
 
 /**
@@ -61,7 +59,12 @@ export const LAB_SEND_RETRY_FAILURE_MESSAGE =
  * `CANCELLED` oznacza, że ponowienie NIE zostało wykonane, ponieważ warunki
  * biznesowe albo dane objęte hashem zmieniły się od pierwszej próby.
  */
-export type LabSendRetryOutcome = "ACCEPTED" | "CANCELLED";
+export type LabSendRetryOutcome =
+  | "SCHEDULED"
+  | "FAILED_RETRY"
+  | "ACCEPTED"
+  | "CANCELLED"
+  | "EXHAUSTED";
 
 /**
  * Bezpieczny kod przyczyny anulowania automatycznego ponowienia.
@@ -86,6 +89,14 @@ export const LAB_RATE_LIMITED_ERROR_CODE = "LAB_RATE_LIMITED";
 
 export const LAB_RATE_LIMITED_MESSAGE =
   "Laboratorium chwilowo ograniczyło liczbę żądań. Wysyłka zostanie ponowiona automatycznie.";
+
+export const LAB_SERVER_ERROR_CODE = "LAB_SERVER_ERROR";
+
+export const LAB_SERVER_ERROR_MESSAGE =
+  "Laboratorium jest chwilowo niedostępne. Wysyłka zostanie ponowiona automatycznie.";
+
+export const LAB_SEND_RETRY_EXHAUSTED_REASON =
+  "Automatyczne ponowienia wysyłki do laboratorium zostały wyczerpane.";
 
 /**
  * Zwraca opóźnienie przed próbą o podanym numerze.

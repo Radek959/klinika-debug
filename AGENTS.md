@@ -48,6 +48,12 @@ Poprawny tryb bazowy jest obowiązkowy. Celowe błędy mogą być aktywowane wy�
 - Ponowne przetworzenie tego samego `eventId` nie może duplikować wyników.
 - Logi nie mogą ujawniać niezamaskowanych danych pacjenta.
 
+## Granice repozytorium
+
+- W tym repozytorium nie implementujemy gotowego rozszerzenia Chrome, skryptu Python ani notatek prowadzącego.
+- Repozytorium ma zapewnić stabilny interfejs, REST API, dane syntetyczne i identyfikatory `correlationId` potrzebne do ćwiczeń warsztatowych.
+- Notatki prowadzącego powstaną później w Notion na podstawie finalnej wersji aplikacji, poza kodem aplikacji.
+
 ## Jakość zmian
 
 - Implementuj małe, pionowe fragmenty działające od UI do bazy i API.

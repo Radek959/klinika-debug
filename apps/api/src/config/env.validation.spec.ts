@@ -66,6 +66,18 @@ describe("validateEnvironment", () => {
     ).toBe("RATE_LIMIT");
   });
 
+  it("akceptuje jawnie ustawiony scenariusz SERVER_ERROR", () => {
+    expect(
+      validateEnvironment({
+        NODE_ENV: "test",
+        PORT: "3000",
+        DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
+        SESSION_TOKEN_PEPPER: "test-session-pepper",
+        LAB_SIMULATOR_SCENARIO: "SERVER_ERROR"
+      }).LAB_SIMULATOR_SCENARIO
+    ).toBe("SERVER_ERROR");
+  });
+
   it("zatrzymuje start z czytelnym błędem przy brakach konfiguracji", () => {
     expect(() => validateEnvironment({ NODE_ENV: "production" })).toThrow(
       /Nieprawidłowa konfiguracja aplikacji/
@@ -93,6 +105,6 @@ describe("validateEnvironment", () => {
         SESSION_TOKEN_PEPPER: "test-session-pepper",
         LAB_SIMULATOR_SCENARIO: "NOT_A_SCENARIO"
       })
-    ).toThrow(/SUCCESS, PARTIAL_SUCCESS, SAMPLE_REJECTED, VALIDATION_ERROR/);
+    ).toThrow(/SUCCESS, PARTIAL_SUCCESS, SAMPLE_REJECTED, VALIDATION_ERROR, RATE_LIMIT, SERVER_ERROR/);
   });
 });

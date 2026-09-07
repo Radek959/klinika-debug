@@ -200,7 +200,7 @@ Reguły:
 |---|---|---|
 | `DRAFT` | Zlecenie jest przygotowywane | `SAMPLE_COLLECTION_IN_PROGRESS`, `SAMPLE_COLLECTED` |
 | `SAMPLE_COLLECTION_IN_PROGRESS` | Zarejestrowano część wymaganych próbek | `SAMPLE_COLLECTED` |
-| `SAMPLE_COLLECTED` | Wszystkie próbki zostały zarejestrowane | `SENT_TO_LAB` |
+| `SAMPLE_COLLECTED` | Wszystkie próbki zostały zarejestrowane | `SENT_TO_LAB`, `TECHNICAL_ERROR` |
 | `SENT_TO_LAB` | Laboratorium przyjęło zlecenie | `PROCESSING`, `TECHNICAL_ERROR` |
 | `PROCESSING` | Trwa realizacja badań | `PARTIAL`, `COMPLETED`, `REJECTED`, `TECHNICAL_ERROR` |
 | `PARTIAL` | Odebrano część wyników | `PARTIAL`, `COMPLETED`, `REJECTED`, `TECHNICAL_ERROR` |
@@ -227,6 +227,7 @@ Laboratorium przyjmuje zlecenie asynchronicznie. Poprawne żądanie zwraca HTTP 
 - Odpowiedzi `400`, `401`, `403`, `409` i `422` nie są automatycznie ponawiane.
 - Timeout, `429` oraz `5xx` mogą zostać ponowione maksymalnie trzy razy: po 15, 30 i 60 sekundach.
 - Po wyczerpaniu prób zlecenie otrzymuje `TECHNICAL_ERROR`.
+- Dla błędu przed przyjęciem przez laboratorium przejście techniczne następuje bezpośrednio z `SAMPLE_COLLECTED` do `TECHNICAL_ERROR`.
 
 ## 14. Odbieranie wyników
 

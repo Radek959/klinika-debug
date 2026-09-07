@@ -29,9 +29,9 @@
 
 | Element | Status | Uwagi |
 |---|---|---|
-| `SERVER_ERROR` | `PLANNED` | Brak pełnego scenariusza `5xx` i wyczerpania prób. Rekomendowany zakres kolejnego PR-a. |
+| `SERVER_ERROR` | `IMPLEMENTED` | Wartość `SERVER_ERROR` w `LAB_SIMULATOR_SCENARIO`, kontrolowane HTTP 503 (`LAB_SERVER_ERROR`) przy próbie początkowej i każdym automatycznym ponowieniu, ten sam wiersz `lab_send_retry_jobs` aktualizowany dla prób 2, 3 i 4, harmonogram 15/30/60 s, brak `externalOrderId`, `sentAt`, callbacka i wyników przed przyjęciem, po trzecim nieudanym retry terminalny status zadania `FAILED` i przejście `SAMPLE_COLLECTED → TECHNICAL_ERROR`, historia `LAB_SEND_RETRY` oraz `TECHNICAL_ERROR` ze wspólnym `correlationId`, bez danych pacjenta, hasha, idempotency key i nazwy scenariusza. Testy: `packages/domain/src/orders/lab-send-retry.spec.ts`, `packages/domain/src/orders/order-history.spec.ts`, `apps/api/src/lab-simulator/*.spec.ts`, `apps/api/src/config/env.validation.spec.ts`, `apps/api/test/orders-send-server-error.e2e-spec.ts`, `apps/web/src/orders/OrdersUi.test.tsx`, `apps/web/src/orders/OrderHistorySection.test.tsx`. |
 | `TIMEOUT` | `PLANNED` | Brak pełnego scenariusza timeoutu synchronicznego albo braku callbacka. |
-| Pełne reguły retry | `IN_PROGRESS` | PR `feat/lab-rate-limit` daje fundament: współdzieloną definicję opóźnień 15/30/60 sekund (`packages/domain/src/orders/lab-send-retry.ts`), trwałą kolejkę `lab_send_retry_jobs` i scheduler odporny na restart, a także pełną ścieżkę `429 → ponowienie po 15 s → sukces`. Poza zakresem tego PR-a pozostają: drugie i trzecie ponowienie (30 s, 60 s), wyczerpanie prób i przejście zlecenia w `TECHNICAL_ERROR`, a także zastosowanie mechanizmu do `SERVER_ERROR` i `TIMEOUT`. Mechanizm NIE jest jeszcze ukończony jako pełna reguła produktowa. |
+| Pełne reguły retry | `IN_PROGRESS` | PR `feat/lab-rate-limit` dał fundament trwałej kolejki, a PR `feat/lab-server-error` domyka harmonogram 15/30/60 s, wyczerpanie prób i `TECHNICAL_ERROR` dla kontrolowanego 5xx. Poza zakresem pozostaje zastosowanie tych reguł do `TIMEOUT`. |
 | Powiadomienia | `PLANNED` | Brak modułu powiadomień i widoku `/notifications`. |
 
 ## Dowody weryfikacji
@@ -60,6 +60,6 @@ Po review PR `feat/lab-rate-limit` scenariusz został poprawiony w trzech miejsc
 
 Ograniczenie architektury odnotowane przy punkcie 2: aktualny model produktu NIE pozwala personelowi zmienić danych objętych hashem wysyłki dla zlecenia w `SAMPLE_COLLECTED` — edycja zlecenia jest dopuszczona tylko w `DRAFT`, a rejestracja próbki tylko w `DRAFT`/`SAMPLE_COLLECTION_IN_PROGRESS`. Sprawdzenie hasha chroni więc przed zmianą spoza publicznego API (operacja serwisowa, import, wyścig na poziomie bazy), a test e2e wywołuje taką zmianę zapisem bezpośrednio w bazie.
 
-Pełne reguły retry pozostają `IN_PROGRESS`: ten PR dostarcza fundament (współdzielony harmonogram 15/30/60 s, trwałą kolejkę `lab_send_retry_jobs`, scheduler i idempotencję) oraz jedną kompletną ścieżkę `429 → ponowienie po 15 s → sukces`. Drugie i trzecie ponowienie, wyczerpanie prób i końcowy `TECHNICAL_ERROR` nie są zaimplementowane i nie mogą być uznane za gotowe.
+Scenariusz `SERVER_ERROR` jest oznaczony jako `IMPLEMENTED` na podstawie kodu i testów dodanych w PR `feat/lab-server-error`. Lokalne wyniki bramek jakości należy zapisać w opisie PR-a; test integracyjny wymaga MySQL i może wymagać potwierdzenia w CI, jeżeli lokalne środowisko nie udostępnia bazy.
 
-Rekomendowany następny PR: scenariusz `SERVER_ERROR`, który wykorzysta ten sam mechanizm ponowień i domknie wyczerpanie prób.
+Rekomendowany następny PR: scenariusz `TIMEOUT`, który wykorzysta ten sam mechanizm ponowień bez dodawania pollingu UI, powiadomień ani panelu `/admin`.

@@ -161,6 +161,22 @@ export interface LabSendRetryAcceptedDetails {
 }
 
 /**
+ * Szczegóły zaplanowania automatycznego ponowienia po kontrolowanym błędzie
+ * laboratorium. Wpis może powstać po pierwszej próbie ręcznej albo po
+ * automatycznym ponowieniu, które dostało kolejne `5xx`.
+ */
+export interface LabSendRetryScheduledDetails {
+  attemptNumber: number;
+  outcome: "SCHEDULED" | "FAILED_RETRY";
+  labStatusCode: 503;
+  nextAttemptNumber: number;
+  retryAfterSeconds: number;
+  nextRetryAt: string;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
+}
+
+/**
  * Szczegóły automatycznego ponowienia ANULOWANEGO przed wysyłką.
  *
  * Anulowanie następuje, gdy między pierwszą próbą a wykonaniem ponowienia
@@ -179,18 +195,27 @@ export interface LabSendRetryCancelledDetails {
   newStatus: "SAMPLE_COLLECTED";
 }
 
+/** Szczegóły wyczerpania automatycznych ponowień wysyłki. */
+export interface LabSendRetryExhaustedDetails {
+  attemptNumber: number;
+  outcome: "EXHAUSTED";
+  labStatusCode: 503;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "TECHNICAL_ERROR";
+}
+
 export type LabSendRetryDetails =
   | LabSendRetryAcceptedDetails
-  | LabSendRetryCancelledDetails;
+  | LabSendRetryScheduledDetails
+  | LabSendRetryCancelledDetails
+  | LabSendRetryExhaustedDetails;
 
 /**
- * Definiowany na wypadek wystąpienia błędu technicznego w obsługiwanym obecnie procesie.
- * Żaden zaimplementowany obecnie przepływ nie ustawia jeszcze statusu TECHNICAL_ERROR
- * (pełne reguły retry są zaplanowane w Etapie 4), więc ten typ szczegółów nie jest jeszcze
- * emitowany przez kod produkcyjny.
+ * Szczegóły terminalnego błędu technicznego zlecenia.
  */
 export interface TechnicalErrorDetails {
   reason: string;
+  attemptNumber?: number;
   previousStatus: OrderStatus;
   newStatus: OrderStatus;
 }
@@ -418,6 +443,42 @@ export function buildLabSendRetryDetails(input: {
   };
 }
 
+export function buildLabSendRetryScheduledDetails(input: {
+  attemptNumber: number;
+  nextAttemptNumber: number;
+  retryAfterSeconds: number;
+  nextRetryAt: Date;
+}): LabSendRetryScheduledDetails {
+  return {
+    attemptNumber: input.attemptNumber,
+    outcome: "SCHEDULED",
+    labStatusCode: 503,
+    nextAttemptNumber: input.nextAttemptNumber,
+    retryAfterSeconds: input.retryAfterSeconds,
+    nextRetryAt: input.nextRetryAt.toISOString(),
+    previousStatus: "SAMPLE_COLLECTED",
+    newStatus: "SAMPLE_COLLECTED"
+  };
+}
+
+export function buildLabSendRetryFailedDetails(input: {
+  attemptNumber: number;
+  nextAttemptNumber: number;
+  retryAfterSeconds: number;
+  nextRetryAt: Date;
+}): LabSendRetryScheduledDetails {
+  return {
+    attemptNumber: input.attemptNumber,
+    outcome: "FAILED_RETRY",
+    labStatusCode: 503,
+    nextAttemptNumber: input.nextAttemptNumber,
+    retryAfterSeconds: input.retryAfterSeconds,
+    nextRetryAt: input.nextRetryAt.toISOString(),
+    previousStatus: "SAMPLE_COLLECTED",
+    newStatus: "SAMPLE_COLLECTED"
+  };
+}
+
 /**
  * Buduje bezpieczne szczegóły ANULOWANEGO automatycznego ponowienia.
  *
@@ -435,5 +496,31 @@ export function buildLabSendRetryCancelledDetails(input: {
     reason: input.reason,
     previousStatus: "SAMPLE_COLLECTED",
     newStatus: "SAMPLE_COLLECTED"
+  };
+}
+
+export function buildLabSendRetryExhaustedDetails(input: {
+  attemptNumber: number;
+}): LabSendRetryExhaustedDetails {
+  return {
+    attemptNumber: input.attemptNumber,
+    outcome: "EXHAUSTED",
+    labStatusCode: 503,
+    previousStatus: "SAMPLE_COLLECTED",
+    newStatus: "TECHNICAL_ERROR"
+  };
+}
+
+export function buildTechnicalErrorDetails(input: {
+  reason: string;
+  attemptNumber?: number;
+  previousStatus: OrderStatus;
+  newStatus: OrderStatus;
+}): TechnicalErrorDetails {
+  return {
+    reason: input.reason,
+    ...(input.attemptNumber !== undefined ? { attemptNumber: input.attemptNumber } : {}),
+    previousStatus: input.previousStatus,
+    newStatus: input.newStatus
   };
 }

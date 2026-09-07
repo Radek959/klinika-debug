@@ -6,6 +6,10 @@ import {
   buildLabSampleRejectedDetails,
   buildLabSendRetryCancelledDetails,
   buildLabSendRetryDetails,
+  buildLabSendRetryExhaustedDetails,
+  buildLabSendRetryFailedDetails,
+  buildLabSendRetryScheduledDetails,
+  buildTechnicalErrorDetails,
   buildOrderCreatedDetails,
   buildOrderSentToLabDetails,
   buildOrderUpdatedDetails,
@@ -390,6 +394,59 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
       ]);
     });
 
+    it("buduje szczegóły zaplanowania ponowienia po błędzie 5xx laboratorium", () => {
+      const nextRetryAt = new Date("2026-09-07T10:00:15.000Z");
+
+      const details = buildLabSendRetryScheduledDetails({
+        attemptNumber: 1,
+        nextAttemptNumber: 2,
+        retryAfterSeconds: 15,
+        nextRetryAt
+      });
+
+      expect(details).toEqual({
+        attemptNumber: 1,
+        outcome: "SCHEDULED",
+        labStatusCode: 503,
+        nextAttemptNumber: 2,
+        retryAfterSeconds: 15,
+        nextRetryAt: nextRetryAt.toISOString(),
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SAMPLE_COLLECTED"
+      });
+    });
+
+    it("buduje szczegóły nieudanego automatycznego ponowienia z kolejnym terminem", () => {
+      const nextRetryAt = new Date("2026-09-07T10:00:45.000Z");
+
+      const details = buildLabSendRetryFailedDetails({
+        attemptNumber: 2,
+        nextAttemptNumber: 3,
+        retryAfterSeconds: 30,
+        nextRetryAt
+      });
+
+      expect(details.outcome).toBe("FAILED_RETRY");
+      expect(details.attemptNumber).toBe(2);
+      expect(details.nextAttemptNumber).toBe(3);
+      expect(details.retryAfterSeconds).toBe(30);
+      expect(details.nextRetryAt).toBe(nextRetryAt.toISOString());
+      expect(details.previousStatus).toBe("SAMPLE_COLLECTED");
+      expect(details.newStatus).toBe("SAMPLE_COLLECTED");
+    });
+
+    it("buduje szczegóły wyczerpania prób z przejściem do TECHNICAL_ERROR", () => {
+      const details = buildLabSendRetryExhaustedDetails({ attemptNumber: 4 });
+
+      expect(details).toEqual({
+        attemptNumber: 4,
+        outcome: "EXHAUSTED",
+        labStatusCode: 503,
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "TECHNICAL_ERROR"
+      });
+    });
+
     it("nie zapisuje nazwy aktywnego scenariusza symulatora", () => {
       const serialized = JSON.stringify(buildLabOrderRejectedDetails({ fieldErrors }));
 
@@ -522,6 +579,46 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
         "previousStatus",
         "reason"
       ]);
+    });
+
+    it("nie przepuszcza danych wrażliwych do szczegółów błędu 5xx i wyczerpania", () => {
+      const scheduled = buildLabSendRetryScheduledDetails({
+        attemptNumber: 1,
+        nextAttemptNumber: 2,
+        retryAfterSeconds: 15,
+        nextRetryAt: new Date("2026-09-07T10:00:15.000Z"),
+        scenario: "SERVER_ERROR",
+        pesel: "44051401458",
+        requestHash: "9f2c1b4d",
+        idempotencyKey: "send-secret"
+      } as never);
+      const exhausted = buildLabSendRetryExhaustedDetails({
+        attemptNumber: 4,
+        scenario: "SERVER_ERROR",
+        barcode: "SMP-0001"
+      } as never);
+
+      const serialized = JSON.stringify([scheduled, exhausted]);
+      expect(serialized).not.toMatch(/pesel|scenario|requestHash|idempotencyKey|barcode/i);
+      expect(serialized).not.toContain("SERVER_ERROR");
+    });
+
+    it("buduje bezpieczne szczegóły terminalnego błędu technicznego", () => {
+      const details = buildTechnicalErrorDetails({
+        reason: "Automatyczne ponowienia wysyłki do laboratorium zostały wyczerpane.",
+        attemptNumber: 4,
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "TECHNICAL_ERROR",
+        pesel: "44051401458"
+      } as never);
+
+      expect(details).toEqual({
+        reason: "Automatyczne ponowienia wysyłki do laboratorium zostały wyczerpane.",
+        attemptNumber: 4,
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "TECHNICAL_ERROR"
+      });
+      expect(JSON.stringify(details)).not.toContain("44051401458");
     });
   });
 });

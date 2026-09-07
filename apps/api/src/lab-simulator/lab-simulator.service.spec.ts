@@ -3,7 +3,8 @@ import {
   type LabSimulatorOrderAccepted,
   type LabSimulatorOrderInput,
   type LabSimulatorOrderRateLimited,
-  type LabSimulatorOrderRejected
+  type LabSimulatorOrderRejected,
+  type LabSimulatorOrderServerError
 } from "./lab-simulator.service";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -51,6 +52,21 @@ function acceptRateLimited(
   }
   if (result.rejectionType !== "RATE_LIMIT") {
     throw new Error("Oczekiwano ograniczenia przepustowości, a nie odrzucenia walidacyjnego.");
+  }
+  return result;
+}
+
+/** Zawęża wynik symulatora do kontrolowanego błędu 5xx laboratorium. */
+function acceptServerError(
+  service: LabSimulatorService,
+  input: LabSimulatorOrderInput
+): LabSimulatorOrderServerError {
+  const result = service.acceptOrder(input);
+  if (result.accepted) {
+    throw new Error("Oczekiwano kontrolowanego błędu serwera laboratorium.");
+  }
+  if (result.rejectionType !== "SERVER_ERROR") {
+    throw new Error("Oczekiwano błędu serwera laboratorium.");
   }
   return result;
 }
@@ -529,6 +545,65 @@ describe("LabSimulatorService", () => {
       expect(serialized).not.toContain("barcode");
       expect(serialized).not.toContain("pesel");
       expect(serialized).not.toContain("EXT-");
+    });
+  });
+
+  describe("scenariusz SERVER_ERROR", () => {
+    beforeEach(() => {
+      process.env.LAB_SIMULATOR_SCENARIO = "SERVER_ERROR";
+    });
+
+    it("zwraca kontrolowany błąd 503 dla pierwszej próby", () => {
+      const result = acceptServerError(service, { ...buildInput(2), attemptNumber: 1 });
+
+      expect(result.accepted).toBe(false);
+      expect(result.rejectionType).toBe("SERVER_ERROR");
+      expect(result.statusCode).toBe(503);
+      expect(result.errorCode).toBe("LAB_SERVER_ERROR");
+      expect(result.message).toBe(
+        "Laboratorium jest chwilowo niedostępne. Wysyłka zostanie ponowiona automatycznie."
+      );
+    });
+
+    it("planuje trzy kolejne automatyczne próby według harmonogramu 15/30/60", () => {
+      expect(
+        acceptServerError(service, { ...buildInput(2), attemptNumber: 1 }).nextAttemptNumber
+      ).toBe(2);
+      expect(
+        acceptServerError(service, { ...buildInput(2), attemptNumber: 1 })
+          .retryAfterSeconds
+      ).toBe(15);
+      expect(
+        acceptServerError(service, { ...buildInput(2), attemptNumber: 2 })
+          .retryAfterSeconds
+      ).toBe(30);
+      expect(
+        acceptServerError(service, { ...buildInput(2), attemptNumber: 3 })
+          .retryAfterSeconds
+      ).toBe(60);
+    });
+
+    it("nie planuje kolejnej próby po trzecim automatycznym ponowieniu", () => {
+      const result = acceptServerError(service, { ...buildInput(2), attemptNumber: 4 });
+
+      expect(result.nextAttemptNumber).toBeNull();
+      expect(result.nextRetryAt).toBeNull();
+      expect(result.retryAfterSeconds).toBeNull();
+    });
+
+    it("nie tworzy externalOrderId ani zadania callbacka dla żadnej próby", () => {
+      for (const attemptNumber of [1, 2, 3, 4]) {
+        const result = acceptServerError(service, {
+          ...buildMultiMaterialInput(),
+          attemptNumber
+        });
+        const serialized = JSON.stringify(result);
+
+        expect(serialized).not.toContain("EXT-");
+        expect(serialized).not.toContain("externalOrderId");
+        expect(serialized).not.toContain("jobs");
+        expect(serialized).not.toContain("estimatedCompletionAt");
+      }
     });
   });
 
