@@ -8,6 +8,7 @@ export type OrderHistoryEventType =
   | "ORDER_SENT_TO_LAB"
   | "LAB_ORDER_ACCEPTED"
   | "LAB_RESULT_RECEIVED"
+  | "LAB_SAMPLE_REJECTED"
   | "TECHNICAL_ERROR";
 
 export type OrderHistoryActorType = "STAFF" | "SYSTEM" | "LAB";
@@ -45,10 +46,16 @@ export interface OrderSentToLabDetails {
   newStatus: OrderStatus;
 }
 
+/**
+ * Szczegóły synchronicznego przyjęcia zlecenia przez laboratorium.
+ *
+ * Nazwa aktywnego scenariusza symulatora jest wewnętrznym trybem środowiska
+ * i celowo nie należy do tych szczegółów — historia zlecenia jest widoczna dla
+ * uczestnika warsztatu i nie może ujawniać, jaki scenariusz jest włączony.
+ */
 export interface LabOrderAcceptedDetails {
   externalOrderId: string;
   estimatedCompletionAt: string;
-  scenario: string;
 }
 
 export interface LabResultReceivedDetails {
@@ -59,6 +66,35 @@ export interface LabResultReceivedDetails {
   testCodes: string[];
   previousStatus: OrderStatus;
   newStatus: OrderStatus;
+}
+
+/** Pojedyncza próbka odrzucona przez laboratorium w danym callbacku. */
+export interface LabSampleRejectedItem {
+  sampleId: string;
+  materialType: OrderMaterialType;
+  rejectionCode: string;
+  rejectionReason: string;
+}
+
+/**
+ * Szczegóły zdarzenia odrzucenia próbek przez laboratorium.
+ *
+ * Kontrakt callbacka dopuszcza odrzucenie wielu próbek naraz, więc jeden
+ * callback daje jeden wpis historii zawierający pełną, deterministycznie
+ * posortowaną listę odrzuconych próbek.
+ *
+ * Zakres pól jest celowo zamknięty. Nie zapisujemy tu PESEL-u, imienia,
+ * nazwiska, danych kontaktowych pacjenta, kodu kreskowego próbki, pełnego
+ * payloadu callbacka ani sekretu webhooka.
+ */
+export interface LabSampleRejectedDetails {
+  eventId: string;
+  externalOrderId: string;
+  rejectedSamples: LabSampleRejectedItem[];
+  completedTestCodes: string[];
+  rejectedTestCodes: string[];
+  previousStatus: OrderStatus;
+  newStatus: "REJECTED";
 }
 
 /**
@@ -167,12 +203,10 @@ export function buildOrderSentToLabDetails(input: {
 export function buildLabOrderAcceptedDetails(input: {
   externalOrderId: string;
   estimatedCompletionAt: string;
-  scenario: string;
 }): LabOrderAcceptedDetails {
   return {
     externalOrderId: input.externalOrderId,
-    estimatedCompletionAt: input.estimatedCompletionAt,
-    scenario: input.scenario
+    estimatedCompletionAt: input.estimatedCompletionAt
   };
 }
 
@@ -191,6 +225,40 @@ export function buildLabResultReceivedDetails(input: {
     callbackStatus: input.callbackStatus,
     resultCount: input.resultCount,
     testCodes: [...input.testCodes].sort(),
+    previousStatus: input.previousStatus,
+    newStatus: input.newStatus
+  };
+}
+
+/**
+ * Buduje szczegóły zdarzenia `LAB_SAMPLE_REJECTED` z kompletu odrzuconych
+ * próbek. Lista jest sortowana po `sampleId`, więc ten sam callback zawsze daje
+ * ten sam, stabilny zapis w historii — niezależnie od kolejności w payloadzie.
+ * Każdy element jest przepisywany pole po polu, żeby żadna dodatkowa wartość
+ * z payloadu callbacka nie trafiła do publicznej historii.
+ */
+export function buildLabSampleRejectedDetails(input: {
+  eventId: string;
+  externalOrderId: string;
+  rejectedSamples: LabSampleRejectedItem[];
+  completedTestCodes: string[];
+  rejectedTestCodes: string[];
+  previousStatus: OrderStatus;
+  newStatus: "REJECTED";
+}): LabSampleRejectedDetails {
+  return {
+    eventId: input.eventId,
+    externalOrderId: input.externalOrderId,
+    rejectedSamples: [...input.rejectedSamples]
+      .sort((left, right) => left.sampleId.localeCompare(right.sampleId))
+      .map((sample) => ({
+        sampleId: sample.sampleId,
+        materialType: sample.materialType,
+        rejectionCode: sample.rejectionCode,
+        rejectionReason: sample.rejectionReason
+      })),
+    completedTestCodes: [...input.completedTestCodes].sort(),
+    rejectedTestCodes: [...input.rejectedTestCodes].sort(),
     previousStatus: input.previousStatus,
     newStatus: input.newStatus
   };

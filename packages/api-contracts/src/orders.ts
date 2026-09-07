@@ -6,6 +6,7 @@ import type {
   MaterialType,
   OrderPriority,
   OrderStatus,
+  OrderTestStatus,
   SampleStatus
 } from "./tests-catalog";
 import type { OrderResultItem } from "./lab-results";
@@ -55,6 +56,7 @@ export interface OrderTestResponse {
   code: string;
   name: string;
   materialType: MaterialType;
+  status: OrderTestStatus;
   additionalData: OrderAdditionalData | null;
 }
 

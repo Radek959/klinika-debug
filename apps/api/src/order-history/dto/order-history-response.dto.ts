@@ -19,6 +19,7 @@ const EVENT_TYPE_ENUM = [
   "ORDER_SENT_TO_LAB",
   "LAB_ORDER_ACCEPTED",
   "LAB_RESULT_RECEIVED",
+  "LAB_SAMPLE_REJECTED",
   "TECHNICAL_ERROR"
 ];
 
@@ -31,7 +32,8 @@ export class OrderHistoryItemDto {
       "Typ zdarzenia. ORDER_CREATED — utworzenie zlecenia, ORDER_UPDATED — edycja zlecenia w statusie DRAFT, " +
       "SAMPLE_REGISTERED — rejestracja pobrania próbki, ORDER_SENT_TO_LAB — wysłanie zlecenia do laboratorium, " +
       "LAB_ORDER_ACCEPTED — synchroniczne przyjęcie zlecenia przez laboratorium, LAB_RESULT_RECEIVED — odebranie " +
-      "wyniku przez callback laboratorium, TECHNICAL_ERROR — błąd techniczny w obsłudze zlecenia (typ zdefiniowany " +
+      "wyniku przez callback laboratorium, LAB_SAMPLE_REJECTED — odrzucenie próbek zlecenia przez laboratorium " +
+      "terminalnym callbackiem, TECHNICAL_ERROR — błąd techniczny w obsłudze zlecenia (typ zdefiniowany " +
       "na przyszłość; żaden z obecnie zaimplementowanych procesów jeszcze go nie emituje).",
     enum: EVENT_TYPE_ENUM,
     example: "ORDER_SENT_TO_LAB"
@@ -104,10 +106,14 @@ export class OrderHistoryItemDto {
       "priority, testCodes, requiredMaterials i finalStatus; ORDER_UPDATED zawiera changedFields, patientChanged, " +
       "previousPriority/newPriority i addedTestCodes/removedTestCodes (bez danych osobowych pacjenta); " +
       "SAMPLE_REGISTERED zawiera materialType, sampleId oraz przejście statusu zlecenia; ORDER_SENT_TO_LAB zawiera " +
-      "idempotencyKey, correlationId i przejście statusu; LAB_ORDER_ACCEPTED zawiera externalOrderId, " +
-      "estimatedCompletionAt i scenario; LAB_RESULT_RECEIVED zawiera eventId, externalOrderId, callbackStatus, " +
-      "resultCount, testCodes i przejście statusu — bez pełnego payloadu webhooka. Wpis odtworzony podczas migracji " +
-      "zawiera dodatkowo pole reconstructed: true i może pomijać pozostałe pola szczegółowe.",
+      "idempotencyKey, correlationId i przejście statusu; LAB_ORDER_ACCEPTED zawiera wyłącznie externalOrderId " +
+      "i estimatedCompletionAt (bez wewnętrznej nazwy scenariusza symulatora); LAB_RESULT_RECEIVED zawiera eventId, " +
+      "externalOrderId, callbackStatus, resultCount, testCodes i przejście statusu; LAB_SAMPLE_REJECTED zawiera " +
+      "eventId, externalOrderId, pełną listę rejectedSamples (sampleId, materialType, rejectionCode, " +
+      "rejectionReason), completedTestCodes, rejectedTestCodes i przejście statusu — bez pełnego payloadu webhooka, " +
+      "kodów kreskowych i danych pacjenta. Odpowiedź zawiera wyłącznie pola wymienione dla danego eventType. " +
+      "Wpis odtworzony podczas migracji zawiera dodatkowo pole reconstructed: true i może pomijać pozostałe pola " +
+      "szczegółowe.",
     type: "object",
     additionalProperties: true,
     example: {

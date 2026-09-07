@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import {
   computePartialSuccessCallbackOffsets,
   generateSyntheticResult,
-  splitMedicalTestIdsForPartialSuccess
+  planSampleRejection,
+  splitMedicalTestIdsForPartialSuccess,
+  type OrderMaterialType
 } from "@klinika/domain";
 import type { LabResultTestPayload, LabResultsWebhookRequest } from "@klinika/api-contracts";
 import { resolveLabSimulatorScenario } from "./lab-simulator-scenario";
@@ -16,7 +18,19 @@ export interface LabSimulatorParameterInput {
 
 export interface LabSimulatorTestInput {
   medicalTestId: string;
+  /** Rodzaj materiału wymaganego przez badanie — wiąże badanie z próbką. */
+  materialType: OrderMaterialType;
   parameters: LabSimulatorParameterInput[];
+}
+
+/**
+ * Minimalny opis próbki przekazywany do symulatora: identyfikator i rodzaj
+ * materiału. Celowo nie przekazujemy tu danych pacjenta, kodu kreskowego ani
+ * innych danych wrażliwych — symulator ich nie potrzebuje.
+ */
+export interface LabSimulatorSampleInput {
+  sampleId: string;
+  materialType: OrderMaterialType;
 }
 
 export interface LabSimulatorOrderInput {
@@ -24,6 +38,7 @@ export interface LabSimulatorOrderInput {
   orderId: string;
   correlationId: string;
   tests: LabSimulatorTestInput[];
+  samples: LabSimulatorSampleInput[];
 }
 
 export interface LabSimulatorScheduledJob {
@@ -50,6 +65,10 @@ export class LabSimulatorService {
 
     if (scenario === "PARTIAL_SUCCESS" && input.tests.length >= 2) {
       return this.buildPartialSuccessResult(input, externalOrderId, delayMs);
+    }
+
+    if (scenario === "SAMPLE_REJECTED" && input.samples.length > 0) {
+      return this.buildSampleRejectedResult(input, externalOrderId, delayMs);
     }
 
     // Zachowanie SUCCESS. Jest też jawnym, przetestowanym fallbackiem dla
@@ -146,6 +165,63 @@ export class LabSimulatorService {
           scenario: "PARTIAL_SUCCESS",
           executeAt: estimatedCompletionAt,
           payload: completionPayload
+        }
+      ]
+    };
+  }
+
+  /**
+   * Scenariusz SAMPLE_REJECTED: laboratorium odrzuca dokładnie jedną próbkę.
+   *
+   * Wybór próbki jest deterministyczny (bez losowania), a wyniki powstają
+   * wyłącznie dla badań wykonanych z nieodrzuconych materiałów. Powstaje
+   * dokładnie jeden końcowy callback o statusie REJECTED — zarówno dla
+   * zlecenia z jedną próbką, jak i z wieloma.
+   */
+  private buildSampleRejectedResult(
+    input: LabSimulatorOrderInput,
+    externalOrderId: string,
+    delayMs: number
+  ): LabSimulatorOrderResult {
+    const estimatedCompletionAt = new Date(Date.now() + delayMs);
+    const testsById = new Map(input.tests.map((test) => [test.medicalTestId, test]));
+    const plan = planSampleRejection({
+      samples: input.samples,
+      tests: input.tests.map((test) => ({
+        medicalTestId: test.medicalTestId,
+        materialType: test.materialType
+      }))
+    });
+
+    const results = plan.completedMedicalTestIds.map((medicalTestId) =>
+      this.buildTestResultPayload(input.orderId, testsById.get(medicalTestId)!)
+    );
+
+    const payload: LabResultsWebhookRequest = {
+      externalOrderId,
+      eventId: randomUUID(),
+      correlationId: input.correlationId,
+      status: "REJECTED",
+      results,
+      // Callback REJECTED jest terminalny: żadne badanie nie zostaje w oczekiwaniu.
+      pendingMedicalTestIds: [],
+      rejectedSamples: [
+        {
+          sampleId: plan.rejectedSampleId,
+          rejectionCode: plan.rejectionCode,
+          rejectionReason: plan.rejectionReason
+        }
+      ]
+    };
+
+    return {
+      externalOrderId,
+      estimatedCompletionAt,
+      jobs: [
+        {
+          scenario: "SAMPLE_REJECTED",
+          executeAt: estimatedCompletionAt,
+          payload
         }
       ]
     };

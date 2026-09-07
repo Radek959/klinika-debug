@@ -132,6 +132,161 @@ describe("interfejs zleceń", () => {
     expect(await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })).toBeInTheDocument();
   });
 
+  it("pokazuje odrzucenie wszystkich próbek po polsku i komunikat o braku wyników", async () => {
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url.startsWith("/api/v1/orders/order-1/history")) {
+        return json({ items: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 } });
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(
+          orderDetails({
+            status: "REJECTED",
+            tests: [
+              {
+                id: "order-test-1",
+                medicalTestId: "test-crp",
+                code: "CRP",
+                name: "CRP",
+                materialType: "SERUM",
+                status: "REJECTED",
+                additionalData: null
+              }
+            ],
+            samples: [
+              {
+                id: "sample-1",
+                materialType: "SERUM",
+                status: "REJECTED",
+                barcode: "SMP-1",
+                collectedAt: "2026-09-07T10:00:00.000Z",
+                collectedByUserId: "user-1",
+                rejectionCode: "INSUFFICIENT_VOLUME",
+                rejectionReason: "Niewystarczająca objętość próbki"
+              }
+            ],
+            results: []
+          })
+        );
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/orders/order-1");
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Odrzucone").length).toBeGreaterThan(0);
+    expect(screen.getByText("Odrzucona")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Niewystarczająca objętość próbki \(INSUFFICIENT_VOLUME\)/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Brak wyników — laboratorium odrzuciło wymagane próbki.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/SAMPLE_REJECTED/)).not.toBeInTheDocument();
+    expect(screen.queryByText("REJECTED")).not.toBeInTheDocument();
+    expect(screen.queryByText("PENDING")).not.toBeInTheDocument();
+  });
+
+  it("pokazuje mieszany przypadek: część badań wykonana, jedna próbka odrzucona", async () => {
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url.startsWith("/api/v1/orders/order-1/history")) {
+        return json({ items: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 } });
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(
+          orderDetails({
+            status: "REJECTED",
+            tests: [
+              {
+                id: "order-test-1",
+                medicalTestId: "test-crp",
+                code: "CRP",
+                name: "CRP",
+                materialType: "SERUM",
+                status: "COMPLETED",
+                additionalData: null
+              },
+              {
+                id: "order-test-2",
+                medicalTestId: "test-morf",
+                code: "MORF",
+                name: "Morfologia krwi",
+                materialType: "EDTA_BLOOD",
+                status: "REJECTED",
+                additionalData: null
+              }
+            ],
+            samples: [
+              {
+                id: "sample-1",
+                materialType: "EDTA_BLOOD",
+                status: "REJECTED",
+                barcode: "SMP-1",
+                collectedAt: "2026-09-07T10:00:00.000Z",
+                collectedByUserId: "user-1",
+                rejectionCode: "HEMOLYZED",
+                rejectionReason: "Próbka zhemolizowana"
+              },
+              {
+                id: "sample-2",
+                materialType: "SERUM",
+                status: "ACCEPTED",
+                barcode: "SMP-2",
+                collectedAt: "2026-09-07T10:00:00.000Z",
+                collectedByUserId: "user-1",
+                rejectionCode: null,
+                rejectionReason: null
+              }
+            ],
+            results: [
+              {
+                medicalTestId: "test-crp",
+                parameters: [
+                  {
+                    code: "CRP",
+                    value: "3.10",
+                    unit: "mg/L",
+                    referenceRange: null,
+                    flag: "NORMAL",
+                    resultedAt: "2026-09-07T11:00:00.000Z"
+                  }
+                ]
+              }
+            ]
+          })
+        );
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/orders/order-1");
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Wykonane")).toBeInTheDocument();
+    expect(screen.getByText("Zaakceptowana")).toBeInTheDocument();
+    expect(screen.getByText("Odrzucona")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Próbka zhemolizowana \(HEMOLYZED\)/)
+    ).toBeInTheDocument();
+    // Wyniki odebrane przed odrzuceniem pozostają widoczne.
+    expect(screen.getByText("3.10")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Brak wyników — laboratorium odrzuciło wymagane próbki.")
+    ).not.toBeInTheDocument();
+  });
+
   it("rejestruje próbkę i wysyła zlecenie do laboratorium", async () => {
     window.history.pushState({}, "", "/orders/order-1");
     let currentOrder = orderDetails();
@@ -245,6 +400,7 @@ describe("interfejs zleceń", () => {
               {
                 id: "order-test-glu",
                 medicalTestId: "test-glu",
+                status: "PENDING",
                 code: "GLU",
                 name: "Glukoza z bardzo długą nazwą kontrolną",
                 materialType: "SERUM",
@@ -329,6 +485,7 @@ describe("interfejs zleceń", () => {
               {
                 id: "order-test-glu",
                 medicalTestId: "test-glu",
+                status: "PENDING",
                 code: "GLU",
                 name: "Glukoza z bardzo długą nazwą kontrolną",
                 materialType: "SERUM",
@@ -710,7 +867,7 @@ function orderDetails(overrides: Partial<OrderDetailsResponse> = {}): OrderDetai
     },
     priority: "ROUTINE",
     status: "SAMPLE_COLLECTED",
-    tests: [{ id: "order-test-1", medicalTestId: "test-crp", code: "CRP", name: "CRP", materialType: "SERUM", additionalData: null }],
+    tests: [{ id: "order-test-1", medicalTestId: "test-crp", code: "CRP", name: "CRP", materialType: "SERUM", status: "PENDING", additionalData: null }],
     samples: [
       { id: "sample-1", materialType: "SERUM", status: "REQUIRED", barcode: null, collectedAt: null, collectedByUserId: null, rejectionCode: null, rejectionReason: null }
     ],

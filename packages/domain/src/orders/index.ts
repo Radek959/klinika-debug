@@ -1,4 +1,5 @@
 export * from "./lab-results";
+export * from "./lab-sample-rejection";
 export * from "./order-creation";
 export * from "./order-draft-edit";
 export * from "./order-history";

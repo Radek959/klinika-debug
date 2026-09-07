@@ -746,7 +746,14 @@ export class OrdersService {
       correlationId,
       tests: order.tests.map((test) => ({
         medicalTestId: test.medicalTestId,
+        materialType: test.medicalTest.materialType,
         parameters: test.medicalTest.parameters
+      })),
+      // Symulator dostaje tylko identyfikator i rodzaj materiału próbki —
+      // bez kodu kreskowego, danych pacjenta i innych danych wrażliwych.
+      samples: order.samples.map((sample) => ({
+        sampleId: sample.id,
+        materialType: sample.materialType
       }))
     });
 
@@ -831,10 +838,12 @@ export class OrdersService {
           actorType: "LAB",
           occurredAt: sentAt,
           correlationId,
+          // Aktywny scenariusz symulatora (`job.scenario`) zostaje wyłącznie
+          // w technicznej kolejce `lab_jobs`. Historia zlecenia jest widoczna
+          // dla uczestnika warsztatu, więc nie może go ujawniać.
           details: buildLabOrderAcceptedDetails({
             externalOrderId: simulatorResult.externalOrderId,
-            estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString(),
-            scenario: simulatorResult.jobs[0].scenario
+            estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString()
           })
         });
 

@@ -315,7 +315,12 @@ describe("orders history api", () => {
 
     expect(acceptedEntries[0].actorType).toBe("LAB");
     expect(acceptedEntries[0].details.externalOrderId).toEqual(expect.stringMatching(/^EXT-/));
-    expect(acceptedEntries[0].details.scenario).toBe("SUCCESS");
+    // Publiczna historia nie ujawnia aktywnego trybu symulatora laboratorium.
+    expect(Object.keys(acceptedEntries[0].details).sort()).toEqual([
+      "estimatedCompletionAt",
+      "eventType",
+      "externalOrderId"
+    ]);
   });
 
   it("zawiera wpis odebrania wyniku i nie duplikuje go po ponownym callbacku z tym samym eventId", async () => {
@@ -567,6 +572,33 @@ describe("orders history api", () => {
     expect(path.get.responses).toHaveProperty("400");
     expect(path.get.responses).toHaveProperty("401");
     expect(path.get.responses).toHaveProperty("404");
+  });
+
+  it("dokumentuje w OpenAPI typ zdarzenia LAB_SAMPLE_REJECTED i nie deklaruje pola scenario", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/docs-json" });
+    expect(response.statusCode).toBe(200);
+    const document = JSON.parse(response.body);
+    const itemSchema = document.components.schemas.OrderHistoryItemDto;
+    expect(itemSchema).toBeDefined();
+
+    expect(itemSchema.properties.eventType.enum).toEqual(
+      expect.arrayContaining(["LAB_SAMPLE_REJECTED"])
+    );
+    expect(itemSchema.properties.eventType.description).toContain("LAB_SAMPLE_REJECTED");
+
+    const detailsDescription = itemSchema.properties.details.description as string;
+    expect(detailsDescription).toContain("LAB_SAMPLE_REJECTED");
+    expect(detailsDescription).toContain("rejectedSamples");
+    // Udokumentowany kontrakt LAB_ORDER_ACCEPTED nie może zapowiadać pola
+    // scenario — publiczne API nie ujawnia trybu symulatora laboratorium.
+    // (Polskie słowo "scenariusza" nie zawiera podciągu "scenario".)
+    const acceptedFragment = detailsDescription.slice(
+      detailsDescription.indexOf("LAB_ORDER_ACCEPTED"),
+      detailsDescription.indexOf("LAB_RESULT_RECEIVED")
+    );
+    expect(acceptedFragment).toContain("externalOrderId");
+    expect(acceptedFragment).toContain("estimatedCompletionAt");
+    expect(acceptedFragment).not.toContain("scenario");
   });
 
   async function login() {

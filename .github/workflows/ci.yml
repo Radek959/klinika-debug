@@ -51,6 +51,8 @@ jobs:
 
       - run: npm run test:migration:order-history
 
+      - run: npm run test:migration:lab-sample-rejected
+
       - run: npm run db:migrate:test
 
       - run: npm run check

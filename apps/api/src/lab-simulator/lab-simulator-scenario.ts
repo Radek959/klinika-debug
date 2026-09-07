@@ -1,4 +1,8 @@
-export const LAB_SIMULATOR_SCENARIOS = ["SUCCESS", "PARTIAL_SUCCESS"] as const;
+export const LAB_SIMULATOR_SCENARIOS = [
+  "SUCCESS",
+  "PARTIAL_SUCCESS",
+  "SAMPLE_REJECTED"
+] as const;
 
 export type LabSimulatorScenario = (typeof LAB_SIMULATOR_SCENARIOS)[number];
 

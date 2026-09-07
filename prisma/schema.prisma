@@ -66,6 +66,7 @@ enum MedicalTestRequiredFieldValueType {
 enum OrderTestStatus {
   PENDING
   COMPLETED
+  REJECTED
 }
 
 enum ResultFlag {
@@ -89,6 +90,7 @@ enum OrderHistoryEventType {
   ORDER_SENT_TO_LAB
   LAB_ORDER_ACCEPTED
   LAB_RESULT_RECEIVED
+  LAB_SAMPLE_REJECTED
   TECHNICAL_ERROR
 }
 

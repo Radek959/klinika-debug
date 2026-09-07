@@ -49,8 +49,21 @@ export function generateSyntheticResult(
   };
 }
 
-export type OrderTestCompletionStatus = "PENDING" | "COMPLETED";
+/**
+ * Status pojedynczego badania w zleceniu.
+ *
+ * `REJECTED` oznacza badanie, którego nie da się wykonać, bo laboratorium
+ * odrzuciło wymagany dla niego materiał. Jest to poprawne zachowanie
+ * biznesowe laboratorium, a nie błąd aplikacji.
+ */
+export type OrderTestCompletionStatus = "PENDING" | "COMPLETED" | "REJECTED";
 
+/**
+ * Wyznacza status zlecenia po odebraniu wyników, które nie odrzucają żadnej
+ * próbki. Zlecenie jest `COMPLETED` dopiero wtedy, gdy wszystkie badania mają
+ * wynik. Badanie `REJECTED` nigdy nie liczy się jako wykonane — terminalny
+ * status zlecenia z odrzuconą próbką wyznacza osobna ścieżka `REJECTED`.
+ */
 export function determineOrderStatusAfterResults(
   testStatuses: OrderTestCompletionStatus[]
 ): "PARTIAL" | "COMPLETED" {
