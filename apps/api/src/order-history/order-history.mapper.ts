@@ -81,6 +81,13 @@ const ALLOWED_DETAILS_FIELDS: Record<OrderHistoryEventType, readonly string[]> =
     "previousStatus",
     "newStatus"
   ],
+  LAB_SEND_TIMEOUT_RECEIVED: [
+    "attemptNumber",
+    "retryAfterSeconds",
+    "nextRetryAt",
+    "previousStatus",
+    "newStatus"
+  ],
   // `reason` występuje wyłącznie w wariancie CANCELLED i jest zamkniętym kodem
   // technicznym (PATIENT_INACTIVE, REQUEST_CHANGED), nigdy treścią swobodną.
   LAB_SEND_RETRY: [

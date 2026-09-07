@@ -12,6 +12,7 @@ export type OrderHistoryEventType =
   | "LAB_SAMPLE_REJECTED"
   | "LAB_ORDER_REJECTED"
   | "LAB_RATE_LIMIT_RECEIVED"
+  | "LAB_SEND_TIMEOUT_RECEIVED"
   | "LAB_SEND_RETRY"
   | "TECHNICAL_ERROR";
 
@@ -140,6 +141,25 @@ export interface LabOrderRejectedDetails {
  * wysyłanego do laboratorium ani sekretów integracji.
  */
 export interface LabRateLimitReceivedDetails {
+  attemptNumber: number;
+  retryAfterSeconds: number;
+  nextRetryAt: string;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
+}
+
+/**
+ * Szczegóły timeoutu wysyłki do laboratorium.
+ *
+ * Timeout jest przejściowy i poprawnie obsługiwany — status zlecenia się nie
+ * zmienia, więc `previousStatus` i `newStatus` są równe `SAMPLE_COLLECTED`,
+ * a zdarzenie NIE jest zapisywane jako `TECHNICAL_ERROR`.
+ *
+ * Zakres pól jest celowo zamknięty. Nie zapisujemy tu nazwy aktywnego
+ * scenariusza symulatora, danych pacjenta, kodów kreskowych, pełnego payloadu
+ * wysyłanego do laboratorium ani sekretów integracji.
+ */
+export interface LabSendTimeoutReceivedDetails {
   attemptNumber: number;
   retryAfterSeconds: number;
   nextRetryAt: string;
@@ -417,6 +437,20 @@ export function buildLabRateLimitReceivedDetails(input: {
   retryAfterSeconds: number;
   nextRetryAt: Date;
 }): LabRateLimitReceivedDetails {
+  return {
+    attemptNumber: input.attemptNumber,
+    retryAfterSeconds: input.retryAfterSeconds,
+    nextRetryAt: input.nextRetryAt.toISOString(),
+    previousStatus: "SAMPLE_COLLECTED",
+    newStatus: "SAMPLE_COLLECTED"
+  };
+}
+
+export function buildLabSendTimeoutReceivedDetails(input: {
+  attemptNumber: number;
+  retryAfterSeconds: number;
+  nextRetryAt: Date;
+}): LabSendTimeoutReceivedDetails {
   return {
     attemptNumber: input.attemptNumber,
     retryAfterSeconds: input.retryAfterSeconds,

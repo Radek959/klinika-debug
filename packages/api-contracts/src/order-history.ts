@@ -10,6 +10,7 @@ export type OrderHistoryEventType =
   | "LAB_SAMPLE_REJECTED"
   | "LAB_ORDER_REJECTED"
   | "LAB_RATE_LIMIT_RECEIVED"
+  | "LAB_SEND_TIMEOUT_RECEIVED"
   | "LAB_SEND_RETRY"
   | "TECHNICAL_ERROR";
 
@@ -136,6 +137,22 @@ export interface LabRateLimitReceivedHistoryDetails {
 }
 
 /**
+ * Szczegóły timeoutu wysyłki do laboratorium.
+ *
+ * Timeout jest przejściowy: zlecenie zostaje w statusie `SAMPLE_COLLECTED`,
+ * a Klinika Debug planuje automatyczne ponowienie wysyłki. Kontrakt nie
+ * zawiera nazwy aktywnego scenariusza symulatora, danych pacjenta ani kodów
+ * kreskowych.
+ */
+export interface LabSendTimeoutReceivedHistoryDetails {
+  attemptNumber: number;
+  retryAfterSeconds: number;
+  nextRetryAt: string;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
+}
+
+/**
  * Bezpieczny kod przyczyny anulowania automatycznego ponowienia wysyłki.
  *
  * `PATIENT_INACTIVE` — pacjent przestał być aktywny po pierwszej próbie.
@@ -215,6 +232,7 @@ export type OrderHistoryEventDetails =
   | ({ eventType: "LAB_SAMPLE_REJECTED" } & LabSampleRejectedHistoryDetails)
   | ({ eventType: "LAB_ORDER_REJECTED" } & LabOrderRejectedHistoryDetails)
   | ({ eventType: "LAB_RATE_LIMIT_RECEIVED" } & LabRateLimitReceivedHistoryDetails)
+  | ({ eventType: "LAB_SEND_TIMEOUT_RECEIVED" } & LabSendTimeoutReceivedHistoryDetails)
   | ({ eventType: "LAB_SEND_RETRY" } & LabSendRetryHistoryDetails)
   | ({ eventType: "TECHNICAL_ERROR" } & TechnicalErrorHistoryDetails);
 

@@ -4,7 +4,8 @@ export const LAB_SIMULATOR_SCENARIOS = [
   "SAMPLE_REJECTED",
   "VALIDATION_ERROR",
   "RATE_LIMIT",
-  "SERVER_ERROR"
+  "SERVER_ERROR",
+  "TIMEOUT"
 ] as const;
 
 export type LabSimulatorScenario = (typeof LAB_SIMULATOR_SCENARIOS)[number];

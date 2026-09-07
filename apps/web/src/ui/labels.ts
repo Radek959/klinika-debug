@@ -80,6 +80,7 @@ export const orderHistoryEventTypeLabels: Record<OrderHistoryEventType, string> 
   LAB_SAMPLE_REJECTED: "Laboratorium odrzuciło próbkę",
   LAB_ORDER_REJECTED: "Laboratorium odrzuciło zlecenie",
   LAB_RATE_LIMIT_RECEIVED: "Laboratorium ograniczyło liczbę żądań",
+  LAB_SEND_TIMEOUT_RECEIVED: "Timeout wysyłki do laboratorium",
   LAB_SEND_RETRY: "Automatyczne ponowienie wysyłki",
   TECHNICAL_ERROR: "Wystąpił błąd techniczny"
 };

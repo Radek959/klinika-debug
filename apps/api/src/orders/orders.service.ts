@@ -26,6 +26,7 @@ import {
   buildLabOrderAcceptedDetails,
   buildLabOrderRejectedDetails,
   buildLabRateLimitReceivedDetails,
+  buildLabSendTimeoutReceivedDetails,
   buildLabSendRetryDetails,
   buildLabSendRetryCancelledDetails,
   buildLabSendRetryExhaustedDetails,
@@ -40,6 +41,8 @@ import {
   LAB_SEND_RETRY_EXHAUSTED_REASON,
   LAB_SERVER_ERROR_CODE,
   LAB_SERVER_ERROR_MESSAGE,
+  LAB_SEND_TIMEOUT_ERROR_CODE,
+  LAB_SEND_TIMEOUT_MESSAGE,
   type LabSendRetryCancellationReason,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
@@ -64,7 +67,8 @@ import {
   LabSimulatorService,
   type LabSimulatorOrderAccepted,
   type LabSimulatorOrderRateLimited,
-  type LabSimulatorOrderServerError
+  type LabSimulatorOrderServerError,
+  type LabSimulatorOrderTimeout
 } from "../lab-simulator/lab-simulator.service";
 import { resolveLabSimulatorScenario } from "../lab-simulator/lab-simulator-scenario";
 import {
@@ -761,7 +765,10 @@ export class OrdersService {
         throw await this.buildPendingRetryError(workspaceId, orderId);
       }
 
-      if (existingKey.responseStatus === HttpStatus.SERVICE_UNAVAILABLE) {
+      if (
+        existingKey.responseStatus === HttpStatus.SERVICE_UNAVAILABLE ||
+        existingKey.responseStatus === HttpStatus.GATEWAY_TIMEOUT
+      ) {
         throw await this.buildServerRetryError(workspaceId, orderId);
       }
 
@@ -828,6 +835,18 @@ export class OrdersService {
         idempotencyKey,
         requestHash,
         serverError: simulatorResult
+      });
+    }
+
+    if (!simulatorResult.accepted && simulatorResult.rejectionType === "TIMEOUT") {
+      return this.scheduleSendRetryAfterTimeout({
+        workspaceId,
+        orderId,
+        correlationId,
+        scenario,
+        idempotencyKey,
+        requestHash,
+        timeout: simulatorResult
       });
     }
 
@@ -963,7 +982,10 @@ export class OrdersService {
         throw await this.buildPendingRetryError(workspaceId, orderId);
       }
 
-      if (concurrentKey.responseStatus === HttpStatus.SERVICE_UNAVAILABLE) {
+      if (
+        concurrentKey.responseStatus === HttpStatus.SERVICE_UNAVAILABLE ||
+        concurrentKey.responseStatus === HttpStatus.GATEWAY_TIMEOUT
+      ) {
         throw await this.buildServerRetryError(workspaceId, orderId);
       }
 
@@ -1212,6 +1234,97 @@ export class OrdersService {
     throw this.serverError(retryAfterSeconds);
   }
 
+  private async scheduleSendRetryAfterTimeout(input: {
+    workspaceId: string;
+    orderId: string;
+    correlationId: string;
+    scenario: string;
+    idempotencyKey: string;
+    requestHash: string;
+    timeout: LabSimulatorOrderTimeout;
+  }): Promise<never> {
+    const { timeout } = input;
+    if (!timeout.nextRetryAt || !timeout.nextAttemptNumber) {
+      throw new Error("Pierwszy timeout wysyłki nie ma terminu ponowienia.");
+    }
+
+    const nextRetryAt = timeout.nextRetryAt;
+    const nextAttemptNumber = timeout.nextAttemptNumber;
+    const retryAfterSeconds = timeout.retryAfterSeconds ?? 0;
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.idempotencyKey.create({
+          data: {
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+            key: input.idempotencyKey,
+            requestHash: input.requestHash,
+            responseStatus: HttpStatus.GATEWAY_TIMEOUT,
+            responseBody: {
+              state: PENDING_SEND_RETRY_STATE,
+              attemptNumber: nextAttemptNumber,
+              nextRetryAt: nextRetryAt.toISOString()
+            }
+          }
+        });
+
+        await this.orderHistory.record(tx, {
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+          eventType: "LAB_SEND_TIMEOUT_RECEIVED",
+          actorType: "LAB",
+          correlationId: input.correlationId,
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: buildLabSendTimeoutReceivedDetails({
+            attemptNumber: FIRST_LAB_SEND_ATTEMPT_NUMBER,
+            retryAfterSeconds,
+            nextRetryAt
+          })
+        });
+
+        await tx.labSendRetryJob.create({
+          data: {
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+            attemptNumber: nextAttemptNumber,
+            executeAt: nextRetryAt,
+            status: "PENDING",
+            correlationId: input.correlationId,
+            scenario: input.scenario,
+            idempotencyKey: input.idempotencyKey,
+            requestHash: input.requestHash
+          }
+        });
+
+        await this.orderHistory.record(tx, {
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+          eventType: "LAB_SEND_RETRY",
+          actorType: "LAB",
+          correlationId: input.correlationId,
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: buildLabSendRetryScheduledDetails({
+            attemptNumber: FIRST_LAB_SEND_ATTEMPT_NUMBER,
+            nextAttemptNumber,
+            retryAfterSeconds,
+            nextRetryAt
+          })
+        });
+      });
+    } catch (error) {
+      if (!this.isPrismaUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      throw await this.buildPendingRetryError(input.workspaceId, input.orderId);
+    }
+
+    throw this.timeoutError(retryAfterSeconds);
+  }
+
   /**
    * Buduje odpowiedź `429` dla żądania trafiającego w trwające oczekiwanie na
    * automatyczne ponowienie.
@@ -1235,6 +1348,10 @@ export class OrdersService {
       return this.serverError(retryAfterSeconds);
     }
 
+    if (job?.scenario === "TIMEOUT") {
+      return this.timeoutError(retryAfterSeconds);
+    }
+
     return this.rateLimitError(retryAfterSeconds);
   }
 
@@ -1242,17 +1359,32 @@ export class OrdersService {
     workspaceId: string,
     orderId: string
   ): Promise<ApiErrorException> {
+    // Bez filtra statusu: zadanie wyczerpanych prób zostaje jako `FAILED` (nie
+    // jest usuwane), więc dopiero tu rozstrzygamy, czy jest wciąż aktywne, czy
+    // terminalne — w obu przypadkach `scenario` mówi, czy to SERVER_ERROR, czy
+    // TIMEOUT.
     const job = await this.prisma.labSendRetryJob.findFirst({
-      where: { workspaceId, orderId, status: { in: ["PENDING", "PROCESSING"] } }
+      where: { workspaceId, orderId }
     });
 
-    if (!job) {
+    const isActive = job?.status === "PENDING" || job?.status === "PROCESSING";
+    if (!isActive) {
+      if (job?.scenario === "TIMEOUT") {
+        return this.timeoutTerminalError();
+      }
       return this.serverTerminalError();
     }
 
-    return this.serverError(
-      computeRetryAfterSeconds({ now: new Date(), executeAt: job.executeAt })
-    );
+    const retryAfterSeconds = computeRetryAfterSeconds({
+      now: new Date(),
+      executeAt: job.executeAt
+    });
+
+    if (job.scenario === "TIMEOUT") {
+      return this.timeoutError(retryAfterSeconds);
+    }
+
+    return this.serverError(retryAfterSeconds);
   }
 
   private rateLimitError(retryAfterSeconds: number): ApiErrorException {
@@ -1279,6 +1411,24 @@ export class OrdersService {
     return new ApiErrorException(
       HttpStatus.SERVICE_UNAVAILABLE,
       LAB_SERVER_ERROR_CODE,
+      "Laboratorium pozostaje niedostępne po automatycznych ponowieniach. Zlecenie oznaczono jako błąd techniczny."
+    );
+  }
+
+  private timeoutError(retryAfterSeconds: number): ApiErrorException {
+    return new ApiErrorException(
+      HttpStatus.GATEWAY_TIMEOUT,
+      LAB_SEND_TIMEOUT_ERROR_CODE,
+      LAB_SEND_TIMEOUT_MESSAGE,
+      undefined,
+      { "Retry-After": String(Math.max(0, Math.trunc(retryAfterSeconds))) }
+    );
+  }
+
+  private timeoutTerminalError(): ApiErrorException {
+    return new ApiErrorException(
+      HttpStatus.GATEWAY_TIMEOUT,
+      LAB_SEND_TIMEOUT_ERROR_CODE,
       "Laboratorium pozostaje niedostępne po automatycznych ponowieniach. Zlecenie oznaczono jako błąd techniczny."
     );
   }
@@ -1369,11 +1519,15 @@ export class OrdersService {
       }))
     });
 
-    if (!simulatorResult.accepted && simulatorResult.rejectionType === "SERVER_ERROR") {
+    if (
+      !simulatorResult.accepted &&
+      (simulatorResult.rejectionType === "SERVER_ERROR" ||
+        simulatorResult.rejectionType === "TIMEOUT")
+    ) {
       await this.handleFailedSendRetry({
         job,
         previousStatus: order.status,
-        serverError: simulatorResult
+        failure: simulatorResult
       });
       return;
     }
@@ -1406,9 +1560,10 @@ export class OrdersService {
    * nim wpis historii zlecenia.
    *
    * Z tego samego powodu zwalniamy rezerwację klucza idempotencji: usuwamy
-   * wyłącznie wiersz w stanie oczekiwania na ponowienie (`responseStatus` 429 albo 503),
-   * nigdy zakończonej sukcesem operacji. Dzięki temu kolejny `POST /send`
-   * startuje jak pierwsza próba, zamiast dostać 429 albo 409 na zawsze.
+   * wyłącznie wiersz w stanie oczekiwania na ponowienie (`responseStatus` 429,
+   * 503 albo 504), nigdy zakończonej sukcesem operacji. Dzięki temu kolejny
+   * `POST /send` startuje jak pierwsza próba, zamiast dostać 429, 409 albo 504
+   * na zawsze.
    *
    * Całość jest jedną transakcją — nie może powstać stan, w którym zadanie
    * zniknęło, ale klucz idempotencji blokuje ponowną wysyłkę albo historia nie
@@ -1443,7 +1598,11 @@ export class OrdersService {
           workspaceId: job.workspaceId,
           key: job.idempotencyKey,
           responseStatus: {
-            in: [HttpStatus.TOO_MANY_REQUESTS, HttpStatus.SERVICE_UNAVAILABLE]
+            in: [
+              HttpStatus.TOO_MANY_REQUESTS,
+              HttpStatus.SERVICE_UNAVAILABLE,
+              HttpStatus.GATEWAY_TIMEOUT
+            ]
           }
         }
       });
@@ -1474,23 +1633,24 @@ export class OrdersService {
       attemptNumber: number;
       correlationId: string;
       idempotencyKey: string;
+      scenario: string;
     };
     previousStatus: OrderStatus;
-    serverError: LabSimulatorOrderServerError;
+    failure: LabSimulatorOrderServerError | LabSimulatorOrderTimeout;
   }): Promise<void> {
-    const { job, serverError } = input;
+    const { job, failure } = input;
     const nextAttemptNumber = job.attemptNumber + 1;
 
     if (
       canScheduleLabSendRetry(nextAttemptNumber) &&
-      serverError.nextRetryAt &&
-      serverError.nextAttemptNumber === nextAttemptNumber
+      failure.nextRetryAt &&
+      failure.nextAttemptNumber === nextAttemptNumber
     ) {
       await this.scheduleNextFailedSendRetry({
         job,
         nextAttemptNumber,
-        nextRetryAt: serverError.nextRetryAt,
-        retryAfterSeconds: serverError.retryAfterSeconds ?? 0
+        nextRetryAt: failure.nextRetryAt,
+        retryAfterSeconds: failure.retryAfterSeconds ?? 0
       });
       return;
     }
@@ -1509,6 +1669,7 @@ export class OrdersService {
       attemptNumber: number;
       correlationId: string;
       idempotencyKey: string;
+      scenario: string;
     };
     nextAttemptNumber: number;
     nextRetryAt: Date;
@@ -1538,7 +1699,10 @@ export class OrdersService {
           workspaceId_key: { workspaceId: job.workspaceId, key: job.idempotencyKey }
         },
         data: {
-          responseStatus: HttpStatus.SERVICE_UNAVAILABLE,
+          responseStatus:
+            job.scenario === "TIMEOUT"
+              ? HttpStatus.GATEWAY_TIMEOUT
+              : HttpStatus.SERVICE_UNAVAILABLE,
           responseBody: {
             state: PENDING_SEND_RETRY_STATE,
             attemptNumber: input.nextAttemptNumber,
@@ -1573,6 +1737,7 @@ export class OrdersService {
       attemptNumber: number;
       correlationId: string;
       idempotencyKey: string;
+      scenario: string;
     };
     previousStatus: OrderStatus;
   }): Promise<void> {
@@ -1595,7 +1760,10 @@ export class OrdersService {
           workspaceId_key: { workspaceId: job.workspaceId, key: job.idempotencyKey }
         },
         data: {
-          responseStatus: HttpStatus.SERVICE_UNAVAILABLE,
+          responseStatus:
+            job.scenario === "TIMEOUT"
+              ? HttpStatus.GATEWAY_TIMEOUT
+              : HttpStatus.SERVICE_UNAVAILABLE,
           responseBody: {
             state: "TECHNICAL_ERROR",
             attemptNumber: job.attemptNumber,

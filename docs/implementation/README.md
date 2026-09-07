@@ -18,13 +18,11 @@ Scenariusz `VALIDATION_ERROR` symulatora laboratorium jest zaimplementowany w PR
 
 Scenariusz `RATE_LIMIT` symulatora laboratorium jest zaimplementowany w PR `feat/lab-rate-limit` razem z fundamentem trwałych ponowień wysyłki oraz poprawkami po review (brak gorącej pętli schedulera po błędzie zadania, weryfikacja aktualności zlecenia przed automatycznym ponowieniem wraz z transakcyjnym anulowaniem, odświeżanie historii w UI po 429 i 422).
 
-Scenariusz `SERVER_ERROR` symulatora laboratorium jest implementowany w PR `feat/lab-server-error`: początkowy HTTP 503 (`LAB_SERVER_ERROR`) planuje automatyczne ponowienia 15/30/60 s, a po trzecim nieudanym retry zlecenie przechodzi z `SAMPLE_COLLECTED` do `TECHNICAL_ERROR`.
+Scenariusz `SERVER_ERROR` symulatora laboratorium jest zaimplementowany w PR `feat/lab-server-error`: początkowy HTTP 503 (`LAB_SERVER_ERROR`) planuje automatyczne ponowienia 15/30/60 s, a po trzecim nieudanym retry zlecenie przechodzi z `SAMPLE_COLLECTED` do `TECHNICAL_ERROR`.
 
-Rekomendowany następny PR: **Scenariusz `TIMEOUT` symulatora laboratorium** (kolejny brakujący zakres wskazany w [Etapie 4](04-laboratorium.md)).
+Scenariusz `TIMEOUT` symulatora laboratorium jest zaimplementowany w PR `feat/lab-timeout`: timeout wysyłki do laboratorium zwraca HTTP 504 (`LAB_SEND_TIMEOUT`) i używa tego samego mechanizmu ponowień co `SERVER_ERROR` — automatyczne ponowienia 15/30/60 s z przejściem do `TECHNICAL_ERROR` po wyczerpaniu.
 
-Zakres następnego PR-a powinien obejmować timeout wysyłki albo callbacka bez implementowania powiadomień, panelu `/admin`, gotowych narzędzi warsztatowych ani promptów prowadzącego.
-
-Nie implementować tego zakresu w PR-ach organizacyjnych.
+Etap 4 (Laboratorium) — wszystkie scenariusze symulatora i pełne reguły retry są zaimplementowane. Rekomendowany następny etap: **Etap 5 — dane i obserwowalność** (import, eksport, logi aplikacyjne).
 
 ## Granice narzędzi warsztatowych
 
@@ -39,7 +37,7 @@ Dokumentacja produktowa opisuje zachowanie aplikacji, a nie notatki prowadząceg
 | Etap 1 — fundament | `IMPLEMENTED` | Fundament aplikacji, deploymentu, sesji, workspace'ów, OpenAPI i testów jest obecny w kodzie. |
 | Etap 2 — pacjenci | `IMPLEMENTED` | Podstawowa obsługa pacjentów w API i UI jest obecna w kodzie. |
 | Etap 3 — zlecenia i próbki | `IMPLEMENTED` | Główny pion zleceń, katalogu badań, próbek, przebudowany UX nowego zlecenia, edycja `DRAFT` i historia operacji zlecenia są zaimplementowane w kodzie. |
-| Etap 4 — laboratorium | `IN_PROGRESS` | Wysyłka, idempotencja, trwała kolejka callbacków, scheduler, callback oraz scenariusze `SUCCESS`, `PARTIAL_SUCCESS`, `SAMPLE_REJECTED`, `VALIDATION_ERROR`, `RATE_LIMIT` i `SERVER_ERROR` są zaimplementowane; działa też trwałe ponawianie wysyłki 15/30/60 s z wyczerpaniem prób do `TECHNICAL_ERROR` dla kontrolowanego 5xx. Pozostały scenariusz `TIMEOUT` wymaga dalszej pracy. |
+| Etap 4 — laboratorium | `IMPLEMENTED` | Wysyłka, idempotencja, trwała kolejka callbacków, scheduler, callback oraz scenariusze `SUCCESS`, `PARTIAL_SUCCESS`, `SAMPLE_REJECTED`, `VALIDATION_ERROR`, `RATE_LIMIT`, `SERVER_ERROR` i `TIMEOUT` są zaimplementowane. Działa pełne ponawianie wysyłki 15/30/60 s z wyczerpaniem prób do `TECHNICAL_ERROR`. Testy e2e zostały uruchomione lokalnie; testy integracyjne wymagają potwierdzenia w CI. |
 | Etap 5 — dane i obserwowalność | `PLANNED` | Import, eksport, logi aplikacyjne i dokumentacja publikowana z aplikacji nie są ukończone. |
 | Etap 6 — admin i sterowanie | `PLANNED` | Panel `/admin`, reset i globalne sterowanie środowiskiem są zaplanowane. |
 | Etap 7 — kontrolowane błędy | `PLANNED` | Mechanizm pakietów błędów i wewnętrzny katalog defektów są zaplanowane. |
@@ -90,7 +88,7 @@ Element planu jest gotowy, gdy:
 
 ## Dowody przeglądu aktualnego stanu
 
-Ostatni przegląd planu: 2026-09-07 (aktualizacja po PR `feat/lab-validation-error`).
+Ostatni przegląd planu: 2026-09-07 (aktualizacja po PR `feat/lab-timeout` — implementacja scenariusza TIMEOUT).
 
 Podstawa oceny:
 
