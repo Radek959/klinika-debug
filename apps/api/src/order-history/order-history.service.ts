@@ -45,13 +45,22 @@ export class OrderHistoryService {
     tx: Prisma.TransactionClient,
     input: RecordOrderHistoryInput
   ): Promise<void> {
+    const actorUserId = input.actorUserId ?? null;
+
+    if (input.actorType === "STAFF" && !actorUserId) {
+      throw new Error("OrderHistory: actorUserId jest wymagane dla actorType=STAFF.");
+    }
+    if (input.actorType !== "STAFF" && actorUserId) {
+      throw new Error("OrderHistory: actorUserId musi być puste dla actorType!=STAFF.");
+    }
+
     await tx.orderHistory.create({
       data: {
         workspaceId: input.workspaceId,
         orderId: input.orderId,
         eventType: input.eventType,
         actorType: input.actorType,
-        actorUserId: input.actorUserId ?? null,
+        actorUserId,
         occurredAt: input.occurredAt ?? new Date(),
         correlationId: input.correlationId ?? null,
         integrationEventId: input.integrationEventId ?? null,
