@@ -6,11 +6,7 @@ import { LabSendRetryScheduler } from "../src/lab-send-retry/lab-send-retry.sche
 import { LabSendRetryService } from "../src/lab-send-retry/lab-send-retry.service";
 import { seedDatabase } from "../src/common/prisma/seed-database";
 import { closeTestApp, createTestApp } from "./test-app";
-import {
-  configureTestEnvironment,
-  createStaffUser,
-  resetTestDatabase
-} from "./database";
+import { configureTestEnvironment, resetTestDatabase } from "./database";
 
 jest.setTimeout(30_000);
 
@@ -216,10 +212,21 @@ describe("orders send api — scenariusz TIMEOUT", () => {
     });
   });
 
+  async function login() {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { login: "staff.demo", password: "SeedTestowe123!" }
+    });
+    expect(response.statusCode).toBe(200);
+    return JSON.parse(response.body).token as string;
+  }
+
   async function createSendableOrder(sampleCode: string) {
-    const user = await createStaffUser(prisma);
+    const token = await login();
+    const user = await prisma.user.findUniqueOrThrow({ where: { login: "staff.demo" } });
     const patient = await prisma.patient.findFirstOrThrow({
-      where: { workspaceId: user.workspaceId }
+      where: { workspaceId: user.workspaceId, active: true }
     });
 
     const testId = await prisma.medicalTest.findFirstOrThrow({
@@ -230,7 +237,7 @@ describe("orders send api — scenariusz TIMEOUT", () => {
     const order = await app.inject({
       method: "POST",
       url: "/api/v1/orders",
-      headers: { authorization: `Bearer ${user.token}` },
+      headers: { authorization: `Bearer ${token}` },
       payload: {
         patientId: patient.id,
         priority: "ROUTINE",
@@ -243,13 +250,13 @@ describe("orders send api — scenariusz TIMEOUT", () => {
     await app.inject({
       method: "POST",
       url: `/api/v1/orders/${orderId}/sample-registration`,
-      headers: { authorization: `Bearer ${user.token}` },
+      headers: { authorization: `Bearer ${token}` },
       payload: {
         samples: [{ sampleCode, materialType: "SERUM" }]
       }
     });
 
-    return { token: user.token, orderId, patient };
+    return { token, orderId, patient };
   }
 
   async function sendOrder(
