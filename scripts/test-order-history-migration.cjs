@@ -189,19 +189,19 @@ async function assertBackfillIsIdempotentIfReapplied() {
 async function assertWorkspaceIsolationConstraints() {
   await expectConstraintFailure(`
     INSERT INTO order_history (
-      id, workspaceId, orderId, eventType, actorType, occurredAt, details, updatedAt
+      id, workspaceId, orderId, eventType, actorType, occurredAt, details
     )
     VALUES (
-      'history-bad-order', 'workspace-a', 'order-b', 'ORDER_CREATED', 'STAFF', CURRENT_TIMESTAMP(3), '{}', CURRENT_TIMESTAMP(3)
+      'history-bad-order', 'workspace-a', 'order-b', 'ORDER_CREATED', 'STAFF', CURRENT_TIMESTAMP(3), '{}'
     )
   `, "Baza pozwoliła powiązać historię ze zleceniem z innego workspace'u.");
 
   await expectConstraintFailure(`
     INSERT INTO order_history (
-      id, workspaceId, orderId, eventType, actorType, actorUserId, occurredAt, details, updatedAt
+      id, workspaceId, orderId, eventType, actorType, actorUserId, occurredAt, details
     )
     VALUES (
-      'history-bad-actor', 'workspace-a', 'order-a', 'ORDER_CREATED', 'STAFF', 'user-b', CURRENT_TIMESTAMP(3), '{}', CURRENT_TIMESTAMP(3)
+      'history-bad-actor', 'workspace-a', 'order-a', 'ORDER_CREATED', 'STAFF', 'user-b', CURRENT_TIMESTAMP(3), '{}'
     )
   `, "Baza pozwoliła powiązać historię z użytkownikiem z innego workspace'u.");
 }
@@ -209,37 +209,37 @@ async function assertWorkspaceIsolationConstraints() {
 async function assertIntegrationEventUniqueConstraint() {
   await query(`
     INSERT INTO order_history (
-      id, workspaceId, orderId, eventType, actorType, integrationEventId, occurredAt, details, updatedAt
+      id, workspaceId, orderId, eventType, actorType, integrationEventId, occurredAt, details
     )
     VALUES (
-      'history-evt-1', 'workspace-a', 'order-a', 'LAB_RESULT_RECEIVED', 'LAB', 'evt-migration-1', CURRENT_TIMESTAMP(3), '{}', CURRENT_TIMESTAMP(3)
+      'history-evt-1', 'workspace-a', 'order-a', 'LAB_RESULT_RECEIVED', 'LAB', 'evt-migration-1', CURRENT_TIMESTAMP(3), '{}'
     )
   `);
 
   await expectConstraintFailure(`
     INSERT INTO order_history (
-      id, workspaceId, orderId, eventType, actorType, integrationEventId, occurredAt, details, updatedAt
+      id, workspaceId, orderId, eventType, actorType, integrationEventId, occurredAt, details
     )
     VALUES (
-      'history-evt-1-duplicate', 'workspace-a', 'order-a', 'LAB_RESULT_RECEIVED', 'LAB', 'evt-migration-1', CURRENT_TIMESTAMP(3), '{}', CURRENT_TIMESTAMP(3)
+      'history-evt-1-duplicate', 'workspace-a', 'order-a', 'LAB_RESULT_RECEIVED', 'LAB', 'evt-migration-1', CURRENT_TIMESTAMP(3), '{}'
     )
   `, "Baza pozwoliła zapisać dwa wpisy historii dla tego samego integracyjnego eventId i typu zdarzenia.");
 
   // NULL integrationEventId może wystąpić wielokrotnie (większość zdarzeń nie pochodzi z integracji).
   await query(`
     INSERT INTO order_history (
-      id, workspaceId, orderId, eventType, actorType, occurredAt, details, updatedAt
+      id, workspaceId, orderId, eventType, actorType, occurredAt, details
     )
     VALUES (
-      'history-null-evt-1', 'workspace-a', 'order-a', 'ORDER_UPDATED', 'STAFF', CURRENT_TIMESTAMP(3), '{}', CURRENT_TIMESTAMP(3)
+      'history-null-evt-1', 'workspace-a', 'order-a', 'ORDER_UPDATED', 'STAFF', CURRENT_TIMESTAMP(3), '{}'
     )
   `);
   await query(`
     INSERT INTO order_history (
-      id, workspaceId, orderId, eventType, actorType, occurredAt, details, updatedAt
+      id, workspaceId, orderId, eventType, actorType, occurredAt, details
     )
     VALUES (
-      'history-null-evt-2', 'workspace-a', 'order-a', 'ORDER_UPDATED', 'STAFF', CURRENT_TIMESTAMP(3), '{}', CURRENT_TIMESTAMP(3)
+      'history-null-evt-2', 'workspace-a', 'order-a', 'ORDER_UPDATED', 'STAFF', CURRENT_TIMESTAMP(3), '{}'
     )
   `);
 }
