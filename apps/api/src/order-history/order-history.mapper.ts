@@ -39,8 +39,8 @@ function toOrderHistoryItem(row: OrderHistoryRow): OrderHistoryItem {
     previousStatus: row.previousStatus,
     newStatus: row.newStatus,
     details: {
-      eventType: row.eventType,
-      ...(row.details as Record<string, unknown>)
+      ...(row.details as Record<string, unknown>),
+      eventType: row.eventType
     } as OrderHistoryEventDetails
   };
 }
