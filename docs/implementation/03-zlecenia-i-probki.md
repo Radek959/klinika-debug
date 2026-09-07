@@ -20,7 +20,7 @@
 
 | Element | Status | Uwagi |
 |---|---|---|
-| Przebudowa UX formularza nowego zlecenia | `PLANNED` | Najbliższy rekomendowany PR. |
+| Przebudowa UX formularza nowego zlecenia | `IN_PROGRESS` | Kod i testy frontendowe przygotowane na gałęzi `feat/orders-new-ux`; status nie jest podniesiony do `IMPLEMENTED`, dopóki wymagane lokalne komendy nie zostaną wykonane. |
 | Wybór pacjenta przez wyszukiwanie zamiast ręcznego ID | `PLANNED` | UI nie powinien wymagać wpisywania technicznego `patientId`. |
 | Poprawa wyboru badań | `PLANNED` | Potrzebny bardziej czytelny wybór z wymaganymi danymi dodatkowymi i podsumowaniem próbek. |
 | Edycja zlecenia w `DRAFT` | `PLANNED` | Endpoint z dokumentacji produktowej nie jest widoczny w kontrolerze zleceń. |
@@ -45,3 +45,5 @@ Nie rozszerzać tego PR-a o edycję `DRAFT`, historię operacji ani nowe scenari
 ## Dowody weryfikacji
 
 Ostatnia ocena statusu w tym dokumencie opiera się na przeglądzie kodu z 2026-09-06. Statusy nie oznaczają `VERIFIED`, dopóki PR z daną zmianą nie przejdzie wymaganych testów, CI i review.
+
+Dla gałęzi `feat/orders-new-ux` lokalne bramki jakości i weryfikacja wizualna nie zostały wykonane w tej sesji z powodu błędu uruchamiania lokalnego procesu shell w środowisku Codexa (`helper_unknown_error: setup refresh had errors`).

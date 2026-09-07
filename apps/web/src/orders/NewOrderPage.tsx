@@ -1,29 +1,38 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type {
   MedicalTestCatalogItem,
   OrderAdditionalDataValue,
-  OrderPriority
+  OrderPriority,
+  PatientListItem
 } from "@klinika/api-contracts";
-import type { ApiFieldError } from "../api/client";
 import { ApiClientError, createOrder, listMedicalTests } from "../api/client";
+import type { ApiFieldError } from "../api/client";
 import { PageHeader } from "../layout/AppLayout";
-import { materialTypeLabels } from "../ui/labels";
-
-interface SelectedTest {
-  additionalData: Record<string, OrderAdditionalDataValue>;
-}
+import { orderPriorityLabels } from "../ui/labels";
+import { OrderSummary } from "./OrderSummary";
+import { PatientPicker } from "./PatientPicker";
+import { TestCatalogSelector } from "./TestCatalogSelector";
+import {
+  buildCreateOrderPayload,
+  createInitialAdditionalData,
+  getMissingRequiredAdditionalFields,
+  getSelectedCatalogItems,
+  isOrderFormSubmittable,
+  type SelectedOrderTests
+} from "./orderFormState";
 
 export function NewOrderPage({ token }: { token: string }) {
   const navigate = useNavigate();
   const [catalog, setCatalog] = useState<MedicalTestCatalogItem[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogRetryKey, setCatalogRetryKey] = useState(0);
 
-  const [patientId, setPatientId] = useState("");
+  const [selectedPatient, setSelectedPatient] = useState<PatientListItem | null>(null);
   const [priority, setPriority] = useState<OrderPriority>("ROUTINE");
-  const [selectedTests, setSelectedTests] = useState<Record<string, SelectedTest>>({});
+  const [selectedTests, setSelectedTests] = useState<SelectedOrderTests>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
   const [submittedTestIds, setSubmittedTestIds] = useState<string[]>([]);
@@ -40,27 +49,52 @@ export function NewOrderPage({ token }: { token: string }) {
         if (caught instanceof DOMException && caught.name === "AbortError") {
           return;
         }
-        setCatalogError(
-          caught instanceof ApiClientError
-            ? caught.message
-            : "Nie udało się pobrać katalogu badań."
-        );
+        setCatalogError(formatApiError(caught, "Nie udało się pobrać katalogu badań."));
       })
       .finally(() => setIsLoadingCatalog(false));
 
     return () => controller.abort();
-  }, [token]);
+  }, [token, catalogRetryKey]);
+
+  const selectedCatalogItems = useMemo(
+    () => getSelectedCatalogItems(catalog, selectedTests),
+    [catalog, selectedTests]
+  );
+  const missingAdditionalFields = useMemo(
+    () => getMissingRequiredAdditionalFields(catalog, selectedTests),
+    [catalog, selectedTests]
+  );
+  const canSubmit = isOrderFormSubmittable({
+    selectedPatient,
+    catalog,
+    selectedTests,
+    isSubmitting
+  });
+  const missingMessages = buildMissingMessages({
+    selectedPatient,
+    selectedCatalogItems,
+    missingAdditionalFields
+  });
+  const patientFieldErrors = fieldErrors.filter((fieldError) => fieldError.field === "patientId");
+
+  function handlePatientChange(patient: PatientListItem | null) {
+    setSelectedPatient(patient);
+    setFieldErrors([]);
+    setGeneralError(null);
+  }
 
   function toggleTest(test: MedicalTestCatalogItem, checked: boolean) {
     setSelectedTests((current) => {
       const next = { ...current };
       if (checked) {
-        next[test.id] = { additionalData: {} };
+        next[test.id] = { additionalData: createInitialAdditionalData(test) };
       } else {
         delete next[test.id];
       }
       return next;
     });
+    setFieldErrors([]);
+    setGeneralError(null);
   }
 
   function updateAdditionalData(
@@ -77,38 +111,41 @@ export function NewOrderPage({ token }: { token: string }) {
         }
       }
     }));
+    setFieldErrors([]);
+    setGeneralError(null);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!selectedPatient || !canSubmit) {
+      setGeneralError("Uzupełnij wymagane dane przed utworzeniem zlecenia.");
+      return;
+    }
+
     setIsSubmitting(true);
     setFieldErrors([]);
     setGeneralError(null);
 
     try {
-      const tests = Object.entries(selectedTests).map(([medicalTestId, selection]) => ({
-        medicalTestId,
-        additionalData:
-          Object.keys(selection.additionalData).length > 0
-            ? selection.additionalData
-            : undefined
-      }));
-      setSubmittedTestIds(tests.map((test) => test.medicalTestId));
-      const order = await createOrder(token, {
-        patientId,
-        priority,
-        tests
-      });
+      const submittedIds = selectedCatalogItems.map((test) => test.id);
+      setSubmittedTestIds(submittedIds);
+      const order = await createOrder(
+        token,
+        buildCreateOrderPayload({
+          patientId: selectedPatient.id,
+          priority,
+          catalog,
+          selectedTests
+        })
+      );
       navigate(`/orders/${order.id}`, {
         state: { message: "Zlecenie zostało utworzone." }
       });
     } catch (caught) {
       if (caught instanceof ApiClientError) {
         setFieldErrors(caught.fieldErrors);
-        setGeneralError(caught.message);
-      } else {
-        setGeneralError("Nie udało się utworzyć zlecenia.");
       }
+      setGeneralError(formatApiError(caught, "Nie udało się utworzyć zlecenia."));
     } finally {
       setIsSubmitting(false);
     }
@@ -125,7 +162,7 @@ export function NewOrderPage({ token }: { token: string }) {
         }
       />
 
-      <form className="patient-form" onSubmit={submit}>
+      <form className="order-form" onSubmit={submit}>
         {generalError ? (
           <p className="form-error" role="alert">
             {generalError}
@@ -134,62 +171,82 @@ export function NewOrderPage({ token }: { token: string }) {
 
         <fieldset>
           <legend>Pacjent i priorytet</legend>
-          <div className="form-grid">
-            <label>
-              Identyfikator pacjenta
-              <input
-                value={patientId}
-                onChange={(event) => setPatientId(event.target.value)}
-                required
+          <div className="order-patient-priority-grid">
+            <div>
+              <PatientPicker
+                token={token}
+                selectedPatient={selectedPatient}
+                onChange={handlePatientChange}
               />
-            </label>
-            <label>
+              {patientFieldErrors.map((fieldError) => (
+                <p key={`${fieldError.field}-${fieldError.code}`} className="field-error" role="alert">
+                  {fieldError.message}
+                </p>
+              ))}
+            </div>
+            <label htmlFor="order-priority">
               Priorytet
               <select
+                id="order-priority"
                 value={priority}
                 onChange={(event) => setPriority(event.target.value as OrderPriority)}
               >
-                <option value="ROUTINE">Rutynowe</option>
-                <option value="URGENT">Pilne</option>
+                <option value="ROUTINE">{orderPriorityLabels.ROUTINE}</option>
+                <option value="URGENT">{orderPriorityLabels.URGENT}</option>
               </select>
             </label>
           </div>
-          <p className="muted">
-            Identyfikator pacjenta znajdziesz na stronie{" "}
-            <Link to="/patients">szczegółów pacjenta</Link>.
-          </p>
         </fieldset>
 
         <fieldset>
           <legend>Badania</legend>
           {isLoadingCatalog ? <p className="muted">Ładowanie katalogu badań...</p> : null}
           {catalogError ? (
-            <p className="form-error" role="alert">
-              {catalogError}
-            </p>
+            <div className="form-error" role="alert">
+              <p>{catalogError}</p>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setCatalogRetryKey((current) => current + 1)}
+              >
+                Ponów pobieranie katalogu
+              </button>
+            </div>
           ) : null}
           {!isLoadingCatalog && catalog.length === 0 && !catalogError ? (
             <p className="muted">Brak aktywnych badań w katalogu.</p>
           ) : null}
 
-          <div className="test-catalog-list">
-            {catalog.map((test) => (
-              <TestCatalogItem
-                key={test.id}
-                test={test}
-                selected={Boolean(selectedTests[test.id])}
-                additionalData={selectedTests[test.id]?.additionalData ?? {}}
-                testIndex={submittedTestIds.indexOf(test.id)}
-                fieldErrors={fieldErrors}
-                onToggle={(checked) => toggleTest(test, checked)}
-                onFieldChange={(code, value) => updateAdditionalData(test.id, code, value)}
-              />
-            ))}
-          </div>
+          <TestCatalogSelector
+            catalog={catalog}
+            selectedTests={selectedTests}
+            fieldErrors={fieldErrors}
+            submittedTestIds={submittedTestIds}
+            onToggle={toggleTest}
+            onFieldChange={updateAdditionalData}
+          />
         </fieldset>
 
+        <OrderSummary
+          selectedPatient={selectedPatient}
+          priority={priority}
+          catalog={catalog}
+          selectedTests={selectedTests}
+        />
+
+        {missingMessages.length > 0 ? (
+          <div className="order-form-missing" role="status" aria-live="polite">
+            <strong>Do uzupełnienia:</strong>
+            <ul>
+              {missingMessages.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <div className="form-actions">
-          <button type="submit" className="primary-button" disabled={isSubmitting}>
+          <button type="submit" className="primary-button" disabled={!canSubmit}>
             {isSubmitting ? "Zapisywanie..." : "Utwórz zlecenie"}
           </button>
         </div>
@@ -198,63 +255,33 @@ export function NewOrderPage({ token }: { token: string }) {
   );
 }
 
-function TestCatalogItem({
-  test,
-  selected,
-  additionalData,
-  testIndex,
-  fieldErrors,
-  onToggle,
-  onFieldChange
+function buildMissingMessages({
+  selectedPatient,
+  selectedCatalogItems,
+  missingAdditionalFields
 }: {
-  test: MedicalTestCatalogItem;
-  selected: boolean;
-  additionalData: Record<string, OrderAdditionalDataValue>;
-  testIndex: number;
-  fieldErrors: ApiFieldError[];
-  onToggle: (checked: boolean) => void;
-  onFieldChange: (code: string, value: OrderAdditionalDataValue) => void;
+  selectedPatient: PatientListItem | null;
+  selectedCatalogItems: MedicalTestCatalogItem[];
+  missingAdditionalFields: ReturnType<typeof getMissingRequiredAdditionalFields>;
 }) {
-  return (
-    <div className="test-catalog-item">
-      <label>
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={(event) => onToggle(event.target.checked)}
-        />
-        <strong>{test.name}</strong> ({test.code}) — {materialTypeLabels[test.materialType]}
-      </label>
+  const messages: string[] = [];
+  if (!selectedPatient) {
+    messages.push("wybierz pacjenta");
+  }
+  if (selectedCatalogItems.length === 0) {
+    messages.push("zaznacz co najmniej jedno badanie");
+  }
+  missingAdditionalFields.forEach(({ test, field }) => {
+    messages.push(`uzupełnij ${field.label} dla badania ${test.name}`);
+  });
+  return messages;
+}
 
-      {selected && test.requiredFields.length > 0 ? (
-        <div className="test-required-fields">
-          {test.requiredFields.map((field) => (
-            <label key={field.code}>
-              {field.label}
-              {field.valueType === "BOOLEAN" ? (
-                <input
-                  type="checkbox"
-                  checked={Boolean(additionalData[field.code] ?? false)}
-                  onChange={(event) => onFieldChange(field.code, event.target.checked)}
-                />
-              ) : (
-                <input
-                  value={String(additionalData[field.code] ?? "")}
-                  onChange={(event) => onFieldChange(field.code, event.target.value)}
-                />
-              )}
-            </label>
-          ))}
-        </div>
-      ) : null}
-
-      {fieldErrors
-        .filter((fieldError) => testIndex >= 0 && fieldError.field.startsWith(`tests.${testIndex}.`))
-        .map((fieldError) => (
-          <p key={fieldError.code} className="form-error" role="alert">
-            {fieldError.message}
-          </p>
-        ))}
-    </div>
-  );
+function formatApiError(caught: unknown, fallback: string) {
+  if (caught instanceof ApiClientError) {
+    return caught.correlationId
+      ? `${caught.message} Identyfikator błędu: ${caught.correlationId}`
+      : caught.message;
+  }
+  return fallback;
 }
