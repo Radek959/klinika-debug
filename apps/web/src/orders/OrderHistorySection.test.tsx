@@ -40,7 +40,7 @@ describe("OrderHistorySection", () => {
 
     expect(await screen.findByText("Wysłano do laboratorium")).toBeInTheDocument();
     expect(screen.getByText(/Wykonawca: Personel \(Personel pokazowy\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Wysłane do laboratorium/)).toBeInTheDocument();
+expect(screen.getByText("Zlecenie zostało przekazane do laboratorium.")).toBeInTheDocument();
     expect(screen.getByText("corr-123")).toBeInTheDocument();
     expect(screen.queryByText("ORDER_SENT_TO_LAB")).not.toBeInTheDocument();
   });
