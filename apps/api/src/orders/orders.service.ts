@@ -26,6 +26,7 @@ import {
   buildLabOrderAcceptedDetails,
   buildLabOrderRejectedDetails,
   buildLabRateLimitReceivedDetails,
+  buildLabSendTimeoutReceivedDetails,
   buildLabSendRetryDetails,
   buildLabSendRetryCancelledDetails,
   buildLabSendRetryExhaustedDetails,
@@ -40,6 +41,8 @@ import {
   LAB_SEND_RETRY_EXHAUSTED_REASON,
   LAB_SERVER_ERROR_CODE,
   LAB_SERVER_ERROR_MESSAGE,
+  LAB_SEND_TIMEOUT_ERROR_CODE,
+  LAB_SEND_TIMEOUT_MESSAGE,
   type LabSendRetryCancellationReason,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
@@ -64,7 +67,8 @@ import {
   LabSimulatorService,
   type LabSimulatorOrderAccepted,
   type LabSimulatorOrderRateLimited,
-  type LabSimulatorOrderServerError
+  type LabSimulatorOrderServerError,
+  type LabSimulatorOrderTimeout
 } from "../lab-simulator/lab-simulator.service";
 import { resolveLabSimulatorScenario } from "../lab-simulator/lab-simulator-scenario";
 import {
@@ -831,6 +835,18 @@ export class OrdersService {
       });
     }
 
+    if (!simulatorResult.accepted && simulatorResult.rejectionType === "TIMEOUT") {
+      return this.scheduleSendRetryAfterTimeout({
+        workspaceId,
+        orderId,
+        correlationId,
+        scenario,
+        idempotencyKey,
+        requestHash,
+        timeout: simulatorResult
+      });
+    }
+
     if (!simulatorResult.accepted) {
       // Laboratorium nie przyjęło zlecenia. To poprawne zachowanie integracji,
       // a nie błąd techniczny: zlecenie zostaje w SAMPLE_COLLECTED, nie powstaje
@@ -1212,6 +1228,97 @@ export class OrdersService {
     throw this.serverError(retryAfterSeconds);
   }
 
+  private async scheduleSendRetryAfterTimeout(input: {
+    workspaceId: string;
+    orderId: string;
+    correlationId: string;
+    scenario: string;
+    idempotencyKey: string;
+    requestHash: string;
+    timeout: LabSimulatorOrderTimeout;
+  }): Promise<never> {
+    const { timeout } = input;
+    if (!timeout.nextRetryAt || !timeout.nextAttemptNumber) {
+      throw new Error("Pierwszy timeout wysyłki nie ma terminu ponowienia.");
+    }
+
+    const nextRetryAt = timeout.nextRetryAt;
+    const nextAttemptNumber = timeout.nextAttemptNumber;
+    const retryAfterSeconds = timeout.retryAfterSeconds ?? 0;
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.idempotencyKey.create({
+          data: {
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+            key: input.idempotencyKey,
+            requestHash: input.requestHash,
+            responseStatus: HttpStatus.GATEWAY_TIMEOUT,
+            responseBody: {
+              state: PENDING_SEND_RETRY_STATE,
+              attemptNumber: nextAttemptNumber,
+              nextRetryAt: nextRetryAt.toISOString()
+            }
+          }
+        });
+
+        await this.orderHistory.record(tx, {
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+          eventType: "LAB_SEND_TIMEOUT_RECEIVED",
+          actorType: "LAB",
+          correlationId: input.correlationId,
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: buildLabSendTimeoutReceivedDetails({
+            attemptNumber: FIRST_LAB_SEND_ATTEMPT_NUMBER,
+            retryAfterSeconds,
+            nextRetryAt
+          })
+        });
+
+        await tx.labSendRetryJob.create({
+          data: {
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+            attemptNumber: nextAttemptNumber,
+            executeAt: nextRetryAt,
+            status: "PENDING",
+            correlationId: input.correlationId,
+            scenario: input.scenario,
+            idempotencyKey: input.idempotencyKey,
+            requestHash: input.requestHash
+          }
+        });
+
+        await this.orderHistory.record(tx, {
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+          eventType: "LAB_SEND_RETRY",
+          actorType: "LAB",
+          correlationId: input.correlationId,
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: buildLabSendRetryScheduledDetails({
+            attemptNumber: FIRST_LAB_SEND_ATTEMPT_NUMBER,
+            nextAttemptNumber,
+            retryAfterSeconds,
+            nextRetryAt
+          })
+        });
+      });
+    } catch (error) {
+      if (!this.isPrismaUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      throw await this.buildPendingRetryError(input.workspaceId, input.orderId);
+    }
+
+    throw this.timeoutError(retryAfterSeconds);
+  }
+
   /**
    * Buduje odpowiedź `429` dla żądania trafiającego w trwające oczekiwanie na
    * automatyczne ponowienie.
@@ -1235,6 +1342,10 @@ export class OrdersService {
       return this.serverError(retryAfterSeconds);
     }
 
+    if (job?.scenario === "TIMEOUT") {
+      return this.timeoutError(retryAfterSeconds);
+    }
+
     return this.rateLimitError(retryAfterSeconds);
   }
 
@@ -1250,9 +1361,16 @@ export class OrdersService {
       return this.serverTerminalError();
     }
 
-    return this.serverError(
-      computeRetryAfterSeconds({ now: new Date(), executeAt: job.executeAt })
-    );
+    const retryAfterSeconds = computeRetryAfterSeconds({
+      now: new Date(),
+      executeAt: job.executeAt
+    });
+
+    if (job.scenario === "TIMEOUT") {
+      return this.timeoutError(retryAfterSeconds);
+    }
+
+    return this.serverError(retryAfterSeconds);
   }
 
   private rateLimitError(retryAfterSeconds: number): ApiErrorException {
@@ -1280,6 +1398,16 @@ export class OrdersService {
       HttpStatus.SERVICE_UNAVAILABLE,
       LAB_SERVER_ERROR_CODE,
       "Laboratorium pozostaje niedostępne po automatycznych ponowieniach. Zlecenie oznaczono jako błąd techniczny."
+    );
+  }
+
+  private timeoutError(retryAfterSeconds: number): ApiErrorException {
+    return new ApiErrorException(
+      HttpStatus.GATEWAY_TIMEOUT,
+      LAB_SEND_TIMEOUT_ERROR_CODE,
+      LAB_SEND_TIMEOUT_MESSAGE,
+      undefined,
+      { "Retry-After": String(Math.max(0, Math.trunc(retryAfterSeconds))) }
     );
   }
 

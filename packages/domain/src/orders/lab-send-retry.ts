@@ -95,6 +95,11 @@ export const LAB_SERVER_ERROR_CODE = "LAB_SERVER_ERROR";
 export const LAB_SERVER_ERROR_MESSAGE =
   "Laboratorium jest chwilowo niedostępne. Wysyłka zostanie ponowiona automatycznie.";
 
+export const LAB_SEND_TIMEOUT_ERROR_CODE = "LAB_SEND_TIMEOUT";
+
+export const LAB_SEND_TIMEOUT_MESSAGE =
+  "Timeout wysyłki do laboratorium. Wysyłka zostanie ponowiona automatycznie.";
+
 export const LAB_SEND_RETRY_EXHAUSTED_REASON =
   "Automatyczne ponowienia wysyłki do laboratorium zostały wyczerpane.";
 

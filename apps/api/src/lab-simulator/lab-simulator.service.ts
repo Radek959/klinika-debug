@@ -13,6 +13,8 @@ import {
   LAB_RATE_LIMITED_MESSAGE,
   LAB_SERVER_ERROR_CODE,
   LAB_SERVER_ERROR_MESSAGE,
+  LAB_SEND_TIMEOUT_ERROR_CODE,
+  LAB_SEND_TIMEOUT_MESSAGE,
   type LabOrderValidationFieldError,
   type OrderMaterialType
 } from "@klinika/domain";
@@ -148,11 +150,30 @@ export interface LabSimulatorOrderServerError {
   nextAttemptNumber: number | null;
 }
 
+/**
+ * Timeout wysyłki do laboratorium — brak odpowiedzi w wymaganym czasie.
+ *
+ * Wariant nie zawiera `externalOrderId`, `estimatedCompletionAt` ani zadań
+ * callbacka, bo laboratorium nie przyjęło zlecenia. Używa tego samego
+ * harmonogramu ponowień i obsługi wyczerpania prób jak SERVER_ERROR.
+ */
+export interface LabSimulatorOrderTimeout {
+  accepted: false;
+  rejectionType: "TIMEOUT";
+  statusCode: 504;
+  errorCode: typeof LAB_SEND_TIMEOUT_ERROR_CODE;
+  message: string;
+  retryAfterSeconds: number | null;
+  nextRetryAt: Date | null;
+  nextAttemptNumber: number | null;
+}
+
 export type LabSimulatorOrderResult =
   | LabSimulatorOrderAccepted
   | LabSimulatorOrderRejected
   | LabSimulatorOrderRateLimited
-  | LabSimulatorOrderServerError;
+  | LabSimulatorOrderServerError
+  | LabSimulatorOrderTimeout;
 
 // Domyślny tryb CLEAN/SUCCESS: 300 sekund do przewidywanego zakończenia realizacji.
 const DEFAULT_ESTIMATED_COMPLETION_DELAY_MS = 300_000;
@@ -182,6 +203,10 @@ export class LabSimulatorService {
 
     if (scenario === "SERVER_ERROR") {
       return this.buildServerErrorResult(attemptNumber);
+    }
+
+    if (scenario === "TIMEOUT") {
+      return this.buildTimeoutResult(attemptNumber);
     }
 
     const externalOrderId = `EXT-${randomUUID()}`;
@@ -279,6 +304,28 @@ export class LabSimulatorService {
       statusCode: 503,
       errorCode: LAB_SERVER_ERROR_CODE,
       message: LAB_SERVER_ERROR_MESSAGE,
+      retryAfterSeconds: nextRetryAt
+        ? computeRetryAfterSeconds({ now, executeAt: nextRetryAt })
+        : null,
+      nextRetryAt,
+      nextAttemptNumber: nextRetryAt ? nextAttemptNumber : null
+    };
+  }
+
+  private buildTimeoutResult(attemptNumber: number): LabSimulatorOrderTimeout {
+    const now = new Date();
+    const nextAttemptNumber = attemptNumber + 1;
+    const nextRetryAt = computeLabSendRetryExecuteAt({
+      now,
+      attemptNumber: nextAttemptNumber
+    });
+
+    return {
+      accepted: false,
+      rejectionType: "TIMEOUT",
+      statusCode: 504,
+      errorCode: LAB_SEND_TIMEOUT_ERROR_CODE,
+      message: LAB_SEND_TIMEOUT_MESSAGE,
       retryAfterSeconds: nextRetryAt
         ? computeRetryAfterSeconds({ now, executeAt: nextRetryAt })
         : null,
