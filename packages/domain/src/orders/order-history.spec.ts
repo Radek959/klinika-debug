@@ -1,8 +1,10 @@
 import {
   buildLabOrderAcceptedDetails,
   buildLabOrderRejectedDetails,
+  buildLabRateLimitReceivedDetails,
   buildLabResultReceivedDetails,
   buildLabSampleRejectedDetails,
+  buildLabSendRetryDetails,
   buildOrderCreatedDetails,
   buildOrderSentToLabDetails,
   buildOrderUpdatedDetails,
@@ -391,6 +393,85 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
       const serialized = JSON.stringify(buildLabOrderRejectedDetails({ fieldErrors }));
 
       expect(serialized).not.toContain(':"VALIDATION_ERROR"');
+    });
+  });
+
+  describe("otrzymanie ograniczenia przepustowości (429)", () => {
+    const input = {
+      attemptNumber: 1,
+      retryAfterSeconds: 15,
+      nextRetryAt: new Date("2026-09-07T10:00:15.000Z")
+    };
+
+    it("buduje szczegóły zdarzenia bez zmiany statusu zlecenia", () => {
+      const details = buildLabRateLimitReceivedDetails(input);
+
+      expect(details).toEqual({
+        attemptNumber: 1,
+        retryAfterSeconds: 15,
+        nextRetryAt: "2026-09-07T10:00:15.000Z",
+        // Ograniczenie przepustowości jest przejściowe: status się nie zmienia
+        // i zdarzenie nie jest błędem technicznym.
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SAMPLE_COLLECTED"
+      });
+    });
+
+    it("zapisuje termin ponowienia w formacie ISO 8601", () => {
+      const details = buildLabRateLimitReceivedDetails(input);
+
+      expect(details.nextRetryAt).toBe(input.nextRetryAt.toISOString());
+    });
+
+    it("nie zawiera nazwy scenariusza ani danych wrażliwych", () => {
+      const details = buildLabRateLimitReceivedDetails({
+        ...input,
+        scenario: "RATE_LIMIT",
+        pesel: "44051401458",
+        barcode: "SMP-1"
+      } as never);
+
+      const serialized = JSON.stringify(details);
+      expect(serialized).not.toMatch(/pesel|barcode|scenario/i);
+      expect(serialized).not.toContain("RATE_LIMIT");
+      expect(Object.keys(details).sort()).toEqual([
+        "attemptNumber",
+        "newStatus",
+        "nextRetryAt",
+        "previousStatus",
+        "retryAfterSeconds"
+      ]);
+    });
+  });
+
+  describe("automatyczne ponowienie wysyłki", () => {
+    it("buduje szczegóły udanego ponowienia z przejściem statusu", () => {
+      const details = buildLabSendRetryDetails({ attemptNumber: 2 });
+
+      expect(details).toEqual({
+        attemptNumber: 2,
+        outcome: "ACCEPTED",
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SENT_TO_LAB"
+      });
+    });
+
+    it("nie przepuszcza dodatkowych ani wrażliwych pól", () => {
+      const details = buildLabSendRetryDetails({
+        attemptNumber: 2,
+        scenario: "RATE_LIMIT",
+        pesel: "44051401458"
+      } as never);
+
+      const serialized = JSON.stringify(details);
+      expect(serialized).not.toMatch(/pesel|scenario/i);
+      expect(serialized).not.toContain("RATE_LIMIT");
+      expect(Object.keys(details).sort()).toEqual([
+        "attemptNumber",
+        "newStatus",
+        "outcome",
+        "previousStatus"
+      ]);
     });
   });
 });

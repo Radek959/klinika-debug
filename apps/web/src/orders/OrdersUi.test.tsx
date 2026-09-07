@@ -433,6 +433,119 @@ describe("interfejs zleceń", () => {
     });
   });
 
+  it("pokazuje ograniczenie przepustowości laboratorium i zapowiedź automatycznego ponowienia", async () => {
+    window.history.pushState({}, "", "/orders/order-1");
+    const collectedOrder = orderDetails({
+      status: "SAMPLE_COLLECTED",
+      samples: [
+        {
+          id: "sample-1",
+          materialType: "SERUM",
+          status: "COLLECTED",
+          barcode: "SMP-0001",
+          collectedAt: "2026-09-06T10:00:00.000Z",
+          collectedByUserId: "user-1",
+          rejectionCode: null,
+          rejectionReason: null
+        }
+      ]
+    });
+    let sendAttempts = 0;
+
+    mockFetch(({ url, init }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1/send" && init?.method === "POST") {
+        sendAttempts += 1;
+        return rateLimitError(15);
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(collectedOrder);
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Wyślij do laboratorium" }));
+
+    expect(
+      await screen.findByText(
+        "Laboratorium chwilowo ograniczyło liczbę żądań. Wysyłka zostanie ponowiona automatycznie."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Kolejna próba za około 15 sekund.")).toBeInTheDocument();
+
+    // Brak fałszywego komunikatu sukcesu — zlecenie nie zostało jeszcze wysłane.
+    expect(screen.getByText("Próbki pobrane")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Zlecenie zostało wysłane do laboratorium.")
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Integracja z laboratorium")).not.toBeInTheDocument();
+
+    // Interfejs nie pokazuje surowych kodów ani nazwy trybu symulatora.
+    expect(screen.queryByText(/LAB_RATE_LIMITED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/RATE_LIMIT/)).not.toBeInTheDocument();
+
+    // Ręczne ponowne kliknięcie w trakcie oczekiwania jest bezpieczne.
+    await userEvent.click(screen.getByRole("button", { name: "Wyślij do laboratorium" }));
+    await waitFor(() => {
+      expect(sendAttempts).toBe(2);
+    });
+    expect(
+      screen.queryByText("Zlecenie zostało wysłane do laboratorium.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("informuje o automatycznym ponowieniu także bez nagłówka Retry-After", async () => {
+    window.history.pushState({}, "", "/orders/order-1");
+    const collectedOrder = orderDetails({
+      status: "SAMPLE_COLLECTED",
+      samples: [
+        {
+          id: "sample-1",
+          materialType: "SERUM",
+          status: "COLLECTED",
+          barcode: "SMP-0001",
+          collectedAt: "2026-09-06T10:00:00.000Z",
+          collectedByUserId: "user-1",
+          rejectionCode: null,
+          rejectionReason: null
+        }
+      ]
+    });
+
+    mockFetch(({ url, init }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1/send" && init?.method === "POST") {
+        return rateLimitError();
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(collectedOrder);
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Wyślij do laboratorium" }));
+
+    // Bez odczytanej liczby sekund nie podajemy zmyślonego czasu.
+    expect(
+      await screen.findByText("Kolejna próba zostanie wykonana automatycznie.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Kolejna próba za około/)).not.toBeInTheDocument();
+  });
+
   it("pokazuje przycisk edycji tylko dla zlecenia DRAFT", async () => {
     window.history.pushState({}, "", "/orders/order-1");
     mockFetch(({ url }) => {
@@ -1039,6 +1152,29 @@ function json(body: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json" }
   });
+}
+
+/**
+ * Odpowiedź 429 laboratorium wraz z opcjonalnym nagłówkiem `Retry-After`,
+ * dokładnie tak jak zwraca ją API przy scenariuszu ograniczenia przepustowości.
+ */
+function rateLimitError(retryAfterSeconds?: number) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (retryAfterSeconds !== undefined) {
+    headers["Retry-After"] = String(retryAfterSeconds);
+  }
+
+  return new Response(
+    JSON.stringify({
+      error: {
+        code: "LAB_RATE_LIMITED",
+        message:
+          "Laboratorium chwilowo ograniczyło liczbę żądań. Wysyłka zostanie ponowiona automatycznie.",
+        correlationId: "corr-rate-limit-1"
+      }
+    }),
+    { status: 429, headers }
+  );
 }
 
 function jsonError(

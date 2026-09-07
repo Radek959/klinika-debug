@@ -36,7 +36,15 @@ export class ApiClientError extends Error {
     readonly status: number,
     readonly code?: string,
     readonly correlationId?: string,
-    readonly fieldErrors: ApiFieldError[] = []
+    readonly fieldErrors: ApiFieldError[] = [],
+    /**
+     * Liczba sekund z nagłówka `Retry-After`, jeżeli serwer go przysłał.
+     *
+     * Wykorzystywana wyłącznie do zbudowania polskiego komunikatu o czasie
+     * automatycznego ponowienia — interfejs nigdy nie pokazuje surowego kodu
+     * błędu ani nazwy trybu środowiska.
+     */
+    readonly retryAfterSeconds?: number
   ) {
     super(message);
   }
@@ -276,7 +284,8 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
       response.status,
       payload.error?.code,
       payload.error?.correlationId,
-      payload.error?.fieldErrors ?? []
+      payload.error?.fieldErrors ?? [],
+      parseRetryAfterSeconds(response.headers.get("Retry-After"))
     );
   }
 
@@ -285,6 +294,23 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+/**
+ * Odczytuje `Retry-After` jako pełne sekundy. Wartość nienumeryczna albo ujemna
+ * jest pomijana, żeby interfejs nie pokazał bezsensownego czasu oczekiwania.
+ */
+function parseRetryAfterSeconds(rawValue: string | null): number | undefined {
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return undefined;
+  }
+
+  return Math.trunc(parsed);
 }
 
 async function safeJson(response: Response): Promise<unknown> {

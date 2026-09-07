@@ -280,6 +280,19 @@ function describeDetails(details: OrderHistoryEventDetails): string | null {
       }
       return parts.join(" ");
     }
+    case "LAB_RATE_LIMIT_RECEIVED": {
+      // Oś czasu opisuje ograniczenie przepustowości jako sytuację przejściową,
+      // poprawnie obsłużoną przez aplikację — bez technicznego kodu błędu.
+      const parts = [
+        "Laboratorium chwilowo ograniczyło liczbę żądań. Wysyłka zostanie ponowiona automatycznie."
+      ];
+      if (details.nextRetryAt) {
+        parts.push(`Zaplanowana kolejna próba: ${formatDateTime(details.nextRetryAt)}.`);
+      }
+      return parts.join(" ");
+    }
+    case "LAB_SEND_RETRY":
+      return `Automatyczna próba nr ${details.attemptNumber} zakończona przyjęciem zlecenia przez laboratorium.`;
     case "TECHNICAL_ERROR":
       return details.reason;
     default:

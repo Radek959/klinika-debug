@@ -74,6 +74,14 @@ const ALLOWED_DETAILS_FIELDS: Record<OrderHistoryEventType, readonly string[]> =
     "previousStatus",
     "newStatus"
   ],
+  LAB_RATE_LIMIT_RECEIVED: [
+    "attemptNumber",
+    "retryAfterSeconds",
+    "nextRetryAt",
+    "previousStatus",
+    "newStatus"
+  ],
+  LAB_SEND_RETRY: ["attemptNumber", "outcome", "previousStatus", "newStatus"],
   TECHNICAL_ERROR: ["reason", "previousStatus", "newStatus"]
 };
 

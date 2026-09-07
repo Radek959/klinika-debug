@@ -2,7 +2,8 @@ export const LAB_SIMULATOR_SCENARIOS = [
   "SUCCESS",
   "PARTIAL_SUCCESS",
   "SAMPLE_REJECTED",
-  "VALIDATION_ERROR"
+  "VALIDATION_ERROR",
+  "RATE_LIMIT"
 ] as const;
 
 export type LabSimulatorScenario = (typeof LAB_SIMULATOR_SCENARIOS)[number];

@@ -2,6 +2,7 @@ import {
   LabSimulatorService,
   type LabSimulatorOrderAccepted,
   type LabSimulatorOrderInput,
+  type LabSimulatorOrderRateLimited,
   type LabSimulatorOrderRejected
 } from "./lab-simulator.service";
 
@@ -24,7 +25,7 @@ function acceptAccepted(
   return result;
 }
 
-/** Zawęża wynik symulatora do wariantu odrzuconego. */
+/** Zawęża wynik symulatora do wariantu odrzuconego walidacyjnie. */
 function acceptRejected(
   service: LabSimulatorService,
   input: LabSimulatorOrderInput
@@ -32,6 +33,24 @@ function acceptRejected(
   const result = service.acceptOrder(input);
   if (result.accepted) {
     throw new Error("Oczekiwano odrzucenia zlecenia przez symulator laboratorium.");
+  }
+  if (result.rejectionType !== "VALIDATION") {
+    throw new Error("Oczekiwano odrzucenia walidacyjnego, a nie ograniczenia przepustowości.");
+  }
+  return result;
+}
+
+/** Zawęża wynik symulatora do wariantu ograniczenia przepustowości (429). */
+function acceptRateLimited(
+  service: LabSimulatorService,
+  input: LabSimulatorOrderInput
+): LabSimulatorOrderRateLimited {
+  const result = service.acceptOrder(input);
+  if (result.accepted) {
+    throw new Error("Oczekiwano ograniczenia przepustowości przez symulator laboratorium.");
+  }
+  if (result.rejectionType !== "RATE_LIMIT") {
+    throw new Error("Oczekiwano ograniczenia przepustowości, a nie odrzucenia walidacyjnego.");
   }
   return result;
 }
@@ -415,6 +434,130 @@ describe("LabSimulatorService", () => {
       const result = acceptRejected(service, buildInput(1));
 
       expect(result.fieldErrors).toHaveLength(1);
+    });
+  });
+
+  describe("scenariusz RATE_LIMIT", () => {
+    beforeEach(() => {
+      process.env.LAB_SIMULATOR_SCENARIO = "RATE_LIMIT";
+    });
+
+    it("zwraca ograniczenie przepustowości dla pierwszej próby", () => {
+      const result = acceptRateLimited(service, { ...buildInput(2), attemptNumber: 1 });
+
+      expect(result.accepted).toBe(false);
+      expect(result.rejectionType).toBe("RATE_LIMIT");
+      expect(result.statusCode).toBe(429);
+      expect(result.errorCode).toBe("LAB_RATE_LIMITED");
+      expect(result.message).toBe(
+        "Laboratorium chwilowo ograniczyło liczbę żądań. Wysyłka zostanie ponowiona automatycznie."
+      );
+    });
+
+    it("planuje pierwsze ponowienie na 15 sekund i drugą próbę", () => {
+      const before = Date.now();
+      const result = acceptRateLimited(service, { ...buildInput(2), attemptNumber: 1 });
+      const after = Date.now();
+
+      expect(result.retryAfterSeconds).toBe(15);
+      expect(result.nextAttemptNumber).toBe(2);
+      expect(result.nextRetryAt.getTime()).toBeGreaterThanOrEqual(before + 15_000);
+      expect(result.nextRetryAt.getTime()).toBeLessThanOrEqual(after + 15_000);
+    });
+
+    it("traktuje brak numeru próby jak pierwszą próbę", () => {
+      const result = acceptRateLimited(service, buildInput(2));
+
+      expect(result.rejectionType).toBe("RATE_LIMIT");
+      expect(result.nextAttemptNumber).toBe(2);
+    });
+
+    it("nie tworzy externalOrderId ani zadania callbacka przy pierwszej próbie", () => {
+      const result = acceptRateLimited(service, { ...buildInput(2), attemptNumber: 1 });
+
+      const serialized = JSON.stringify(result);
+      expect(serialized).not.toContain("EXT-");
+      expect(serialized).not.toContain("externalOrderId");
+      expect(serialized).not.toContain("jobs");
+      expect(serialized).not.toContain("estimatedCompletionAt");
+    });
+
+    it("przyjmuje drugą próbę tak jak scenariusz SUCCESS", () => {
+      const result = acceptAccepted(service, { ...buildInput(2), attemptNumber: 2 });
+
+      expect(result.accepted).toBe(true);
+      expect(result.externalOrderId).toEqual(expect.stringMatching(/^EXT-/));
+      expect(result.estimatedCompletionAt).toBeInstanceOf(Date);
+      expect(result.jobs).toHaveLength(1);
+      expect(result.jobs[0].scenario).toBe("SUCCESS");
+      expect(result.jobs[0].payload.status).toBe("COMPLETED");
+      expect(result.jobs[0].payload.results).toHaveLength(2);
+      expect(result.jobs[0].payload.pendingMedicalTestIds).toEqual([]);
+    });
+
+    it("jest deterministyczny: próba 1 odmawia, próba 2 przyjmuje", () => {
+      expect(
+        acceptRateLimited(service, { ...buildInput(2), attemptNumber: 1 }).rejectionType
+      ).toBe("RATE_LIMIT");
+      expect(
+        acceptRateLimited(service, { ...buildInput(2), attemptNumber: 1 }).rejectionType
+      ).toBe("RATE_LIMIT");
+      expect(
+        acceptAccepted(service, { ...buildInput(2), attemptNumber: 2 }).accepted
+      ).toBe(true);
+      expect(
+        acceptAccepted(service, { ...buildInput(2), attemptNumber: 3 }).accepted
+      ).toBe(true);
+    });
+
+    it("zachowuje correlationId pierwotnej wysyłki w callbacku ponowienia", () => {
+      const result = acceptAccepted(service, { ...buildInput(2), attemptNumber: 2 });
+
+      expect(result.jobs[0].payload.correlationId).toBe(TEST_CORRELATION_ID);
+    });
+
+    it("nie ujawnia danych wrażliwych ani nazwy scenariusza", () => {
+      const serialized = JSON.stringify(
+        acceptRateLimited(service, { ...buildMultiMaterialInput(), attemptNumber: 1 })
+      );
+
+      // `rejectionType` jest wewnętrznym dyskryminatorem unii wyniku symulatora,
+      // a nie polem kontraktu HTTP — do odpowiedzi API i historii zlecenia trafia
+      // wyłącznie kod `LAB_RATE_LIMITED` (sprawdzane w testach e2e).
+      expect(serialized).not.toContain("scenario");
+      expect(serialized).not.toContain("sample-");
+      expect(serialized).not.toContain("barcode");
+      expect(serialized).not.toContain("pesel");
+      expect(serialized).not.toContain("EXT-");
+    });
+  });
+
+  describe("scenariusz przekazany jawnie", () => {
+    it("ma pierwszeństwo przed globalną konfiguracją", () => {
+      // Zadanie ponowienia utrwala scenariusz w chwili powstania, więc zmiana
+      // globalnej konfiguracji nie może zamienić go w inny scenariusz.
+      process.env.LAB_SIMULATOR_SCENARIO = "VALIDATION_ERROR";
+
+      const result = acceptAccepted(service, {
+        ...buildInput(2),
+        attemptNumber: 2,
+        scenario: "RATE_LIMIT"
+      });
+
+      expect(result.accepted).toBe(true);
+      expect(result.jobs[0].scenario).toBe("SUCCESS");
+    });
+
+    it("nie odczytuje globalnej konfiguracji, gdy scenariusz jest podany", () => {
+      process.env.LAB_SIMULATOR_SCENARIO = "NOT_A_SCENARIO";
+
+      expect(() =>
+        acceptAccepted(service, {
+          ...buildInput(2),
+          attemptNumber: 2,
+          scenario: "RATE_LIMIT"
+        })
+      ).not.toThrow();
     });
   });
 

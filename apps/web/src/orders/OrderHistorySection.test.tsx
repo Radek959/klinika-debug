@@ -203,6 +203,76 @@ describe("OrderHistorySection", () => {
     expect(screen.queryByText(/SAMPLE_COLLECTED/)).not.toBeInTheDocument();
   });
 
+  it("pokazuje ograniczenie przepustowości i automatyczne ponowienie po polsku", async () => {
+    mockHistoryResponse(
+      historyResponse([
+        historyItem({
+          eventType: "LAB_SEND_RETRY",
+          actorType: "SYSTEM",
+          actorUserId: null,
+          correlationId: "corr-rate-limit-1",
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SENT_TO_LAB",
+          details: {
+            eventType: "LAB_SEND_RETRY",
+            attemptNumber: 2,
+            outcome: "ACCEPTED",
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "SENT_TO_LAB"
+          }
+        }),
+        historyItem({
+          eventType: "LAB_RATE_LIMIT_RECEIVED",
+          actorType: "LAB",
+          actorUserId: null,
+          correlationId: "corr-rate-limit-1",
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: {
+            eventType: "LAB_RATE_LIMIT_RECEIVED",
+            attemptNumber: 1,
+            retryAfterSeconds: 15,
+            nextRetryAt: "2026-09-07T10:00:15.000Z",
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "SAMPLE_COLLECTED"
+          }
+        })
+      ])
+    );
+
+    render(<OrderHistorySection token="token" orderId="order-1" refreshKey={0} />);
+
+    expect(
+      await screen.findByText("Laboratorium ograniczyło liczbę żądań")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Laboratorium chwilowo ograniczyło liczbę żądań\./)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Wysyłka zostanie ponowiona automatycznie\./)).toBeInTheDocument();
+
+    // Ograniczenie nie zmienia statusu zlecenia.
+    expect(
+      screen.getByText("Status zlecenia bez zmian: Próbki pobrane")
+    ).toBeInTheDocument();
+
+    // Automatyczne ponowienie jest oznaczone jako działanie systemu.
+    expect(screen.getByText("Automatyczne ponowienie wysyłki")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Automatyczna próba nr 2 zakończona przyjęciem zlecenia/)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Wykonawca: System")).toBeInTheDocument();
+    expect(
+      screen.getByText("Zmiana statusu: Próbki pobrane → Wysłane do laboratorium")
+    ).toBeInTheDocument();
+
+    // Żadnych surowych enumów, kodów błędów ani nazwy scenariusza.
+    expect(screen.queryByText(/LAB_RATE_LIMIT_RECEIVED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/LAB_SEND_RETRY/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/LAB_RATE_LIMITED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/RATE_LIMIT/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SAMPLE_COLLECTED|SENT_TO_LAB/)).not.toBeInTheDocument();
+  });
+
   it("pokazuje odrzucenie zlecenia bez błędów pól", async () => {
     mockHistoryResponse(
       historyResponse([

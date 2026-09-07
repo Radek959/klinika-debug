@@ -10,6 +10,8 @@ export type OrderHistoryEventType =
   | "LAB_RESULT_RECEIVED"
   | "LAB_SAMPLE_REJECTED"
   | "LAB_ORDER_REJECTED"
+  | "LAB_RATE_LIMIT_RECEIVED"
+  | "LAB_SEND_RETRY"
   | "TECHNICAL_ERROR";
 
 export type OrderHistoryActorType = "STAFF" | "SYSTEM" | "LAB";
@@ -122,6 +124,39 @@ export interface LabOrderRejectedDetails {
   fieldErrors: LabOrderRejectedFieldError[];
   previousStatus: "SAMPLE_COLLECTED";
   newStatus: "SAMPLE_COLLECTED";
+}
+
+/**
+ * Szczegóły otrzymania od laboratorium odpowiedzi `429` przy wysyłce zlecenia.
+ *
+ * Ograniczenie przepustowości jest przejściowe i poprawnie obsługiwane, a nie
+ * błędem technicznym: status zlecenia się nie zmienia, więc `previousStatus`
+ * i `newStatus` są równe `SAMPLE_COLLECTED`, a zdarzenie NIE jest zapisywane
+ * jako `TECHNICAL_ERROR`.
+ *
+ * Zakres pól jest celowo zamknięty. Nie zapisujemy tu nazwy aktywnego
+ * scenariusza symulatora, danych pacjenta, kodów kreskowych, pełnego payloadu
+ * wysyłanego do laboratorium ani sekretów integracji.
+ */
+export interface LabRateLimitReceivedDetails {
+  attemptNumber: number;
+  retryAfterSeconds: number;
+  nextRetryAt: string;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
+}
+
+/**
+ * Szczegóły automatycznego ponowienia wysyłki wykonanego przez system.
+ *
+ * Wpis powstaje wyłącznie dla próby wykonanej przez scheduler, nigdy dla
+ * kliknięcia użytkownika — dlatego zapisujemy go z `actorType: SYSTEM`.
+ */
+export interface LabSendRetryDetails {
+  attemptNumber: number;
+  outcome: "ACCEPTED";
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SENT_TO_LAB";
 }
 
 /**
@@ -317,5 +352,44 @@ export function buildLabOrderRejectedDetails(input: {
       })),
     previousStatus: "SAMPLE_COLLECTED",
     newStatus: "SAMPLE_COLLECTED"
+  };
+}
+
+/**
+ * Buduje bezpieczne szczegóły zdarzenia `LAB_RATE_LIMIT_RECEIVED`.
+ *
+ * Wartości są przepisywane pole po polu — do publicznej historii nie może
+ * trafić nic spoza tego kontraktu, w szczególności nazwa aktywnego scenariusza
+ * symulatora. `nextRetryAt` jest zapisywany jako ISO 8601, żeby wpis historii
+ * był niezależny od strefy czasowej odczytu.
+ */
+export function buildLabRateLimitReceivedDetails(input: {
+  attemptNumber: number;
+  retryAfterSeconds: number;
+  nextRetryAt: Date;
+}): LabRateLimitReceivedDetails {
+  return {
+    attemptNumber: input.attemptNumber,
+    retryAfterSeconds: input.retryAfterSeconds,
+    nextRetryAt: input.nextRetryAt.toISOString(),
+    previousStatus: "SAMPLE_COLLECTED",
+    newStatus: "SAMPLE_COLLECTED"
+  };
+}
+
+/**
+ * Buduje bezpieczne szczegóły zdarzenia `LAB_SEND_RETRY`.
+ *
+ * Zdarzenie opisuje wyłącznie fakt automatycznego ponowienia i jego wynik.
+ * Nie zawiera nazwy scenariusza, danych pacjenta ani payloadu wysyłki.
+ */
+export function buildLabSendRetryDetails(input: {
+  attemptNumber: number;
+}): LabSendRetryDetails {
+  return {
+    attemptNumber: input.attemptNumber,
+    outcome: "ACCEPTED",
+    previousStatus: "SAMPLE_COLLECTED",
+    newStatus: "SENT_TO_LAB"
   };
 }
