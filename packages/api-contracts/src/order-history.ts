@@ -8,6 +8,7 @@ export type OrderHistoryEventType =
   | "LAB_ORDER_ACCEPTED"
   | "LAB_RESULT_RECEIVED"
   | "LAB_SAMPLE_REJECTED"
+  | "LAB_ORDER_REJECTED"
   | "TECHNICAL_ERROR";
 
 export type OrderHistoryActorType = "STAFF" | "SYSTEM" | "LAB";
@@ -92,6 +93,30 @@ export interface LabSampleRejectedHistoryDetails {
   newStatus: "REJECTED";
 }
 
+/** Pojedynczy błąd pola zgłoszony przez laboratorium przy odrzuceniu zlecenia. */
+export interface LabOrderRejectedHistoryFieldError {
+  field: string;
+  code: string;
+  message: string;
+}
+
+/**
+ * Szczegóły synchronicznego odrzucenia zlecenia przez laboratorium przy wysyłce.
+ *
+ * Odrzucenie walidacyjne jest poprawnym zachowaniem integracji, a nie błędem
+ * technicznym: status zlecenia się nie zmienia, więc `previousStatus` i
+ * `newStatus` są równe `SAMPLE_COLLECTED`. Kontrakt nie zawiera nazwy aktywnego
+ * scenariusza symulatora, danych pacjenta, kodów kreskowych ani payloadu
+ * wysyłanego do laboratorium.
+ */
+export interface LabOrderRejectedHistoryDetails {
+  rejectionType: "VALIDATION";
+  errorCode: "LAB_ORDER_VALIDATION_ERROR";
+  fieldErrors: LabOrderRejectedHistoryFieldError[];
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
+}
+
 export interface TechnicalErrorHistoryDetails {
   reason: string;
   previousStatus: OrderStatus;
@@ -106,6 +131,7 @@ export type OrderHistoryEventDetails =
   | ({ eventType: "LAB_ORDER_ACCEPTED" } & LabOrderAcceptedHistoryDetails)
   | ({ eventType: "LAB_RESULT_RECEIVED" } & LabResultReceivedHistoryDetails)
   | ({ eventType: "LAB_SAMPLE_REJECTED" } & LabSampleRejectedHistoryDetails)
+  | ({ eventType: "LAB_ORDER_REJECTED" } & LabOrderRejectedHistoryDetails)
   | ({ eventType: "TECHNICAL_ERROR" } & TechnicalErrorHistoryDetails);
 
 export interface OrderHistoryItem {

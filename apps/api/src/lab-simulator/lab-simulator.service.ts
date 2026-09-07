@@ -3,8 +3,10 @@ import { randomUUID } from "node:crypto";
 import {
   computePartialSuccessCallbackOffsets,
   generateSyntheticResult,
+  planLabOrderValidationRejection,
   planSampleRejection,
   splitMedicalTestIdsForPartialSuccess,
+  type LabOrderValidationFieldError,
   type OrderMaterialType
 } from "@klinika/domain";
 import type { LabResultTestPayload, LabResultsWebhookRequest } from "@klinika/api-contracts";
@@ -18,6 +20,8 @@ export interface LabSimulatorParameterInput {
 
 export interface LabSimulatorTestInput {
   medicalTestId: string;
+  /** Kod badania z katalogu — używany do deterministycznego, stabilnego sortowania. */
+  code: string;
   /** Rodzaj materiału wymaganego przez badanie — wiąże badanie z próbką. */
   materialType: OrderMaterialType;
   parameters: LabSimulatorParameterInput[];
@@ -47,11 +51,36 @@ export interface LabSimulatorScheduledJob {
   payload: LabResultsWebhookRequest;
 }
 
-export interface LabSimulatorOrderResult {
+/**
+ * Zlecenie przyjęte przez laboratorium: powstaje identyfikator zewnętrzny,
+ * przewidywany czas zakończenia i co najmniej jedno zadanie callbacka.
+ */
+export interface LabSimulatorOrderAccepted {
+  accepted: true;
   externalOrderId: string;
   estimatedCompletionAt: Date;
   jobs: LabSimulatorScheduledJob[];
 }
+
+/**
+ * Zlecenie odrzucone synchronicznie przez laboratorium.
+ *
+ * Wariant celowo nie zawiera `externalOrderId`, `estimatedCompletionAt` ani
+ * `jobs` — nieprzyjęte zlecenie nie ma identyfikatora zewnętrznego, terminu
+ * realizacji ani zaplanowanego callbacka. Odrzucenie jest zwracane jako wartość,
+ * a nie wyjątek: symulator nie steruje przepływem aplikacji wyjątkami.
+ */
+export interface LabSimulatorOrderRejected {
+  accepted: false;
+  rejectionType: "VALIDATION";
+  errorCode: "LAB_ORDER_VALIDATION_ERROR";
+  message: string;
+  fieldErrors: LabOrderValidationFieldError[];
+}
+
+export type LabSimulatorOrderResult =
+  | LabSimulatorOrderAccepted
+  | LabSimulatorOrderRejected;
 
 // Domyślny tryb CLEAN/SUCCESS: 300 sekund do przewidywanego zakończenia realizacji.
 const DEFAULT_ESTIMATED_COMPLETION_DELAY_MS = 300_000;
@@ -59,8 +88,16 @@ const DEFAULT_ESTIMATED_COMPLETION_DELAY_MS = 300_000;
 @Injectable()
 export class LabSimulatorService {
   acceptOrder(input: LabSimulatorOrderInput): LabSimulatorOrderResult {
-    const externalOrderId = `EXT-${randomUUID()}`;
     const scenario = resolveLabSimulatorScenario();
+
+    // Odrzucenie walidacyjne jest rozstrzygane przed wygenerowaniem
+    // identyfikatora zewnętrznego: nieprzyjęte zlecenie nie może dostać
+    // `externalOrderId` ani żadnego innego artefaktu przyjętej wysyłki.
+    if (scenario === "VALIDATION_ERROR") {
+      return this.buildValidationErrorResult(input);
+    }
+
+    const externalOrderId = `EXT-${randomUUID()}`;
     const delayMs = this.getDelayMs();
 
     if (scenario === "PARTIAL_SUCCESS" && input.tests.length >= 2) {
@@ -81,11 +118,35 @@ export class LabSimulatorService {
     return this.buildSuccessResult(input, externalOrderId, delayMs);
   }
 
+  /**
+   * Scenariusz VALIDATION_ERROR: laboratorium synchronicznie odrzuca zlecenie.
+   *
+   * Nie powstaje `externalOrderId`, `estimatedCompletionAt`, callback ani zadanie
+   * do `lab_jobs`. Treść odrzucenia jest deterministyczna i syntetyczna — buduje
+   * ją warstwa domenowa na podstawie samych kodów badań, bez danych pacjenta,
+   * kodów kreskowych i nazwy aktywnego scenariusza.
+   */
+  private buildValidationErrorResult(
+    input: LabSimulatorOrderInput
+  ): LabSimulatorOrderRejected {
+    const rejection = planLabOrderValidationRejection({
+      testCodes: input.tests.map((test) => test.code)
+    });
+
+    return {
+      accepted: false,
+      rejectionType: rejection.rejectionType,
+      errorCode: rejection.errorCode,
+      message: rejection.message,
+      fieldErrors: rejection.fieldErrors
+    };
+  }
+
   private buildSuccessResult(
     input: LabSimulatorOrderInput,
     externalOrderId: string,
     delayMs: number
-  ): LabSimulatorOrderResult {
+  ): LabSimulatorOrderAccepted {
     const estimatedCompletionAt = new Date(Date.now() + delayMs);
     const results = input.tests.map((test) => this.buildTestResultPayload(input.orderId, test));
 
@@ -99,6 +160,7 @@ export class LabSimulatorService {
     };
 
     return {
+      accepted: true,
       externalOrderId,
       estimatedCompletionAt,
       jobs: [
@@ -115,7 +177,7 @@ export class LabSimulatorService {
     input: LabSimulatorOrderInput,
     externalOrderId: string,
     delayMs: number
-  ): LabSimulatorOrderResult {
+  ): LabSimulatorOrderAccepted {
     const testsById = new Map(input.tests.map((test) => [test.medicalTestId, test]));
     const { firstBatchTestIds, secondBatchTestIds } = splitMedicalTestIdsForPartialSuccess(
       input.tests.map((test) => test.medicalTestId)
@@ -153,6 +215,7 @@ export class LabSimulatorService {
     };
 
     return {
+      accepted: true,
       externalOrderId,
       estimatedCompletionAt,
       jobs: [
@@ -182,7 +245,7 @@ export class LabSimulatorService {
     input: LabSimulatorOrderInput,
     externalOrderId: string,
     delayMs: number
-  ): LabSimulatorOrderResult {
+  ): LabSimulatorOrderAccepted {
     const estimatedCompletionAt = new Date(Date.now() + delayMs);
     const testsById = new Map(input.tests.map((test) => [test.medicalTestId, test]));
     const plan = planSampleRejection({
@@ -215,6 +278,7 @@ export class LabSimulatorService {
     };
 
     return {
+      accepted: true,
       externalOrderId,
       estimatedCompletionAt,
       jobs: [

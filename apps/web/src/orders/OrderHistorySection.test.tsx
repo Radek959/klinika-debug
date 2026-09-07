@@ -148,6 +148,90 @@ describe("OrderHistorySection", () => {
     expect(screen.queryByText(/EDTA_BLOOD|SERUM/)).not.toBeInTheDocument();
   });
 
+  it("pokazuje odrzucenie zlecenia przez laboratorium po polsku", async () => {
+    mockHistoryResponse(
+      historyResponse([
+        historyItem({
+          eventType: "LAB_ORDER_REJECTED",
+          actorType: "LAB",
+          actorUserId: null,
+          correlationId: "corr-rejected-1",
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: {
+            eventType: "LAB_ORDER_REJECTED",
+            rejectionType: "VALIDATION",
+            errorCode: "LAB_ORDER_VALIDATION_ERROR",
+            fieldErrors: [
+              {
+                field: "tests",
+                code: "LAB_TEST_NOT_SUPPORTED",
+                message: "Laboratorium nie obsługuje jednego z wybranych badań."
+              }
+            ],
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "SAMPLE_COLLECTED"
+          }
+        })
+      ])
+    );
+
+    render(<OrderHistorySection token="token" orderId="order-1" refreshKey={0} />);
+
+    expect(
+      await screen.findByText("Laboratorium odrzuciło zlecenie")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Zlecenie nie przeszło walidacji po stronie laboratorium\./)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Laboratorium nie obsługuje jednego z wybranych badań\./)
+    ).toBeInTheDocument();
+    expect(screen.getByText("corr-rejected-1")).toBeInTheDocument();
+
+    // Odrzucenie nie zmienia statusu, więc oś czasu nie może pokazywać przejścia.
+    expect(
+      screen.getByText("Status zlecenia bez zmian: Próbki pobrane")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Zmiana statusu:/)).not.toBeInTheDocument();
+
+    // Żadnych surowych enumów ani technicznych kodów w interfejsie.
+    expect(screen.queryByText(/LAB_ORDER_REJECTED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/LAB_ORDER_VALIDATION_ERROR/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/LAB_TEST_NOT_SUPPORTED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/VALIDATION_ERROR/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SAMPLE_COLLECTED/)).not.toBeInTheDocument();
+  });
+
+  it("pokazuje odrzucenie zlecenia bez błędów pól", async () => {
+    mockHistoryResponse(
+      historyResponse([
+        historyItem({
+          eventType: "LAB_ORDER_REJECTED",
+          actorType: "LAB",
+          actorUserId: null,
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: {
+            eventType: "LAB_ORDER_REJECTED",
+            rejectionType: "VALIDATION",
+            errorCode: "LAB_ORDER_VALIDATION_ERROR",
+            fieldErrors: [],
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "SAMPLE_COLLECTED"
+          }
+        })
+      ])
+    );
+
+    render(<OrderHistorySection token="token" orderId="order-1" refreshKey={0} />);
+
+    expect(
+      await screen.findByText("Zlecenie nie przeszło walidacji po stronie laboratorium.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Zgłoszone uwagi:/)).not.toBeInTheDocument();
+  });
+
   it("pokazuje pustą historię", async () => {
     mockHistoryResponse(historyResponse([]));
 

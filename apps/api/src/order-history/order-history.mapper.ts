@@ -67,6 +67,13 @@ const ALLOWED_DETAILS_FIELDS: Record<OrderHistoryEventType, readonly string[]> =
     "previousStatus",
     "newStatus"
   ],
+  LAB_ORDER_REJECTED: [
+    "rejectionType",
+    "errorCode",
+    "fieldErrors",
+    "previousStatus",
+    "newStatus"
+  ],
   TECHNICAL_ERROR: ["reason", "previousStatus", "newStatus"]
 };
 
@@ -77,6 +84,9 @@ const ALLOWED_REJECTED_SAMPLE_FIELDS = [
   "rejectionCode",
   "rejectionReason"
 ] as const;
+
+/** Pola dopuszczone wewnątrz elementu listy `fieldErrors`. */
+const ALLOWED_FIELD_ERROR_FIELDS = ["field", "code", "message"] as const;
 
 export function toOrderHistoryListResponse(
   rows: OrderHistoryRow[],
@@ -121,14 +131,33 @@ function sanitizeDetails(
     stored.rejectedSamples = sanitizeRejectedSamples(stored.rejectedSamples);
   }
 
+  if (eventType === "LAB_ORDER_REJECTED") {
+    stored.fieldErrors = sanitizeNestedList(
+      stored.fieldErrors,
+      ALLOWED_FIELD_ERROR_FIELDS
+    );
+  }
+
   return { ...stored, eventType } as OrderHistoryEventDetails;
 }
 
 function sanitizeRejectedSamples(value: unknown): Record<string, unknown>[] {
+  return sanitizeNestedList(value, ALLOWED_REJECTED_SAMPLE_FIELDS);
+}
+
+/**
+ * Whitelista musi obowiązywać także wewnątrz zagnieżdżonych list szczegółów —
+ * `pickAllowed` przepisuje element tablicy w całości, więc bez tego kroku
+ * dodatkowe pole zapisane starszą wersją kodu wyciekłoby do odpowiedzi.
+ */
+function sanitizeNestedList(
+  value: unknown,
+  allowedFields: readonly string[]
+): Record<string, unknown>[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.map((item) => pickAllowed(item, ALLOWED_REJECTED_SAMPLE_FIELDS));
+  return value.map((item) => pickAllowed(item, allowedFields));
 }
 
 function pickAllowed(

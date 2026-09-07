@@ -341,15 +341,22 @@ function SendToLabAction({
 }) {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
 
   async function send() {
     setIsSending(true);
     setError(null);
+    setFieldErrors([]);
     try {
       await sendOrderToLab(token, orderId);
       onSent();
     } catch (caught) {
+      // Laboratorium może odrzucić poprawne zlecenie (HTTP 422). Pokazujemy
+      // polski komunikat i szczegóły pól, ale nigdy technicznego kodu błędu
+      // ani nazwy aktywnego trybu symulatora. Przycisk wysyłki zostaje
+      // aktywny — odrzucenie nie blokuje zlecenia i wysyłkę można ponowić.
       setError(toApiMessage(caught, "Nie udało się wysłać zlecenia do laboratorium."));
+      setFieldErrors(caught instanceof ApiClientError ? caught.fieldErrors : []);
     } finally {
       setIsSending(false);
     }
@@ -364,6 +371,15 @@ function SendToLabAction({
         <p className="form-error" role="alert">
           {error}
         </p>
+      ) : null}
+      {fieldErrors.length ? (
+        <ul className="form-error-list">
+          {fieldErrors.map((fieldError) => (
+            <li key={`${fieldError.field}:${fieldError.code}`} className="form-error" role="alert">
+              {fieldError.message}
+            </li>
+          ))}
+        </ul>
       ) : null}
     </section>
   );

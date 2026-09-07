@@ -22,6 +22,10 @@ describe("resolveLabSimulatorScenario", () => {
     expect(resolveLabSimulatorScenario("SAMPLE_REJECTED")).toBe("SAMPLE_REJECTED");
   });
 
+  it("rozpoznaje VALIDATION_ERROR", () => {
+    expect(resolveLabSimulatorScenario("VALIDATION_ERROR")).toBe("VALIDATION_ERROR");
+  });
+
   it("toleruje otaczające białe znaki", () => {
     expect(resolveLabSimulatorScenario("  PARTIAL_SUCCESS  ")).toBe("PARTIAL_SUCCESS");
   });
@@ -37,11 +41,24 @@ describe("resolveLabSimulatorScenario", () => {
     expect(() => resolveLabSimulatorScenario("sample_rejected")).toThrow(
       /LAB_SIMULATOR_SCENARIO/
     );
+    expect(() => resolveLabSimulatorScenario("validation_error")).toThrow(
+      /LAB_SIMULATOR_SCENARIO/
+    );
   });
 
   it("wymienia w komunikacie błędu wszystkie dozwolone scenariusze", () => {
     expect(() => resolveLabSimulatorScenario("NOT_A_SCENARIO")).toThrow(
-      /SUCCESS, PARTIAL_SUCCESS, SAMPLE_REJECTED/
+      /SUCCESS, PARTIAL_SUCCESS, SAMPLE_REJECTED, VALIDATION_ERROR/
+    );
+  });
+
+  it("nie akceptuje wartości spoza listy scenariuszy", () => {
+    // Kod błędu API LAB_ORDER_VALIDATION_ERROR nie jest nazwą scenariusza.
+    expect(() => resolveLabSimulatorScenario("LAB_ORDER_VALIDATION_ERROR")).toThrow(
+      /LAB_SIMULATOR_SCENARIO/
+    );
+    expect(() => resolveLabSimulatorScenario("RATE_LIMIT")).toThrow(
+      /LAB_SIMULATOR_SCENARIO/
     );
   });
 });

@@ -326,7 +326,12 @@ export class OrdersController {
   @ApiOperation({
     summary: "Wysłanie zlecenia do laboratorium",
     description:
-      "Wysyła zlecenie w statusie SAMPLE_COLLECTED do laboratorium. Żądanie jest idempotentne w obrębie zlecenia — ponowne wywołanie z tymi samymi danymi zwraca ten sam rezultat bez ponownej wysyłki."
+      "Wysyła zlecenie w statusie SAMPLE_COLLECTED do laboratorium. Żądanie jest idempotentne w obrębie zlecenia — " +
+      "ponowne wywołanie z tymi samymi danymi zwraca ten sam rezultat bez ponownej wysyłki. " +
+      "Laboratorium może też nie przyjąć zlecenia i odrzucić je synchronicznie z kodem 422 " +
+      "(LAB_ORDER_VALIDATION_ERROR). Takie odrzucenie nie jest błędem technicznym: zlecenie zostaje w statusie " +
+      "SAMPLE_COLLECTED, pola integracji (externalOrderId, sentAt, estimatedCompletionAt) pozostają puste, nie " +
+      "powstaje klucz idempotencji, a wysyłkę można ponowić."
   })
   @ApiOkResponse({
     type: OrderResponseDto,
@@ -344,7 +349,51 @@ export class OrdersController {
   @ApiUnprocessableEntityResponse({
     type: ApiErrorResponseDto,
     description:
-      "Zlecenie narusza reguły biznesowe wysyłki, np. nie ma statusu SAMPLE_COLLECTED albo pacjent jest nieaktywny."
+      "Zlecenia nie da się wysłać. Dwa różne przypadki dzielą ten sam kod HTTP i są rozróżniane przez error.code. " +
+      "ORDER_SEND_ERROR — lokalna walidacja zlecenia przed wysyłką, np. zlecenie nie ma statusu SAMPLE_COLLECTED " +
+      "albo pacjent jest nieaktywny; fieldErrors wskazują wtedy pola status i patientId. " +
+      "LAB_ORDER_VALIDATION_ERROR — laboratorium odrzuciło poprawne zlecenie po swojej stronie; fieldErrors " +
+      "zawierają błędy zgłoszone przez laboratorium (np. field tests, code LAB_TEST_NOT_SUPPORTED). " +
+      "W obu przypadkach error.correlationId jest równy identyfikatorowi korelacji żądania i nagłówkowi " +
+      "X-Correlation-ID odpowiedzi. Odrzucenie przez laboratorium zapisuje w historii zlecenia zdarzenie " +
+      "LAB_ORDER_REJECTED i nie zmienia statusu zlecenia.",
+    examples: {
+      lokalnaWalidacjaZlecenia: {
+        summary: "Lokalna walidacja zlecenia przed wysyłką",
+        value: {
+          error: {
+            code: "ORDER_SEND_ERROR",
+            message: "Nie udało się wysłać zlecenia do laboratorium.",
+            correlationId: "8d0c8cad-9c1b-4d7b-9e3b-0c48288d4fb7",
+            fieldErrors: [
+              {
+                field: "status",
+                code: "ORDER_NOT_SENDABLE",
+                message:
+                  "Zlecenie można wysłać do laboratorium wyłącznie po zarejestrowaniu wszystkich próbek."
+              }
+            ]
+          }
+        }
+      },
+      odrzuceniePrzezLaboratorium: {
+        summary: "Odrzucenie walidacyjne po stronie laboratorium",
+        value: {
+          error: {
+            code: "LAB_ORDER_VALIDATION_ERROR",
+            message: "Laboratorium odrzuciło zlecenie z powodu błędów walidacji.",
+            correlationId: "8d0c8cad-9c1b-4d7b-9e3b-0c48288d4fb7",
+            fieldErrors: [
+              {
+                field: "tests",
+                code: "LAB_TEST_NOT_SUPPORTED",
+                message: "Laboratorium nie obsługuje jednego z wybranych badań."
+              }
+            ]
+          }
+        }
+      }
+    }
   })
   @ApiConflictResponse({
     type: ApiErrorResponseDto,

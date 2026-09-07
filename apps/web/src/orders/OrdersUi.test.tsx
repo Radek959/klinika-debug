@@ -348,6 +348,91 @@ describe("interfejs zleceń", () => {
     expect(await screen.findByText("EXT-123")).toBeInTheDocument();
   });
 
+  it("pokazuje odrzucenie walidacyjne laboratorium i pozwala ponowić wysyłkę", async () => {
+    window.history.pushState({}, "", "/orders/order-1");
+    const collectedOrder = orderDetails({
+      status: "SAMPLE_COLLECTED",
+      samples: [
+        {
+          id: "sample-1",
+          materialType: "SERUM",
+          status: "COLLECTED",
+          barcode: "SMP-0001",
+          collectedAt: "2026-09-06T10:00:00.000Z",
+          collectedByUserId: "user-1",
+          rejectionCode: null,
+          rejectionReason: null
+        }
+      ]
+    });
+    let sendAttempts = 0;
+
+    mockFetch(({ url, init }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1/send" && init?.method === "POST") {
+        sendAttempts += 1;
+        return jsonError(
+          422,
+          "LAB_ORDER_VALIDATION_ERROR",
+          "Laboratorium odrzuciło zlecenie z powodu błędów walidacji.",
+          "corr-rejected-1",
+          [
+            {
+              field: "tests",
+              code: "LAB_TEST_NOT_SUPPORTED",
+              message: "Laboratorium nie obsługuje jednego z wybranych badań."
+            }
+          ]
+        );
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(collectedOrder);
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
+    ).toBeInTheDocument();
+
+    const sendButton = screen.getByRole("button", { name: "Wyślij do laboratorium" });
+    await userEvent.click(sendButton);
+
+    expect(
+      await screen.findByText("Laboratorium odrzuciło zlecenie z powodu błędów walidacji.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Laboratorium nie obsługuje jednego z wybranych badań.")
+    ).toBeInTheDocument();
+
+    // Status zlecenia się nie zmienia, a wysyłkę można ponowić.
+    expect(screen.getByText("Próbki pobrane")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Wyślij do laboratorium" })
+    ).toBeEnabled();
+    expect(
+      screen.queryByText("Zlecenie zostało wysłane do laboratorium.")
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Integracja z laboratorium")).not.toBeInTheDocument();
+
+    // Interfejs nie pokazuje technicznych kodów ani nazwy trybu symulatora.
+    expect(screen.queryByText(/LAB_ORDER_VALIDATION_ERROR/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/LAB_TEST_NOT_SUPPORTED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/VALIDATION_ERROR/)).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Wyślij do laboratorium" })
+    );
+
+    await waitFor(() => {
+      expect(sendAttempts).toBe(2);
+    });
+  });
+
   it("pokazuje przycisk edycji tylko dla zlecenia DRAFT", async () => {
     window.history.pushState({}, "", "/orders/order-1");
     mockFetch(({ url }) => {
