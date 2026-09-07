@@ -230,7 +230,7 @@ describe("orders send api — scenariusz TIMEOUT", () => {
     });
 
     const testId = await prisma.medicalTest.findFirstOrThrow({
-      where: { active: true },
+      where: { active: true, code: "CRP" },
       select: { id: true }
     });
 
