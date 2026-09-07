@@ -10,12 +10,14 @@ Aktywny etap: **Etap 4 — laboratorium**, pełne scenariusze symulatora i regu�
 
 Historia operacji zlecenia (Etap 3) jest zaimplementowana w PR `feat/order-history`.
 
-Rekomendowany następny PR: **Scenariusz `PARTIAL_SUCCESS` symulatora laboratorium** (pierwszy brakujący zakres wskazany w [Etapie 4](04-laboratorium.md)).
+Scenariusz `PARTIAL_SUCCESS` symulatora laboratorium jest zaimplementowany w PR `feat/lab-partial-success`.
+
+Rekomendowany następny PR: **Scenariusz `SAMPLE_REJECTED` symulatora laboratorium** (kolejny brakujący zakres wskazany w [Etapie 4](04-laboratorium.md)).
 
 Zakres następnego PR-a powinien obejmować:
 
-- pełny scenariusz częściowego sukcesu w symulatorze laboratorium;
-- zgodność z domenowym statusem `PARTIAL` już obecnym w kodzie;
+- pełny scenariusz odrzucenia jednej albo wszystkich próbek przez symulator;
+- zgodność z domenowym statusem `REJECTED` już obecnym w kodzie;
 - testy API i domenowe dla nowego scenariusza.
 
 Nie implementować tego zakresu w PR-ach organizacyjnych.
@@ -27,7 +29,7 @@ Nie implementować tego zakresu w PR-ach organizacyjnych.
 | Etap 1 — fundament | `IMPLEMENTED` | Fundament aplikacji, deploymentu, sesji, workspace'ów, OpenAPI i testów jest obecny w kodzie. |
 | Etap 2 — pacjenci | `IMPLEMENTED` | Podstawowa obsługa pacjentów w API i UI jest obecna w kodzie. |
 | Etap 3 — zlecenia i próbki | `IMPLEMENTED` | Główny pion zleceń, katalogu badań, próbek, przebudowany UX nowego zlecenia, edycja `DRAFT` i historia operacji zlecenia są zaimplementowane w kodzie. |
-| Etap 4 — laboratorium | `IN_PROGRESS` | Wysyłka, idempotencja, trwała kolejka, scheduler, callback i sukces są zaimplementowane; pełne scenariusze i retry wymagają dalszej pracy. |
+| Etap 4 — laboratorium | `IN_PROGRESS` | Wysyłka, idempotencja, trwała kolejka, scheduler, callback, scenariusz `SUCCESS` i scenariusz `PARTIAL_SUCCESS` są zaimplementowane; pozostałe scenariusze i pełne reguły retry wymagają dalszej pracy. |
 | Etap 5 — dane i obserwowalność | `PLANNED` | Import, eksport, logi aplikacyjne i dokumentacja publikowana z aplikacji nie są ukończone. |
 | Etap 6 — admin i sterowanie | `PLANNED` | Panel `/admin`, reset i globalne sterowanie środowiskiem są zaplanowane. |
 | Etap 7 — kontrolowane błędy | `PLANNED` | Mechanizm pakietów błędów i wewnętrzny katalog defektów są zaplanowane. |
@@ -87,5 +89,7 @@ Podstawa oceny:
 - pliki PR `feat/order-history`: `prisma/schema.prisma`, `prisma/migrations/20260907120000_order_history/migration.sql`, `packages/domain/src/orders/order-history.ts`, `packages/api-contracts/src/order-history.ts`, `apps/api/src/order-history/*`, zmiany w `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/orders.controller.ts`, `apps/api/src/lab-callbacks/lab-callbacks.service.ts`, `apps/web/src/orders/OrderHistorySection.tsx`, `apps/web/src/orders/OrderDetailsPage.tsx`, `apps/web/src/ui/labels.ts`;
 - obecne kontrolery, serwisy, kontrakty, migracje i testy w `apps/`, `packages/` i `prisma/`;
 - brak modułów importu/eksportu, powiadomień, `/admin` i kontrolowanych pakietów błędów w kodzie;
-- brak dowodu pozytywnego uruchomienia `npm run test:migration:orders`, `npm run test:migration:order-history` i `npm run test:integration` w tej sesji, ponieważ środowisko nie miało dostępu do MySQL ani do Dockera (ten sam znany brak co w sesji PR #19);
+- PR `feat/lab-partial-success` ze scenariuszem `PARTIAL_SUCCESS` symulatora laboratorium: wybór scenariusza przez `LAB_SIMULATOR_SCENARIO` (`apps/api/src/lab-simulator/lab-simulator-scenario.ts`, walidowany startowo w `apps/api/src/config/env.validation.ts`), deterministyczny podział badań i planowanie dwóch callbacków (`packages/domain/src/orders/lab-results.ts`, `apps/api/src/lab-simulator/lab-simulator.service.ts`), zapis wielu zadań `lab_jobs` w tej samej transakcji wysyłki (`apps/api/src/orders/orders.service.ts`) bez migracji bazy (istniejący model `LabJob` już na to pozwalał), jawny fallback do `SUCCESS` dla zlecenia z jednym badaniem;
+- w tej samej sesji uruchomiono i potwierdzono powodzeniem: `npm ci`, `npm run db:generate`, `npm run lint`, `npm run typecheck`, `npm test` (58 testów `@klinika/api`, 62 `@klinika/web`, 71 `@klinika/domain` — w tym nowe testy scenariusza `PARTIAL_SUCCESS`), `npm run build`, `git diff --check`, `npm audit --omit=dev` (0 podatności);
+- brak dowodu pozytywnego uruchomienia `npm run test:integration` (nowe testy e2e scenariusza `PARTIAL_SUCCESS` w `apps/api/test/lab-results.e2e-spec.ts`), `npm run test:migration:orders` i `npm run test:migration:order-history` w tej sesji, ponieważ środowisko nie miało dostępu do MySQL ani do Dockera (ten sam znany brak co w sesji PR #19 i #20); te testy wymagają potwierdzenia w CI przed oznaczeniem elementu jako `VERIFIED`;
 - brak sprawdzenia działającego środowiska na Hostingerze w tej sesji, więc żaden zakres nie został podniesiony do `DEPLOYED`.

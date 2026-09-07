@@ -1,4 +1,8 @@
 import { parsePrismaDatabaseUrl } from "../common/prisma/prisma-client.factory";
+import {
+  resolveLabSimulatorScenario,
+  type LabSimulatorScenario
+} from "../lab-simulator/lab-simulator-scenario";
 
 const NODE_ENV_VALUES = ["development", "test", "production"] as const;
 
@@ -9,6 +13,7 @@ interface ValidatedEnv {
   PORT: string;
   DATABASE_URL: string;
   SESSION_TOKEN_PEPPER: string;
+  LAB_SIMULATOR_SCENARIO: LabSimulatorScenario;
 }
 
 export function validateEnvironment(config: Record<string, unknown>): ValidatedEnv {
@@ -17,6 +22,15 @@ export function validateEnvironment(config: Record<string, unknown>): ValidatedE
   const port = readString(config, "PORT");
   const databaseUrl = readString(config, "DATABASE_URL");
   const sessionTokenPepper = readString(config, "SESSION_TOKEN_PEPPER");
+
+  let labSimulatorScenario: LabSimulatorScenario | undefined;
+  try {
+    labSimulatorScenario = resolveLabSimulatorScenario(
+      readString(config, "LAB_SIMULATOR_SCENARIO")
+    );
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "LAB_SIMULATOR_SCENARIO jest nieprawidłowe.");
+  }
 
   if (!nodeEnv || !NODE_ENV_VALUES.includes(nodeEnv as NodeEnv)) {
     errors.push(
@@ -52,7 +66,8 @@ export function validateEnvironment(config: Record<string, unknown>): ValidatedE
     NODE_ENV: nodeEnv as NodeEnv,
     PORT: port!,
     DATABASE_URL: databaseUrl!,
-    SESSION_TOKEN_PEPPER: sessionTokenPepper!
+    SESSION_TOKEN_PEPPER: sessionTokenPepper!,
+    LAB_SIMULATOR_SCENARIO: labSimulatorScenario!
   };
 }
 

@@ -15,11 +15,16 @@
 | Scenariusz `SUCCESS` | `IMPLEMENTED` | `apps/api/src/lab-simulator/lab-simulator.service.ts` generuje komplet wyników i zadanie `SUCCESS`. |
 | Zapis i prezentacja wyników | `IMPLEMENTED` | `apps/api/src/lab-callbacks/lab-callbacks.service.ts`, `apps/web/src/orders/OrderDetailsPage.tsx`. |
 
+## Zaimplementowane na `main` (kolejne PR-y)
+
+| Element | Status | Dowód |
+|---|---|---|
+| `PARTIAL_SUCCESS` | `IMPLEMENTED` | Wybór scenariusza przez `LAB_SIMULATOR_SCENARIO` (domyślnie `SUCCESS`), deterministyczny podział badań w `apps/api/src/lab-simulator/lab-simulator.service.ts` i `packages/domain/src/orders/lab-results.ts` (`splitMedicalTestIdsForPartialSuccess`, `computePartialSuccessCallbackOffsets`), dwa zaplanowane zadania `lab_jobs` (`PARTIAL` → `COMPLETED`), jawny fallback do `SUCCESS` dla zlecenia z jednym badaniem. Testy: `packages/domain/src/orders/lab-results.spec.ts`, `apps/api/src/lab-simulator/lab-simulator-scenario.spec.ts`, `apps/api/src/lab-simulator/lab-simulator.service.spec.ts`, `apps/api/src/config/env.validation.spec.ts`, `apps/api/test/lab-results.e2e-spec.ts`. |
+
 ## Brakujące lub wymagające poprawy
 
 | Element | Status | Uwagi |
 |---|---|---|
-| `PARTIAL_SUCCESS` | `PLANNED` | Domenowo obsługiwany jest status `PARTIAL`, ale symulator nie ma jeszcze pełnego scenariusza częściowego sukcesu. |
 | `SAMPLE_REJECTED` | `PLANNED` | Brak pełnego scenariusza odrzucenia próbki przez symulator. |
 | `VALIDATION_ERROR` | `PLANNED` | Brak globalnie sterowanego scenariusza odpowiedzi walidacyjnej symulatora. |
 | `RATE_LIMIT` | `PLANNED` | Brak pełnego scenariusza `429` z regułami retry zgodnymi z dokumentacją. |
@@ -30,4 +35,4 @@
 
 ## Dowody weryfikacji
 
-Ostatnia ocena statusu w tym dokumencie opiera się na przeglądzie kodu z 2026-09-06. Statusy nie oznaczają `VERIFIED`, dopóki PR z daną zmianą nie przejdzie wymaganych testów, CI i review.
+Ostatnia ocena statusu w tym dokumencie opiera się na przeglądzie kodu i testach lokalnych z 2026-09-07 (PR `feat/lab-partial-success`). Statusy nie oznaczają `VERIFIED`, dopóki PR z daną zmianą nie przejdzie wymaganych testów, CI i review.
