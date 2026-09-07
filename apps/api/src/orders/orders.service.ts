@@ -25,6 +25,14 @@ import {
   buildOrderSentToLabDetails,
   buildLabOrderAcceptedDetails,
   buildLabOrderRejectedDetails,
+  buildLabRateLimitReceivedDetails,
+  buildLabSendRetryDetails,
+  buildLabSendRetryCancelledDetails,
+  computeRetryAfterSeconds,
+  FIRST_LAB_SEND_ATTEMPT_NUMBER,
+  LAB_RATE_LIMITED_ERROR_CODE,
+  LAB_RATE_LIMITED_MESSAGE,
+  type LabSendRetryCancellationReason,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
   type OrderValidationFieldError,
@@ -44,12 +52,24 @@ import type {
 } from "@klinika/api-contracts";
 import { ApiErrorException } from "../common/errors/api-error.exception";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { LabSimulatorService } from "../lab-simulator/lab-simulator.service";
+import {
+  LabSimulatorService,
+  type LabSimulatorOrderAccepted,
+  type LabSimulatorOrderRateLimited
+} from "../lab-simulator/lab-simulator.service";
+import { resolveLabSimulatorScenario } from "../lab-simulator/lab-simulator-scenario";
 import {
   OrderHistoryService,
   type OrderHistoryListParams
 } from "../order-history/order-history.service";
 import { toOrderResponse, toOrderListResponse, toOrderDetailsResponse } from "./orders.mapper";
+
+/**
+ * Znacznik stanu klucza idempotencji dla wysyłki oczekującej na automatyczne
+ * ponowienie. Rozstrzygający jest `responseStatus` (429); to pole jest jawnym,
+ * czytelnym opisem stanu w danych technicznych.
+ */
+const PENDING_SEND_RETRY_STATE = "PENDING_SEND_RETRY";
 
 type MedicalTestWithRequiredFields = MedicalTest & {
   requiredFields: Array<{
@@ -726,6 +746,12 @@ export class OrdersService {
         );
       }
 
+      // Wysyłka oczekująca na automatyczne ponowienie nie może udawać sukcesu:
+      // zlecenie nie zostało jeszcze przyjęte przez laboratorium.
+      if (existingKey.responseStatus === HttpStatus.TOO_MANY_REQUESTS) {
+        throw await this.buildPendingRetryError(workspaceId, orderId);
+      }
+
       // Ponowne żądanie z tym samym payloadem: zwróć bieżący, już zaktualizowany stan zlecenia.
       return toOrderResponse(order, order.tests, order.samples);
     }
@@ -741,10 +767,15 @@ export class OrdersService {
       throw this.orderSendError(fieldErrors);
     }
 
+    const scenario = resolveLabSimulatorScenario();
     const simulatorResult = this.labSimulator.acceptOrder({
       workspaceId,
       orderId,
       correlationId,
+      // Pierwsza, ręczna próba wysyłki. Licznik prób nie jest trzymany w pamięci
+      // procesu — kolejne próby czytają swój numer z trwałego zadania ponowienia.
+      attemptNumber: FIRST_LAB_SEND_ATTEMPT_NUMBER,
+      scenario,
       tests: order.tests.map((test) => ({
         medicalTestId: test.medicalTestId,
         code: test.medicalTest.code,
@@ -758,6 +789,22 @@ export class OrdersService {
         materialType: sample.materialType
       }))
     });
+
+    if (!simulatorResult.accepted && simulatorResult.rejectionType === "RATE_LIMIT") {
+      // Laboratorium chwilowo ograniczyło liczbę żądań. W odróżnieniu od
+      // odrzucenia walidacyjnego (422) ta odpowiedź MA zostać automatycznie
+      // ponowiona, więc atomowo rezerwujemy klucz idempotencji, planujemy
+      // dokładnie jedno trwałe zadanie ponowienia i zapisujemy historię.
+      return this.scheduleSendRetryAfterRateLimit({
+        workspaceId,
+        orderId,
+        correlationId,
+        scenario,
+        idempotencyKey,
+        requestHash,
+        rateLimit: simulatorResult
+      });
+    }
 
     if (!simulatorResult.accepted) {
       // Laboratorium nie przyjęło zlecenia. To poprawne zachowanie integracji,
@@ -885,6 +932,12 @@ export class OrdersService {
         );
       }
 
+      // Równoległe żądanie zarezerwowało klucz jako oczekujące ponowienie —
+      // nie wolno zwrócić sukcesu dla wysyłki, która nie została przyjęta.
+      if (concurrentKey.responseStatus === HttpStatus.TOO_MANY_REQUESTS) {
+        throw await this.buildPendingRetryError(workspaceId, orderId);
+      }
+
       const concurrentOrder = await this.prisma.order.findFirst({
         where: { id: orderId, workspaceId },
         include: {
@@ -960,6 +1013,416 @@ export class OrdersService {
       input.rejection.message,
       input.rejection.fieldErrors
     );
+  }
+
+  /**
+   * Obsługuje pierwszą odpowiedź `429` laboratorium.
+   *
+   * Wszystko dzieje się w JEDNEJ transakcji: rezerwacja klucza idempotencji,
+   * dokładnie jedno trwałe zadanie ponowienia i wpis historii o otrzymaniu
+   * ograniczenia. Klucz idempotencji jest zarezerwowany celowo — w odróżnieniu
+   * od `VALIDATION_ERROR` ta wysyłka będzie automatycznie ponawiana, a unikalność
+   * klucza działa tu jako naturalny mutex dla żądań równoległych.
+   *
+   * Zlecenie NIE zmienia statusu (zostaje `SAMPLE_COLLECTED`), nie dostaje
+   * `externalOrderId`, `sentAt`, `estimatedCompletionAt`, zadania callbacka ani
+   * statusu `TECHNICAL_ERROR` — ograniczenie przepustowości jest przejściowe.
+   */
+  private async scheduleSendRetryAfterRateLimit(input: {
+    workspaceId: string;
+    orderId: string;
+    correlationId: string;
+    scenario: string;
+    idempotencyKey: string;
+    requestHash: string;
+    rateLimit: LabSimulatorOrderRateLimited;
+  }): Promise<never> {
+    const { rateLimit } = input;
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.idempotencyKey.create({
+          data: {
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+            key: input.idempotencyKey,
+            requestHash: input.requestHash,
+            // Stan oczekującej operacji idempotentnej: wysyłka nie jest jeszcze
+            // zakończona, więc kolejne żądanie nie może dostać sukcesu.
+            responseStatus: HttpStatus.TOO_MANY_REQUESTS,
+            responseBody: {
+              state: PENDING_SEND_RETRY_STATE,
+              attemptNumber: rateLimit.nextAttemptNumber,
+              nextRetryAt: rateLimit.nextRetryAt.toISOString()
+            }
+          }
+        });
+
+        await tx.labSendRetryJob.create({
+          data: {
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+            attemptNumber: rateLimit.nextAttemptNumber,
+            executeAt: rateLimit.nextRetryAt,
+            status: "PENDING",
+            // Ten sam correlationId co pierwotna wysyłka — cała ścieżka
+            // 429 → ponowienie → przyjęcie jest spięta jednym identyfikatorem.
+            correlationId: input.correlationId,
+            // Scenariusz utrwalony w chwili powstania zadania. Wykonanie NIE
+            // czyta ponownie globalnej konfiguracji, więc jej późniejsza zmiana
+            // nie zamieni tego zadania w inny scenariusz.
+            scenario: input.scenario,
+            idempotencyKey: input.idempotencyKey,
+            requestHash: input.requestHash
+          }
+        });
+
+        await this.orderHistory.record(tx, {
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+          eventType: "LAB_RATE_LIMIT_RECEIVED",
+          // Odpowiedź 429 pochodzi od laboratorium, a nie od personelu.
+          actorType: "LAB",
+          correlationId: input.correlationId,
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: buildLabRateLimitReceivedDetails({
+            attemptNumber: FIRST_LAB_SEND_ATTEMPT_NUMBER,
+            retryAfterSeconds: rateLimit.retryAfterSeconds,
+            nextRetryAt: rateLimit.nextRetryAt
+          })
+        });
+      });
+    } catch (error) {
+      if (!this.isPrismaUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      // Równoległe pierwsze żądanie zdążyło zarezerwować klucz i utworzyć
+      // zadanie. Nie tworzymy drugiego zadania ani drugiego wpisu historii —
+      // zwracamy spójną odpowiedź o oczekiwaniu na automatyczne ponowienie.
+      throw await this.buildPendingRetryError(input.workspaceId, input.orderId);
+    }
+
+    throw this.rateLimitError(rateLimit.retryAfterSeconds);
+  }
+
+  /**
+   * Buduje odpowiedź `429` dla żądania trafiającego w trwające oczekiwanie na
+   * automatyczne ponowienie.
+   *
+   * `Retry-After` wskazuje pozostały czas do zaplanowanego terminu, nigdy nie
+   * jest ujemny, a brak zadania (np. już wykonanego) daje `0` — zlecenie czeka
+   * wtedy wyłącznie na najbliższy przebieg schedulera.
+   */
+  private async buildPendingRetryError(
+    workspaceId: string,
+    orderId: string
+  ): Promise<ApiErrorException> {
+    const job = await this.prisma.labSendRetryJob.findFirst({
+      where: { workspaceId, orderId, status: { in: ["PENDING", "PROCESSING"] } }
+    });
+
+    const retryAfterSeconds = job
+      ? computeRetryAfterSeconds({ now: new Date(), executeAt: job.executeAt })
+      : 0;
+
+    return this.rateLimitError(retryAfterSeconds);
+  }
+
+  private rateLimitError(retryAfterSeconds: number): ApiErrorException {
+    return new ApiErrorException(
+      HttpStatus.TOO_MANY_REQUESTS,
+      LAB_RATE_LIMITED_ERROR_CODE,
+      LAB_RATE_LIMITED_MESSAGE,
+      undefined,
+      { "Retry-After": String(Math.max(0, Math.trunc(retryAfterSeconds))) }
+    );
+  }
+
+  /**
+   * Wykonuje zaplanowane, automatyczne ponowienie wysyłki zlecenia.
+   *
+   * Metoda jest wywoływana wyłącznie przez scheduler dla zadania już atomowo
+   * przejętego (status `PROCESSING`). Cały skutek udanego ponowienia jest
+   * zapisywany w JEDNEJ transakcji: zadanie ponowienia → `DONE`, klucz
+   * idempotencji → sukces, zmiana statusu zlecenia, zadania callbacka i wpisy
+   * historii. Błąd transakcji nie zostawia częściowo przyjętego zlecenia.
+   */
+  async executeSendRetry(jobId: string): Promise<void> {
+    const job = await this.prisma.labSendRetryJob.findUnique({ where: { id: jobId } });
+    if (!job) {
+      return;
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: { id: job.orderId, workspaceId: job.workspaceId },
+      include: {
+        // Aktywność pacjenta jest jedną z reguł wysyłki egzekwowanych przy
+        // pierwszej, ręcznej próbie (`sendOrder`). Automatyczne ponowienie musi
+        // sprawdzać dokładnie tę samą regułę na świeżym stanie z bazy.
+        patient: { select: { active: true } },
+        tests: {
+          include: {
+            medicalTest: {
+              select: {
+                code: true,
+                name: true,
+                materialType: true,
+                parameters: { select: { code: true, valueType: true, unit: true } }
+              }
+            }
+          },
+          orderBy: { medicalTest: { code: "asc" } }
+        },
+        samples: { orderBy: { materialType: "asc" } }
+      }
+    });
+
+    if (!order) {
+      throw new Error(`Ponowienie wysyłki: nie znaleziono zlecenia ${job.orderId}.`);
+    }
+
+    if (!canSendOrder(order.status)) {
+      // Zlecenie zmieniło stan poza tym zadaniem (np. inna instancja zdążyła je
+      // wysłać). Ponowienie nie może duplikować wysyłki.
+      throw new Error(
+        `Ponowienie wysyłki: zlecenie ${job.orderId} nie jest już gotowe do wysyłki.`
+      );
+    }
+
+    // Warunki biznesowe sprzed pierwszej próby mogły przestać obowiązywać.
+    // Automatyczne ponowienie nie może wysłać zlecenia dla pacjenta, dla którego
+    // ręczna wysyłka zostałaby dziś odrzucona.
+    if (!order.patient.active) {
+      await this.cancelSendRetry({ job, reason: "PATIENT_INACTIVE" });
+      return;
+    }
+
+    // Ten sam mechanizm hashowania co przy pierwszej próbie — jedna implementacja
+    // dla obu ścieżek, więc nie da się ich rozjechać. Inny hash oznacza, że dane
+    // objęte żądaniem wysyłki zmieniły się po zaplanowaniu ponowienia.
+    if (this.hashSendRequest(order) !== job.requestHash) {
+      await this.cancelSendRetry({ job, reason: "REQUEST_CHANGED" });
+      return;
+    }
+
+    const simulatorResult = this.labSimulator.acceptOrder({
+      workspaceId: job.workspaceId,
+      orderId: job.orderId,
+      correlationId: job.correlationId,
+      attemptNumber: job.attemptNumber,
+      // Scenariusz pochodzi z danych zadania, a nie z bieżącej konfiguracji.
+      scenario: resolveLabSimulatorScenario(job.scenario),
+      tests: order.tests.map((test) => ({
+        medicalTestId: test.medicalTestId,
+        code: test.medicalTest.code,
+        materialType: test.medicalTest.materialType,
+        parameters: test.medicalTest.parameters
+      })),
+      samples: order.samples.map((sample) => ({
+        sampleId: sample.id,
+        materialType: sample.materialType
+      }))
+    });
+
+    if (!simulatorResult.accepted) {
+      // W zakresie tego etapu druga próba scenariusza RATE_LIMIT zawsze kończy
+      // się przyjęciem. Kolejne odmowy (wyczerpanie prób, TECHNICAL_ERROR) są
+      // zaplanowane na późniejsze PR-y, więc tutaj traktujemy je jako błąd
+      // zadania — bez cichego pozostawienia zlecenia w niespójnym stanie.
+      throw new Error(
+        `Ponowienie wysyłki: laboratorium nie przyjęło zlecenia ${job.orderId}.`
+      );
+    }
+
+    await this.commitAcceptedSendRetry({ job, previousStatus: order.status, simulatorResult });
+  }
+
+  /**
+   * Anuluje TO KONKRETNE zadanie automatycznego ponowienia w sposób
+   * nieponawialny i bez żadnych skutków wysyłki.
+   *
+   * Symulator nie jest wywoływany, więc nie powstaje `externalOrderId`, zadanie
+   * callbacka ani zmiana statusu zlecenia — zlecenie zostaje w
+   * `SAMPLE_COLLECTED`.
+   *
+   * Zadanie jest USUWANE, a nie oznaczane jako `FAILED`/`DONE`. Tabela
+   * `lab_send_retry_jobs` ma unikalność `(workspaceId, orderId)` (MySQL nie ma
+   * indeksów częściowych, więc „jedno aktywne ponowienie na zlecenie” jest
+   * realizowane jako jeden wiersz na zlecenie). Wiersz pozostawiony w stanie
+   * terminalnym zablokowałby NA ZAWSZE utworzenie kolejnego zadania ponowienia
+   * dla tego zlecenia — a użytkownik ma móc po poprawieniu danych rozpocząć
+   * wysyłkę od zera. Usunięcie wiersza jest jedynym rozwiązaniem zgodnym z tym
+   * schematem, które nie wymaga zmiany migracji. Ślad operacji nie ginie: jest
+   * nim wpis historii zlecenia.
+   *
+   * Z tego samego powodu zwalniamy rezerwację klucza idempotencji: usuwamy
+   * wyłącznie wiersz w stanie oczekiwania na ponowienie (`responseStatus` 429),
+   * nigdy zakończonej sukcesem operacji. Dzięki temu kolejny `POST /send`
+   * startuje jak pierwsza próba, zamiast dostać 429 albo 409 na zawsze.
+   *
+   * Całość jest jedną transakcją — nie może powstać stan, w którym zadanie
+   * zniknęło, ale klucz idempotencji blokuje ponowną wysyłkę albo historia nie
+   * zawiera śladu anulowania.
+   */
+  private async cancelSendRetry(input: {
+    job: {
+      id: string;
+      workspaceId: string;
+      orderId: string;
+      attemptNumber: number;
+      correlationId: string;
+      idempotencyKey: string;
+    };
+    reason: LabSendRetryCancellationReason;
+  }): Promise<void> {
+    const { job } = input;
+
+    await this.prisma.$transaction(async (tx) => {
+      const released = await tx.labSendRetryJob.deleteMany({
+        where: { id: job.id, status: "PROCESSING" }
+      });
+      if (released.count === 0) {
+        // Zadanie przestało należeć do tego procesu — przerywamy bez skutków.
+        throw new Error(
+          `Anulowanie ponowienia: zadanie ${job.id} nie jest już w stanie PROCESSING.`
+        );
+      }
+
+      await tx.idempotencyKey.deleteMany({
+        where: {
+          workspaceId: job.workspaceId,
+          key: job.idempotencyKey,
+          responseStatus: HttpStatus.TOO_MANY_REQUESTS
+        }
+      });
+
+      await this.orderHistory.record(tx, {
+        workspaceId: job.workspaceId,
+        orderId: job.orderId,
+        eventType: "LAB_SEND_RETRY",
+        // Anulowanie jest decyzją systemu, a nie akcją personelu.
+        actorType: "SYSTEM",
+        correlationId: job.correlationId,
+        // Anulowane ponowienie nie zmienia statusu zlecenia.
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SAMPLE_COLLECTED",
+        details: buildLabSendRetryCancelledDetails({
+          attemptNumber: job.attemptNumber,
+          reason: input.reason
+        })
+      });
+    });
+  }
+
+  private async commitAcceptedSendRetry(input: {
+    job: {
+      id: string;
+      workspaceId: string;
+      orderId: string;
+      attemptNumber: number;
+      correlationId: string;
+      idempotencyKey: string;
+    };
+    previousStatus: OrderStatus;
+    simulatorResult: LabSimulatorOrderAccepted;
+  }): Promise<void> {
+    const { job, simulatorResult } = input;
+
+    await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.labSendRetryJob.updateMany({
+        where: { id: job.id, status: "PROCESSING" },
+        data: { status: "DONE", lockedAt: null, lastError: null }
+      });
+      if (claimed.count === 0) {
+        // Zadanie przestało należeć do tego procesu — przerywamy bez skutków.
+        throw new Error(
+          `Ponowienie wysyłki: zadanie ${job.id} nie jest już w stanie PROCESSING.`
+        );
+      }
+
+      await tx.idempotencyKey.update({
+        where: {
+          workspaceId_key: { workspaceId: job.workspaceId, key: job.idempotencyKey }
+        },
+        data: {
+          responseStatus: HttpStatus.OK,
+          responseBody: {
+            externalOrderId: simulatorResult.externalOrderId,
+            estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString()
+          }
+        }
+      });
+
+      for (const callbackJob of simulatorResult.jobs) {
+        await tx.labJob.create({
+          data: {
+            workspaceId: job.workspaceId,
+            orderId: job.orderId,
+            scenario: callbackJob.scenario,
+            payload: callbackJob.payload as unknown as Prisma.InputJsonValue,
+            executeAt: callbackJob.executeAt
+          }
+        });
+      }
+
+      const sentAt = new Date();
+      await tx.order.update({
+        where: { id: job.orderId },
+        data: {
+          status: "SENT_TO_LAB",
+          externalOrderId: simulatorResult.externalOrderId,
+          correlationId: job.correlationId,
+          sentAt,
+          estimatedCompletionAt: simulatorResult.estimatedCompletionAt
+        }
+      });
+
+      await this.orderHistory.record(tx, {
+        workspaceId: job.workspaceId,
+        orderId: job.orderId,
+        eventType: "LAB_SEND_RETRY",
+        // Automatyczne ponowienie jest działaniem systemu, a nie nowym
+        // kliknięciem personelu.
+        actorType: "SYSTEM",
+        occurredAt: sentAt,
+        correlationId: job.correlationId,
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SENT_TO_LAB",
+        details: buildLabSendRetryDetails({ attemptNumber: job.attemptNumber })
+      });
+
+      await this.orderHistory.record(tx, {
+        workspaceId: job.workspaceId,
+        orderId: job.orderId,
+        eventType: "ORDER_SENT_TO_LAB",
+        actorType: "SYSTEM",
+        occurredAt: sentAt,
+        correlationId: job.correlationId,
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SENT_TO_LAB",
+        details: buildOrderSentToLabDetails({
+          idempotencyKey: job.idempotencyKey,
+          correlationId: job.correlationId,
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SENT_TO_LAB"
+        })
+      });
+
+      await this.orderHistory.record(tx, {
+        workspaceId: job.workspaceId,
+        orderId: job.orderId,
+        eventType: "LAB_ORDER_ACCEPTED",
+        actorType: "LAB",
+        occurredAt: sentAt,
+        correlationId: job.correlationId,
+        details: buildLabOrderAcceptedDetails({
+          externalOrderId: simulatorResult.externalOrderId,
+          estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString()
+        })
+      });
+    });
   }
 
   private hashSendRequest(order: {

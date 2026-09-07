@@ -54,6 +54,18 @@ describe("validateEnvironment", () => {
     ).toBe("VALIDATION_ERROR");
   });
 
+  it("akceptuje jawnie ustawiony scenariusz RATE_LIMIT", () => {
+    expect(
+      validateEnvironment({
+        NODE_ENV: "test",
+        PORT: "3000",
+        DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
+        SESSION_TOKEN_PEPPER: "test-session-pepper",
+        LAB_SIMULATOR_SCENARIO: "RATE_LIMIT"
+      }).LAB_SIMULATOR_SCENARIO
+    ).toBe("RATE_LIMIT");
+  });
+
   it("zatrzymuje start z czytelnym błędem przy brakach konfiguracji", () => {
     expect(() => validateEnvironment({ NODE_ENV: "production" })).toThrow(
       /Nieprawidłowa konfiguracja aplikacji/

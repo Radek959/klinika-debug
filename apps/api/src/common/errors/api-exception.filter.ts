@@ -10,13 +10,26 @@ import {
   CORRELATION_ID_HEADER,
   resolveCorrelationId
 } from "../correlation/correlation-id";
-import type { ApiErrorBody, FieldError } from "./api-error.types";
+import type {
+  ApiErrorBody,
+  ApiErrorResponseHeaders,
+  FieldError
+} from "./api-error.types";
 
 interface ExceptionPayload {
   code?: string;
   message?: string | string[];
   fieldErrors?: FieldError[];
+  responseHeaders?: ApiErrorResponseHeaders;
 }
+
+/**
+ * Nagłówki, które ścieżka błędu może ustawić poza `X-Correlation-ID`.
+ *
+ * Whitelista jest jawna: treść wyjątku nie może ustawić dowolnego nagłówka
+ * odpowiedzi HTTP.
+ */
+const ALLOWED_ERROR_HEADERS = ["Retry-After"] as const;
 
 interface ReplyLike {
   header?: (name: string, value: string) => ReplyLike;
@@ -62,21 +75,26 @@ export class ApiExceptionFilter implements ExceptionFilter {
       body.error.fieldErrors = payload.fieldErrors;
     }
 
-    this.send(reply, status, correlationId, body);
+    this.send(reply, status, correlationId, body, payload.responseHeaders);
   }
 
   private send(
     reply: ReplyLike,
     status: number,
     correlationId: string,
-    body: ApiErrorBody
+    body: ApiErrorBody,
+    responseHeaders?: ApiErrorResponseHeaders
   ) {
+    const extraHeaders = this.pickAllowedHeaders(responseHeaders);
     const setHeader = reply.header;
     const setStatus = reply.status;
     const send = reply.send;
 
     if (setHeader && setStatus && send) {
       setHeader.call(reply, CORRELATION_ID_HEADER, correlationId);
+      for (const [name, value] of extraHeaders) {
+        setHeader.call(reply, name, value);
+      }
       setStatus.call(reply, status);
       send.call(reply, body);
       return;
@@ -84,14 +102,35 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     reply.statusCode = status;
     reply.setHeader?.(CORRELATION_ID_HEADER, correlationId);
+    for (const [name, value] of extraHeaders) {
+      reply.setHeader?.(name, value);
+    }
     reply.setHeader?.("Content-Type", "application/json; charset=utf-8");
     reply.end?.(JSON.stringify(body));
+  }
+
+  private pickAllowedHeaders(
+    responseHeaders?: ApiErrorResponseHeaders
+  ): Array<[string, string]> {
+    if (!responseHeaders) {
+      return [];
+    }
+
+    const picked: Array<[string, string]> = [];
+    for (const name of ALLOWED_ERROR_HEADERS) {
+      const value = responseHeaders[name];
+      if (typeof value === "string" && value.length > 0) {
+        picked.push([name, value]);
+      }
+    }
+    return picked;
   }
 
   private normalizePayload(response: unknown): {
     code?: string;
     message?: string;
     fieldErrors?: FieldError[];
+    responseHeaders?: ApiErrorResponseHeaders;
   } {
     if (typeof response === "string") {
       return {};
@@ -109,7 +148,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
     return {
       code: payload.code,
       message,
-      fieldErrors: payload.fieldErrors
+      fieldErrors: payload.fieldErrors,
+      responseHeaders: payload.responseHeaders
     };
   }
 

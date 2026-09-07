@@ -8,6 +8,7 @@ import { validateEnvironment } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
 import { LabCallbacksModule } from "./lab-callbacks/lab-callbacks.module";
 import { LabJobsModule } from "./lab-jobs/lab-jobs.module";
+import { LabSendRetryModule } from "./lab-send-retry/lab-send-retry.module";
 import { OrdersModule } from "./orders/orders.module";
 import { PatientsModule } from "./patients/patients.module";
 import { TestsCatalogModule } from "./tests-catalog/tests-catalog.module";
@@ -26,7 +27,8 @@ import { TestsCatalogModule } from "./tests-catalog/tests-catalog.module";
     OrdersModule,
     TestsCatalogModule,
     LabCallbacksModule,
-    LabJobsModule
+    LabJobsModule,
+    LabSendRetryModule
   ]
 })
 export class AppModule implements NestModule {

@@ -7,6 +7,7 @@ import {
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOperation,
+  ApiResponse,
   ApiTags,
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
@@ -331,7 +332,10 @@ export class OrdersController {
       "Laboratorium może też nie przyjąć zlecenia i odrzucić je synchronicznie z kodem 422 " +
       "(LAB_ORDER_VALIDATION_ERROR). Takie odrzucenie nie jest błędem technicznym: zlecenie zostaje w statusie " +
       "SAMPLE_COLLECTED, pola integracji (externalOrderId, sentAt, estimatedCompletionAt) pozostają puste, nie " +
-      "powstaje klucz idempotencji, a wysyłkę można ponowić."
+      "powstaje klucz idempotencji, a wysyłkę można ponowić. " +
+      "Laboratorium może też chwilowo ograniczyć liczbę żądań i odpowiedzieć kodem 429 " +
+      "(LAB_RATE_LIMITED). Wtedy Klinika Debug planuje automatyczne ponowienie wysyłki, a zlecenie " +
+      "pozostaje tymczasowo w statusie SAMPLE_COLLECTED."
   })
   @ApiOkResponse({
     type: OrderResponseDto,
@@ -399,6 +403,46 @@ export class OrdersController {
     type: ApiErrorResponseDto,
     description:
       "Zlecenie zostało już wcześniej wysłane z innymi danymi (konflikt klucza idempotencji)."
+  })
+  @ApiResponse({
+    status: 429,
+    type: ApiErrorResponseDto,
+    description:
+      "Laboratorium chwilowo ograniczyło liczbę żądań i nie przyjęło zlecenia. To nie jest błąd " +
+      "aplikacji ani błąd techniczny zlecenia: Klinika Debug zapisuje trwałe zadanie automatycznego " +
+      "ponowienia wysyłki i ponawia ją samodzielnie, bez udziału personelu. Do czasu udanego ponowienia " +
+      "zlecenie pozostaje w statusie SAMPLE_COLLECTED, a pola integracji (externalOrderId, sentAt, " +
+      "estimatedCompletionAt) są puste; zlecenie NIE otrzymuje statusu TECHNICAL_ERROR. " +
+      "Nagłówek Retry-After zawiera liczbę pełnych sekund do zaplanowanego ponowienia (15 sekund dla " +
+      "pierwszej odpowiedzi); przy ręcznym powtórzeniu żądania w trakcie oczekiwania wskazuje pozostały " +
+      "czas i nigdy nie jest ujemny. Powtórzone ręczne wywołanie w tym czasie nie tworzy duplikatu " +
+      "wysyłki ani drugiego zadania ponowienia. error.correlationId jest równy identyfikatorowi korelacji " +
+      "żądania i nagłówkowi X-Correlation-ID odpowiedzi. Po udanym ponowieniu kolejne identyczne wywołanie " +
+      "zwraca wcześniej uzyskany rezultat wysyłki.",
+    headers: {
+      "Retry-After": {
+        description:
+          "Liczba pełnych sekund do automatycznego ponowienia wysyłki. Nigdy nie jest ujemna.",
+        schema: { type: "integer", minimum: 0, example: 15 }
+      },
+      "X-Correlation-ID": {
+        description: "Identyfikator korelacji żądania, ten sam co error.correlationId.",
+        schema: { type: "string", example: "8d0c8cad-9c1b-4d7b-9e3b-0c48288d4fb7" }
+      }
+    },
+    examples: {
+      ograniczeniePrzepustowosci: {
+        summary: "Laboratorium chwilowo ograniczyło liczbę żądań",
+        value: {
+          error: {
+            code: "LAB_RATE_LIMITED",
+            message:
+              "Laboratorium chwilowo ograniczyło liczbę żądań. Wysyłka zostanie ponowiona automatycznie.",
+            correlationId: "8d0c8cad-9c1b-4d7b-9e3b-0c48288d4fb7"
+          }
+        }
+      }
+    }
   })
   async sendOrder(
     @Param("orderId") orderId: string,

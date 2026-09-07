@@ -55,6 +55,8 @@ jobs:
 
       - run: npm run test:migration:lab-validation-error
 
+      - run: npm run test:migration:lab-rate-limit
+
       - run: npm run db:migrate:test
 
       - run: npm run check

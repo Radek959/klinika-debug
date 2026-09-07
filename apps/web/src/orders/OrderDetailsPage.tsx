@@ -160,6 +160,14 @@ export function OrderDetailsPage({ token }: { token: string }) {
             setSuccess("Zlecenie zostało wysłane do laboratorium.");
             reload();
           }}
+          onHistoryRecorded={() => {
+            // Kontrolowana odmowa laboratorium (429 / 422) NIE jest sukcesem —
+            // komunikat błędu zostaje, a status zlecenia się nie zmienia. Backend
+            // zapisał jednak wpis historii, więc odświeżamy WYŁĄCZNIE sekcję
+            // historii: bez przeładowania strony, bez pobierania szczegółów
+            // zlecenia i bez pollingu.
+            setHistoryRefreshKey((current) => current + 1);
+          }}
         />
       ) : null}
 
@@ -330,33 +338,68 @@ function SampleRow({
   );
 }
 
+/**
+ * Kody kontrolowanych odmów wysyłki, przy których backend ZAPISUJE wpis historii
+ * zlecenia mimo zwrócenia błędu.
+ *
+ * `LAB_RATE_LIMITED` (429) zapisuje `LAB_RATE_LIMIT_RECEIVED`, a
+ * `LAB_ORDER_VALIDATION_ERROR` (422) — `LAB_ORDER_REJECTED`. Tylko dla tych
+ * przypadków ma sens odświeżenie historii. Zwykły błąd sieci, 401, 404, konflikt
+ * idempotencji ani lokalna walidacja (`ORDER_SEND_ERROR`) nie zapisują niczego,
+ * więc nie wywołują niepotrzebnego żądania.
+ */
+const HISTORY_RECORDING_SEND_ERROR_CODES = new Set([
+  "LAB_RATE_LIMITED",
+  "LAB_ORDER_VALIDATION_ERROR"
+]);
+
+function recordsSendHistory(caught: unknown): boolean {
+  return (
+    caught instanceof ApiClientError &&
+    caught.code !== undefined &&
+    HISTORY_RECORDING_SEND_ERROR_CODES.has(caught.code)
+  );
+}
+
 function SendToLabAction({
   token,
   orderId,
-  onSent
+  onSent,
+  onHistoryRecorded
 }: {
   token: string;
   orderId: string;
   onSent: () => void;
+  onHistoryRecorded: () => void;
 }) {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryNotice, setRetryNotice] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
 
   async function send() {
     setIsSending(true);
     setError(null);
+    setRetryNotice(null);
     setFieldErrors([]);
     try {
       await sendOrderToLab(token, orderId);
       onSent();
     } catch (caught) {
-      // Laboratorium może odrzucić poprawne zlecenie (HTTP 422). Pokazujemy
-      // polski komunikat i szczegóły pól, ale nigdy technicznego kodu błędu
-      // ani nazwy aktywnego trybu symulatora. Przycisk wysyłki zostaje
-      // aktywny — odrzucenie nie blokuje zlecenia i wysyłkę można ponowić.
+      // Laboratorium może odrzucić poprawne zlecenie (HTTP 422) albo chwilowo
+      // ograniczyć liczbę żądań (HTTP 429). Pokazujemy polski komunikat i
+      // szczegóły pól, ale nigdy technicznego kodu błędu ani nazwy aktywnego
+      // trybu symulatora. Przycisk wysyłki zostaje aktywny — żaden z tych
+      // przypadków nie blokuje zlecenia.
       setError(toApiMessage(caught, "Nie udało się wysłać zlecenia do laboratorium."));
       setFieldErrors(caught instanceof ApiClientError ? caught.fieldErrors : []);
+      setRetryNotice(describeAutomaticRetry(caught));
+
+      // Backend zapisał wpis historii dla tej odmowy, więc oś czasu jest już
+      // nieaktualna. Odświeżamy ją bez pokazywania fałszywego sukcesu.
+      if (recordsSendHistory(caught)) {
+        onHistoryRecorded();
+      }
     } finally {
       setIsSending(false);
     }
@@ -372,6 +415,11 @@ function SendToLabAction({
           {error}
         </p>
       ) : null}
+      {retryNotice ? (
+        <p className="form-error" role="status">
+          {retryNotice}
+        </p>
+      ) : null}
       {fieldErrors.length ? (
         <ul className="form-error-list">
           {fieldErrors.map((fieldError) => (
@@ -383,6 +431,43 @@ function SendToLabAction({
       ) : null}
     </section>
   );
+}
+
+/**
+ * Uzupełnia komunikat o ograniczeniu przepustowości informacją, kiedy nastąpi
+ * automatyczne ponowienie.
+ *
+ * Komunikat główny („Wysyłka zostanie ponowiona automatycznie.”) pochodzi z API,
+ * a tutaj dokładamy wyłącznie czas najbliższej próby odczytany z nagłówka
+ * `Retry-After`. Bez odczytanej wartości nie podajemy zmyślonej liczby sekund —
+ * pokazujemy sam fakt automatycznego ponowienia. Interfejs nie pokazuje kodu
+ * `LAB_RATE_LIMITED` ani nazwy scenariusza symulatora.
+ */
+function describeAutomaticRetry(caught: unknown): string | null {
+  if (!(caught instanceof ApiClientError) || caught.status !== 429) {
+    return null;
+  }
+
+  const seconds = caught.retryAfterSeconds;
+  if (seconds === undefined) {
+    return "Kolejna próba zostanie wykonana automatycznie.";
+  }
+
+  return `Kolejna próba za około ${seconds} ${describeSecondsUnit(seconds)}.`;
+}
+
+/** Polska odmiana słowa „sekunda” dla liczby sekund w komunikacie. */
+function describeSecondsUnit(seconds: number): string {
+  if (seconds === 1) {
+    return "sekundę";
+  }
+
+  const lastDigit = seconds % 10;
+  const lastTwoDigits = seconds % 100;
+  const usesFewForm =
+    lastDigit >= 2 && lastDigit <= 4 && (lastTwoDigits < 12 || lastTwoDigits > 14);
+
+  return usesFewForm ? "sekundy" : "sekund";
 }
 
 /**

@@ -9,6 +9,8 @@ export type OrderHistoryEventType =
   | "LAB_RESULT_RECEIVED"
   | "LAB_SAMPLE_REJECTED"
   | "LAB_ORDER_REJECTED"
+  | "LAB_RATE_LIMIT_RECEIVED"
+  | "LAB_SEND_RETRY"
   | "TECHNICAL_ERROR";
 
 export type OrderHistoryActorType = "STAFF" | "SYSTEM" | "LAB";
@@ -117,6 +119,64 @@ export interface LabOrderRejectedHistoryDetails {
   newStatus: "SAMPLE_COLLECTED";
 }
 
+/**
+ * Szczegóły otrzymania od laboratorium odpowiedzi `429` przy wysyłce zlecenia.
+ *
+ * Ograniczenie przepustowości jest przejściowe: zlecenie zostaje w statusie
+ * `SAMPLE_COLLECTED`, a Klinika Debug planuje automatyczne ponowienie wysyłki.
+ * Kontrakt nie zawiera nazwy aktywnego scenariusza symulatora, danych pacjenta
+ * ani kodów kreskowych.
+ */
+export interface LabRateLimitReceivedHistoryDetails {
+  attemptNumber: number;
+  retryAfterSeconds: number;
+  nextRetryAt: string;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
+}
+
+/**
+ * Bezpieczny kod przyczyny anulowania automatycznego ponowienia wysyłki.
+ *
+ * `PATIENT_INACTIVE` — pacjent przestał być aktywny po pierwszej próbie.
+ * `REQUEST_CHANGED` — dane zlecenia objęte hashem żądania wysyłki zmieniły się
+ * po pierwszej próbie.
+ */
+export type LabSendRetryCancellationReason = "PATIENT_INACTIVE" | "REQUEST_CHANGED";
+
+/**
+ * Szczegóły automatycznego ponowienia wysyłki zakończonego przyjęciem zlecenia.
+ *
+ * Wpis dotyczy wyłącznie próby wykonanej automatycznie przez Klinikę Debug,
+ * dlatego jego `actorType` to `SYSTEM`, a nie `STAFF`.
+ */
+export interface LabSendRetryAcceptedHistoryDetails {
+  attemptNumber: number;
+  outcome: "ACCEPTED";
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SENT_TO_LAB";
+}
+
+/**
+ * Szczegóły automatycznego ponowienia ANULOWANEGO przed wysyłką.
+ *
+ * Anulowanie oznacza, że zlecenie NIE zostało wysłane: warunki biznesowe albo
+ * dane objęte hashem zmieniły się od pierwszej próby, więc status zlecenia
+ * pozostaje `SAMPLE_COLLECTED`. Kontrakt nie zawiera danych pacjenta, hasha
+ * żądania, kodów kreskowych ani nazwy scenariusza symulatora.
+ */
+export interface LabSendRetryCancelledHistoryDetails {
+  attemptNumber: number;
+  outcome: "CANCELLED";
+  reason: LabSendRetryCancellationReason;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
+}
+
+export type LabSendRetryHistoryDetails =
+  | LabSendRetryAcceptedHistoryDetails
+  | LabSendRetryCancelledHistoryDetails;
+
 export interface TechnicalErrorHistoryDetails {
   reason: string;
   previousStatus: OrderStatus;
@@ -132,6 +192,8 @@ export type OrderHistoryEventDetails =
   | ({ eventType: "LAB_RESULT_RECEIVED" } & LabResultReceivedHistoryDetails)
   | ({ eventType: "LAB_SAMPLE_REJECTED" } & LabSampleRejectedHistoryDetails)
   | ({ eventType: "LAB_ORDER_REJECTED" } & LabOrderRejectedHistoryDetails)
+  | ({ eventType: "LAB_RATE_LIMIT_RECEIVED" } & LabRateLimitReceivedHistoryDetails)
+  | ({ eventType: "LAB_SEND_RETRY" } & LabSendRetryHistoryDetails)
   | ({ eventType: "TECHNICAL_ERROR" } & TechnicalErrorHistoryDetails);
 
 export interface OrderHistoryItem {

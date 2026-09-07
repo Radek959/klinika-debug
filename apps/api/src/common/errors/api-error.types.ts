@@ -4,6 +4,17 @@ export interface FieldError {
   message: string;
 }
 
+/**
+ * Dodatkowe, jawnie dopuszczone nagłówki odpowiedzi błędu.
+ *
+ * Lista jest zamknięta, żeby ścieżka błędu nie stała się dowolnym kanałem
+ * ustawiania nagłówków HTTP.
+ */
+export interface ApiErrorResponseHeaders {
+  /** Liczba pełnych sekund do momentu automatycznego ponowienia. Nigdy ujemna. */
+  "Retry-After"?: string;
+}
+
 export interface ApiErrorBody {
   error: {
     code: string;

@@ -1,8 +1,11 @@
 import {
   buildLabOrderAcceptedDetails,
   buildLabOrderRejectedDetails,
+  buildLabRateLimitReceivedDetails,
   buildLabResultReceivedDetails,
   buildLabSampleRejectedDetails,
+  buildLabSendRetryCancelledDetails,
+  buildLabSendRetryDetails,
   buildOrderCreatedDetails,
   buildOrderSentToLabDetails,
   buildOrderUpdatedDetails,
@@ -391,6 +394,134 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
       const serialized = JSON.stringify(buildLabOrderRejectedDetails({ fieldErrors }));
 
       expect(serialized).not.toContain(':"VALIDATION_ERROR"');
+    });
+  });
+
+  describe("otrzymanie ograniczenia przepustowości (429)", () => {
+    const input = {
+      attemptNumber: 1,
+      retryAfterSeconds: 15,
+      nextRetryAt: new Date("2026-09-07T10:00:15.000Z")
+    };
+
+    it("buduje szczegóły zdarzenia bez zmiany statusu zlecenia", () => {
+      const details = buildLabRateLimitReceivedDetails(input);
+
+      expect(details).toEqual({
+        attemptNumber: 1,
+        retryAfterSeconds: 15,
+        nextRetryAt: "2026-09-07T10:00:15.000Z",
+        // Ograniczenie przepustowości jest przejściowe: status się nie zmienia
+        // i zdarzenie nie jest błędem technicznym.
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SAMPLE_COLLECTED"
+      });
+    });
+
+    it("zapisuje termin ponowienia w formacie ISO 8601", () => {
+      const details = buildLabRateLimitReceivedDetails(input);
+
+      expect(details.nextRetryAt).toBe(input.nextRetryAt.toISOString());
+    });
+
+    it("nie zawiera nazwy scenariusza ani danych wrażliwych", () => {
+      const details = buildLabRateLimitReceivedDetails({
+        ...input,
+        scenario: "RATE_LIMIT",
+        pesel: "44051401458",
+        barcode: "SMP-1"
+      } as never);
+
+      const serialized = JSON.stringify(details);
+      expect(serialized).not.toMatch(/pesel|barcode|scenario/i);
+      expect(serialized).not.toContain("RATE_LIMIT");
+      expect(Object.keys(details).sort()).toEqual([
+        "attemptNumber",
+        "newStatus",
+        "nextRetryAt",
+        "previousStatus",
+        "retryAfterSeconds"
+      ]);
+    });
+  });
+
+  describe("automatyczne ponowienie wysyłki", () => {
+    it("buduje szczegóły udanego ponowienia z przejściem statusu", () => {
+      const details = buildLabSendRetryDetails({ attemptNumber: 2 });
+
+      expect(details).toEqual({
+        attemptNumber: 2,
+        outcome: "ACCEPTED",
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SENT_TO_LAB"
+      });
+    });
+
+    it("nie przepuszcza dodatkowych ani wrażliwych pól", () => {
+      const details = buildLabSendRetryDetails({
+        attemptNumber: 2,
+        scenario: "RATE_LIMIT",
+        pesel: "44051401458"
+      } as never);
+
+      const serialized = JSON.stringify(details);
+      expect(serialized).not.toMatch(/pesel|scenario/i);
+      expect(serialized).not.toContain("RATE_LIMIT");
+      expect(Object.keys(details).sort()).toEqual([
+        "attemptNumber",
+        "newStatus",
+        "outcome",
+        "previousStatus"
+      ]);
+    });
+
+    it("buduje szczegóły anulowania dla nieaktywnego pacjenta bez zmiany statusu", () => {
+      const details = buildLabSendRetryCancelledDetails({
+        attemptNumber: 2,
+        reason: "PATIENT_INACTIVE"
+      });
+
+      expect(details).toEqual({
+        attemptNumber: 2,
+        outcome: "CANCELLED",
+        reason: "PATIENT_INACTIVE",
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SAMPLE_COLLECTED"
+      });
+    });
+
+    it("buduje szczegóły anulowania dla zmienionych danych żądania", () => {
+      const details = buildLabSendRetryCancelledDetails({
+        attemptNumber: 2,
+        reason: "REQUEST_CHANGED"
+      });
+
+      expect(details.outcome).toBe("CANCELLED");
+      expect(details.reason).toBe("REQUEST_CHANGED");
+      // Anulowane ponowienie nie wysyła zlecenia, więc status się nie zmienia.
+      expect(details.previousStatus).toBe(details.newStatus);
+    });
+
+    it("nie przepuszcza danych pacjenta ani hasha do szczegółów anulowania", () => {
+      const details = buildLabSendRetryCancelledDetails({
+        attemptNumber: 2,
+        reason: "REQUEST_CHANGED",
+        scenario: "RATE_LIMIT",
+        pesel: "44051401458",
+        requestHash: "9f2c1b4d",
+        barcode: "SMP-0001"
+      } as never);
+
+      const serialized = JSON.stringify(details);
+      expect(serialized).not.toMatch(/pesel|scenario|requestHash|barcode/i);
+      expect(serialized).not.toContain("RATE_LIMIT");
+      expect(Object.keys(details).sort()).toEqual([
+        "attemptNumber",
+        "newStatus",
+        "outcome",
+        "previousStatus",
+        "reason"
+      ]);
     });
   });
 });

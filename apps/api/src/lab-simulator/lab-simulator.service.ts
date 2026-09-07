@@ -1,16 +1,24 @@
 import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import {
+  computeLabSendRetryExecuteAt,
   computePartialSuccessCallbackOffsets,
+  computeRetryAfterSeconds,
   generateSyntheticResult,
   planLabOrderValidationRejection,
   planSampleRejection,
   splitMedicalTestIdsForPartialSuccess,
+  FIRST_LAB_SEND_ATTEMPT_NUMBER,
+  LAB_RATE_LIMITED_ERROR_CODE,
+  LAB_RATE_LIMITED_MESSAGE,
   type LabOrderValidationFieldError,
   type OrderMaterialType
 } from "@klinika/domain";
 import type { LabResultTestPayload, LabResultsWebhookRequest } from "@klinika/api-contracts";
-import { resolveLabSimulatorScenario } from "./lab-simulator-scenario";
+import {
+  resolveLabSimulatorScenario,
+  type LabSimulatorScenario
+} from "./lab-simulator-scenario";
 
 export interface LabSimulatorParameterInput {
   code: string;
@@ -43,6 +51,25 @@ export interface LabSimulatorOrderInput {
   correlationId: string;
   tests: LabSimulatorTestInput[];
   samples: LabSimulatorSampleInput[];
+  /**
+   * Numer bieżącej próby wysyłki. Pierwsza, ręczna próba ma numer 1, pierwsze
+   * automatyczne ponowienie — numer 2.
+   *
+   * Symulator NIE trzyma licznika prób w pamięci procesu: kontekst jest zawsze
+   * przekazywany jawnie przez warstwę aplikacyjną, która odczytuje go z bazy.
+   * Dzięki temu wynik jest deterministyczny również po restarcie aplikacji i
+   * przy wielu instancjach schedulera.
+   */
+  attemptNumber?: number;
+  /**
+   * Scenariusz wymuszony przez wywołującego zamiast odczytu globalnej
+   * konfiguracji.
+   *
+   * Używane przez automatyczne ponowienie: zadanie retry utrwala scenariusz w
+   * chwili powstania, więc późniejsza zmiana `LAB_SIMULATOR_SCENARIO` nie może
+   * zamienić trwającej operacji w inny scenariusz.
+   */
+  scenario?: LabSimulatorScenario;
 }
 
 export interface LabSimulatorScheduledJob {
@@ -78,9 +105,32 @@ export interface LabSimulatorOrderRejected {
   fieldErrors: LabOrderValidationFieldError[];
 }
 
+/**
+ * Zlecenie chwilowo nieprzyjęte z powodu ograniczenia przepustowości (HTTP 429).
+ *
+ * W odróżnieniu od odrzucenia walidacyjnego (`VALIDATION`) to NIE jest decyzja
+ * ostateczna: żądanie ma zostać automatycznie ponowione po `retryAfterSeconds`.
+ * Wariant celowo nie zawiera `externalOrderId`, `estimatedCompletionAt` ani
+ * `jobs` — zlecenie nie zostało przyjęte. Ograniczenie jest zwracane jako
+ * wartość, a nie wyjątek: przepływem nie steruje analiza treści wyjątku.
+ */
+export interface LabSimulatorOrderRateLimited {
+  accepted: false;
+  rejectionType: "RATE_LIMIT";
+  statusCode: 429;
+  errorCode: typeof LAB_RATE_LIMITED_ERROR_CODE;
+  message: string;
+  retryAfterSeconds: number;
+  /** Moment, w którym wysyłka ma zostać automatycznie ponowiona. */
+  nextRetryAt: Date;
+  /** Numer próby, którą wykona automatyczne ponowienie. */
+  nextAttemptNumber: number;
+}
+
 export type LabSimulatorOrderResult =
   | LabSimulatorOrderAccepted
-  | LabSimulatorOrderRejected;
+  | LabSimulatorOrderRejected
+  | LabSimulatorOrderRateLimited;
 
 // Domyślny tryb CLEAN/SUCCESS: 300 sekund do przewidywanego zakończenia realizacji.
 const DEFAULT_ESTIMATED_COMPLETION_DELAY_MS = 300_000;
@@ -88,13 +138,24 @@ const DEFAULT_ESTIMATED_COMPLETION_DELAY_MS = 300_000;
 @Injectable()
 export class LabSimulatorService {
   acceptOrder(input: LabSimulatorOrderInput): LabSimulatorOrderResult {
-    const scenario = resolveLabSimulatorScenario();
+    // Scenariusz przekazany jawnie ma pierwszeństwo przed globalną konfiguracją:
+    // automatyczne ponowienie wykonuje ten scenariusz, dla którego powstało.
+    const scenario = input.scenario ?? resolveLabSimulatorScenario();
+    const attemptNumber = input.attemptNumber ?? FIRST_LAB_SEND_ATTEMPT_NUMBER;
 
     // Odrzucenie walidacyjne jest rozstrzygane przed wygenerowaniem
     // identyfikatora zewnętrznego: nieprzyjęte zlecenie nie może dostać
     // `externalOrderId` ani żadnego innego artefaktu przyjętej wysyłki.
     if (scenario === "VALIDATION_ERROR") {
       return this.buildValidationErrorResult(input);
+    }
+
+    // Ograniczenie przepustowości dotyczy WYŁĄCZNIE pierwszej próby. Druga
+    // (automatyczne ponowienie) jest przyjmowana tak jak w scenariuszu SUCCESS,
+    // więc przepływ 429 → ponowienie po 15 s → sukces jest deterministyczny i
+    // niezależny od stanu pamięci procesu.
+    if (scenario === "RATE_LIMIT" && attemptNumber === FIRST_LAB_SEND_ATTEMPT_NUMBER) {
+      return this.buildRateLimitedResult(attemptNumber);
     }
 
     const externalOrderId = `EXT-${randomUUID()}`;
@@ -139,6 +200,42 @@ export class LabSimulatorService {
       errorCode: rejection.errorCode,
       message: rejection.message,
       fieldErrors: rejection.fieldErrors
+    };
+  }
+
+  /**
+   * Scenariusz RATE_LIMIT: laboratorium chwilowo ogranicza liczbę żądań.
+   *
+   * Termin ponowienia liczy współdzielona definicja harmonogramu z warstwy
+   * domenowej (15/30/60 s), więc API i scheduler nie mogą się rozjechać.
+   * Nie powstaje `externalOrderId`, `estimatedCompletionAt`, callback ani
+   * zadanie `lab_jobs` — zlecenie nie zostało przyjęte.
+   */
+  private buildRateLimitedResult(attemptNumber: number): LabSimulatorOrderRateLimited {
+    const now = new Date();
+    const nextAttemptNumber = attemptNumber + 1;
+    // Harmonogram gwarantuje termin dla drugiej próby, więc `nextRetryAt` nie
+    // może tu być pusty. Asercja jest jawna, żeby ewentualna zmiana
+    // harmonogramu w przyszłości nie przeszła po cichu.
+    const nextRetryAt = computeLabSendRetryExecuteAt({
+      now,
+      attemptNumber: nextAttemptNumber
+    });
+    if (!nextRetryAt) {
+      throw new Error(
+        `Harmonogram ponowień nie definiuje terminu dla próby ${nextAttemptNumber}.`
+      );
+    }
+
+    return {
+      accepted: false,
+      rejectionType: "RATE_LIMIT",
+      statusCode: 429,
+      errorCode: LAB_RATE_LIMITED_ERROR_CODE,
+      message: LAB_RATE_LIMITED_MESSAGE,
+      retryAfterSeconds: computeRetryAfterSeconds({ now, executeAt: nextRetryAt }),
+      nextRetryAt,
+      nextAttemptNumber
     };
   }
 

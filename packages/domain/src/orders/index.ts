@@ -1,6 +1,7 @@
 export * from "./lab-order-validation";
 export * from "./lab-results";
 export * from "./lab-sample-rejection";
+export * from "./lab-send-retry";
 export * from "./order-creation";
 export * from "./order-draft-edit";
 export * from "./order-history";

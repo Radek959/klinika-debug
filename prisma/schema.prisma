@@ -83,6 +83,13 @@ enum LabJobStatus {
   FAILED
 }
 
+enum LabSendRetryJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
 enum OrderHistoryEventType {
   ORDER_CREATED
   ORDER_UPDATED
@@ -92,6 +99,8 @@ enum OrderHistoryEventType {
   LAB_RESULT_RECEIVED
   LAB_SAMPLE_REJECTED
   LAB_ORDER_REJECTED
+  LAB_RATE_LIMIT_RECEIVED
+  LAB_SEND_RETRY
   TECHNICAL_ERROR
 }
 
@@ -117,6 +126,7 @@ model Workspace {
   idempotencyKeys IdempotencyKey[]
   results   Result[]
   labJobs   LabJob[]
+  labSendRetryJobs LabSendRetryJob[]
   processedLabEvents ProcessedLabEvent[]
   orderHistory OrderHistory[]
 
@@ -298,6 +308,7 @@ model Order {
   idempotencyKeys IdempotencyKey[]
   results       Result[]
   labJobs       LabJob[]
+  labSendRetryJobs LabSendRetryJob[]
   processedLabEvents ProcessedLabEvent[]
   history       OrderHistory[]
 
@@ -414,6 +425,56 @@ model LabJob {
   @@index([status, executeAt], map: "lab_jobs_status_execute_at_idx")
   @@index([workspaceId, orderId], map: "lab_jobs_workspace_order_idx")
   @@map("lab_jobs")
+}
+
+/**
+ * Trwałe zadanie automatycznego ponowienia WYSYŁKI zlecenia do laboratorium.
+ *
+ * Model jest celowo osobny od `LabJob`: `lab_jobs` przechowuje zaplanowane
+ * callbacki laboratorium z wynikami, a to są zadania wychodzące, o innym
+ * payloadzie i innym cyklu życia. Wciśnięcie obu rodzajów w jedną tabelę dałoby
+ * niejasną unię payloadów.
+ *
+ * Zadanie nie przechowuje żadnych danych pacjenta, PESEL-u, danych kontaktowych,
+ * kodów kreskowych, sekretów ani stack trace'ów. Do ponowienia wystarczają
+ * identyfikatory zlecenia i workspace'u — pełny payload jest odtwarzany z bazy
+ * w chwili wykonania.
+ *
+ * `scenario` jest zapisywany w momencie utworzenia zadania i NIE jest odczytywany
+ * ponownie z globalnej konfiguracji przy wykonaniu: późniejsza zmiana
+ * `LAB_SIMULATOR_SCENARIO` nie może zamienić istniejącego zadania w inny scenariusz.
+ */
+model LabSendRetryJob {
+  id             String                @id @default(cuid())
+  workspaceId    String
+  orderId        String
+  /** Numer próby wysyłki, którą wykona to zadanie (pierwsza ręczna próba ma numer 1). */
+  attemptNumber  Int
+  executeAt      DateTime
+  status         LabSendRetryJobStatus @default(PENDING)
+  /** Ten sam identyfikator korelacji co pierwotna, ręczna próba wysyłki. */
+  correlationId  String
+  /** Techniczny scenariusz symulatora utrwalony w chwili zaplanowania zadania. */
+  scenario       String
+  idempotencyKey String
+  requestHash    String
+  /** Liczba faktycznie rozpoczętych wykonań zadania przez scheduler. */
+  attempts       Int                   @default(0)
+  lockedAt       DateTime?
+  lastError      String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [workspaceId, orderId], references: [workspaceId, id], onDelete: Cascade)
+
+  // MySQL nie ma indeksów częściowych, więc jedno zlecenie ma dokładnie jeden
+  // wiersz ponowienia wysyłki. Zadanie zakończone zostaje w tabeli jako DONE i
+  // blokuje utworzenie kolejnego duplikatu dla tego samego zlecenia.
+  @@unique([workspaceId, orderId], map: "lab_send_retry_jobs_workspace_order_key")
+  @@index([status, executeAt], map: "lab_send_retry_jobs_status_execute_at_idx")
+  @@index([workspaceId, orderId], map: "lab_send_retry_jobs_workspace_order_idx")
+  @@map("lab_send_retry_jobs")
 }
 
 model ProcessedLabEvent {
