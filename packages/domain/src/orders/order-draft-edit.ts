@@ -60,7 +60,7 @@ export function validateDraftOrderPatchHasChanges(
 ): OrderValidationFieldError[] {
   return hasDraftOrderChanges(getDraftOrderChangeSet(current, next))
     ? []
-    : [{ field: "body", code: "NO_CHANGES" as OrderValidationFieldError["code"] }];
+    : [{ field: "body", code: "NO_CHANGES" }];
 }
 
 function areNormalizedTestsEqual(

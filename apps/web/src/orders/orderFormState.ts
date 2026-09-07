@@ -120,11 +120,7 @@ export function buildSelectedTestsFromOrder(order: OrderDetailsResponse): Select
 }
 
 export function buildPatientListItemFromOrder(order: OrderDetailsResponse): PatientListItem {
-  return {
-    ...order.patient,
-    createdAt: order.createdAt,
-    updatedAt: order.updatedAt
-  };
+  return order.patient;
 }
 
 export function buildUpdateOrderPayload(input: {

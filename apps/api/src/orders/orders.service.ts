@@ -294,7 +294,7 @@ export class OrdersService {
 
     if (!canEditDraftOrder(order.status)) {
       throw this.orderUpdateError([
-        { field: "status", code: "ORDER_NOT_EDITABLE" as OrderValidationFieldError["code"] }
+        { field: "status", code: "ORDER_NOT_EDITABLE" }
       ]);
     }
 
@@ -321,7 +321,7 @@ export class OrdersService {
 
     if (!hasDraftOrderChanges(changes)) {
       throw this.orderUpdateError([
-        { field: "body", code: "NO_CHANGES" as OrderValidationFieldError["code"] }
+        { field: "body", code: "NO_CHANGES" }
       ]);
     }
 

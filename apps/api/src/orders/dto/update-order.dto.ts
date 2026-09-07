@@ -5,7 +5,6 @@ import {
   IsIn,
   IsNotEmpty,
   IsObject,
-  IsOptional,
   IsString,
   ValidateIf,
   ValidateNested
@@ -50,7 +49,6 @@ export class UpdateOrderDto implements UpdateOrderRequest {
       "Identyfikator aktywnego pacjenta z bieżącego workspace’u. Workspace wynika z sesji.",
     example: "clpatient0002"
   })
-  @IsOptional()
   @IsString({ message: STRING_MESSAGE })
   @IsNotEmpty({ message: REQUIRED_STRING_MESSAGE })
   patientId?: string;
@@ -60,7 +58,6 @@ export class UpdateOrderDto implements UpdateOrderRequest {
     enum: PRIORITIES,
     example: "URGENT"
   })
-  @IsOptional()
   @IsIn(PRIORITIES, { message: PRIORITY_MESSAGE })
   priority?: OrderPriority;
 
@@ -77,7 +74,6 @@ export class UpdateOrderDto implements UpdateOrderRequest {
       }
     ]
   })
-  @IsOptional()
   @IsArray({ message: TESTS_ARRAY_MESSAGE })
   @ValidateNested({ each: true })
   @Type(() => UpdateOrderTestDto)

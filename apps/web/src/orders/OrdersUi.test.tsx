@@ -704,7 +704,9 @@ function orderDetails(overrides: Partial<OrderDetailsResponse> = {}): OrderDetai
       documentCountry: null,
       birthDate: "1990-01-01",
       gender: "FEMALE",
-      active: true
+      active: true,
+      createdAt: "2026-09-01T09:00:00.000Z",
+      updatedAt: "2026-09-01T09:30:00.000Z"
     },
     priority: "ROUTINE",
     status: "SAMPLE_COLLECTED",

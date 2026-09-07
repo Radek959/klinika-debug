@@ -173,6 +173,8 @@ export interface OrderPatientDetails {
   birthDate: string;
   gender: Gender;
   active: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface OrderDetailsResponse extends OrderResponse {
