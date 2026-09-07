@@ -66,23 +66,38 @@ export function OrderHistorySection({
     };
   }, [loadFirstPage, refreshKey]);
 
-  async function loadMore() {
-    setIsLoadingMore(true);
-    setError(null);
-    try {
-      const response = await getOrderHistory(token, orderId, {
-        page: page + 1,
-        pageSize: PAGE_SIZE
-      });
-      setItems((current) => [...current, ...response.items]);
-      setPage(response.meta.page);
-      setTotal(response.meta.total);
-    } catch (caught) {
-      setError(toApiMessage(caught, "Nie udało się pobrać starszych zdarzeń."));
-    } finally {
+async function loadMore() {
+  abortRef.current?.abort();
+  const controller = new AbortController();
+  abortRef.current = controller;
+
+  setIsLoadingMore(true);
+  setError(null);
+
+  try {
+    const response = await getOrderHistory(
+      token,
+      orderId,
+      { page: page + 1, pageSize: PAGE_SIZE },
+      controller.signal
+    );
+    if (abortRef.current !== controller) {
+      return;
+    }
+    setItems((current) => [...current, ...response.items]);
+    setPage(response.meta.page);
+    setTotal(response.meta.total);
+  } catch (caught) {
+    if (abortRef.current !== controller || isAbortError(caught)) {
+      return;
+    }
+    setError(toApiMessage(caught, "Nie udało się pobrać starszych zdarzeń."));
+  } finally {
+    if (abortRef.current === controller) {
       setIsLoadingMore(false);
     }
   }
+}
 
   const hasMore = items.length < total;
 
