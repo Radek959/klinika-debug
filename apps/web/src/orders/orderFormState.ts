@@ -2,9 +2,11 @@ import type {
   CreateOrderRequest,
   MedicalTestCatalogItem,
   MaterialType,
+  OrderDetailsResponse,
   OrderAdditionalDataValue,
   OrderPriority,
-  PatientListItem
+  PatientListItem,
+  UpdateOrderRequest
 } from "@klinika/api-contracts";
 
 export interface SelectedOrderTest {
@@ -102,6 +104,60 @@ export function buildCreateOrderPayload(input: {
   };
 }
 
+export interface OrderFormComparableState {
+  patientId: string;
+  priority: OrderPriority;
+  selectedTests: SelectedOrderTests;
+}
+
+export function buildSelectedTestsFromOrder(order: OrderDetailsResponse): SelectedOrderTests {
+  return Object.fromEntries(
+    order.tests.map((test) => [
+      test.medicalTestId,
+      { additionalData: test.additionalData ?? {} }
+    ])
+  );
+}
+
+export function buildPatientListItemFromOrder(order: OrderDetailsResponse): PatientListItem {
+  return {
+    ...order.patient,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt
+  };
+}
+
+export function buildUpdateOrderPayload(input: {
+  initial: OrderFormComparableState;
+  current: OrderFormComparableState;
+  catalog: MedicalTestCatalogItem[];
+}): UpdateOrderRequest | null {
+  const payload: UpdateOrderRequest = {};
+
+  if (input.initial.patientId !== input.current.patientId) {
+    payload.patientId = input.current.patientId;
+  }
+
+  if (input.initial.priority !== input.current.priority) {
+    payload.priority = input.current.priority;
+  }
+
+  if (!areSelectedTestsEqual(input.initial.selectedTests, input.current.selectedTests)) {
+    payload.tests = buildCreateOrderPayload({
+      patientId: input.current.patientId,
+      priority: input.current.priority,
+      catalog: input.catalog,
+      selectedTests: input.current.selectedTests
+    }).tests;
+  }
+
+  return Object.keys(payload).length > 0 ? payload : null;
+}
+
+export function areSelectedTestsEqual(left: SelectedOrderTests, right: SelectedOrderTests) {
+  return serializeSelectedTests(left) === serializeSelectedTests(right);
+}
+
 export function sanitizeAdditionalData(
   additionalData: Record<string, OrderAdditionalDataValue>
 ) {
@@ -117,6 +173,21 @@ export function sanitizeAdditionalData(
       return acc;
     },
     {}
+  );
+}
+
+function serializeSelectedTests(selectedTests: SelectedOrderTests) {
+  return JSON.stringify(
+    Object.entries(selectedTests)
+      .map(([medicalTestId, selection]) => ({
+        medicalTestId,
+        additionalData: Object.fromEntries(
+          Object.entries(sanitizeAdditionalData(selection.additionalData)).sort(([left], [right]) =>
+            left.localeCompare(right)
+          )
+        )
+      }))
+      .sort((left, right) => left.medicalTestId.localeCompare(right.medicalTestId))
   );
 }
 

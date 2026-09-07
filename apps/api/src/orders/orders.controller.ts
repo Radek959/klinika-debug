@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -28,6 +28,7 @@ import { OrdersListQueryDto } from "./dto/orders-list-query.dto";
 import { OrdersListResponseDto } from "./dto/orders-list-response.dto";
 import { OrderDetailsResponseDto } from "./dto/order-details-response.dto";
 import { RegisterSampleDto } from "./dto/register-sample.dto";
+import { UpdateOrderDto } from "./dto/update-order.dto";
 import { OrdersService } from "./orders.service";
 
 @ApiTags("Zlecenia")
@@ -158,6 +159,77 @@ export class OrdersController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<OrderDetailsResponse> {
     return this.ordersService.getById(user.workspace.id, orderId);
+  }
+
+  @Patch(":orderId")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Edycja wersji roboczej zlecenia",
+    description:
+      "Aktualizuje wyłącznie zlecenie w statusie DRAFT z bieżącego workspace’u. Request jest częściowy: można wysłać tylko zmienione pola patientId, priority albo tests. Pole tests oznacza kompletną docelową listę badań, a wymagane próbki są wyliczane automatycznie na podstawie materiałów. Nie można aktualizować pól technicznych, statusu, workspaceId, użytkownika tworzącego, próbek, kodów kreskowych, wyników ani danych integracji. Workspace pochodzi wyłącznie z aktywnej sesji."
+  })
+  @ApiBody({
+    type: UpdateOrderDto,
+    examples: {
+      priorityOnly: {
+        summary: "Zmiana priorytetu",
+        value: { priority: "URGENT" }
+      },
+      patientOnly: {
+        summary: "Zmiana pacjenta",
+        value: { patientId: "clpatient0002" }
+      },
+      replaceTests: {
+        summary: "Zastąpienie listy badań",
+        value: {
+          tests: [
+            { medicalTestId: "cltestmorf0001" },
+            { medicalTestId: "cltesturine0001" }
+          ]
+        }
+      },
+      additionalData: {
+        summary: "Aktualizacja danych dodatkowych",
+        value: {
+          tests: [
+            {
+              medicalTestId: "cltestglu0001",
+              additionalData: { PATIENT_PREPARED: false }
+            }
+          ]
+        }
+      }
+    }
+  })
+  @ApiOkResponse({
+    type: OrderResponseDto,
+    description:
+      "Zlecenie zostało zaktualizowane, a lista wymaganych próbek odzwierciedla docelowe badania."
+  })
+  @ApiBadRequestResponse({
+    type: ApiErrorResponseDto,
+    description: "Niepoprawna struktura requestu, nieznane pole albo pusty PATCH."
+  })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorResponseDto,
+    description: "Brak poprawnego tokenu Bearer konta personelu."
+  })
+  @ApiNotFoundResponse({
+    type: ApiErrorResponseDto,
+    description:
+      "Zlecenie albo wskazany pacjent nie istnieje w bieżącym workspace’u."
+  })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorResponseDto,
+    description:
+      "Zlecenie nie jest w statusie DRAFT albo końcowy stan narusza reguły biznesowe."
+  })
+  async updateDraft(
+    @Param("orderId") orderId: string,
+    @Body() body: UpdateOrderDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderResponse> {
+    return this.ordersService.updateDraft(user.workspace.id, orderId, body);
   }
 
   @Post(":orderId/samples")

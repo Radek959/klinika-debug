@@ -17,6 +17,7 @@ import { PatientDetailsPage } from "./patients/PatientDetailsPage";
 import { EditPatientPage, NewPatientPage } from "./patients/PatientFormPage";
 import { PatientListPage } from "./patients/PatientListPage";
 import { NewOrderPage } from "./orders/NewOrderPage";
+import { EditOrderPage } from "./orders/EditOrderPage";
 import { OrderDetailsPage } from "./orders/OrderDetailsPage";
 import { OrderListPage } from "./orders/OrderListPage";
 
@@ -88,6 +89,10 @@ export function App() {
           />
           <Route path="orders" element={<OrderListPage token={token ?? ""} />} />
           <Route path="orders/new" element={<NewOrderPage token={token ?? ""} />} />
+          <Route
+            path="orders/:orderId/edit"
+            element={<EditOrderPage token={token ?? ""} />}
+          />
           <Route
             path="orders/:orderId"
             element={<OrderDetailsPage token={token ?? ""} />}

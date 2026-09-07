@@ -26,6 +26,19 @@ export interface CreateOrderRequest {
   tests: CreateOrderTestRequest[];
 }
 
+// ============ UPDATE REQUEST ============
+
+export interface UpdateOrderTestRequest {
+  medicalTestId: string;
+  additionalData?: OrderAdditionalData;
+}
+
+export interface UpdateOrderRequest {
+  patientId?: string;
+  priority?: OrderPriority;
+  tests?: UpdateOrderTestRequest[];
+}
+
 // ============ SAMPLE REGISTRATION REQUEST ============
 
 export interface RegisterSampleRequest {

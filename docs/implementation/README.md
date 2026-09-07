@@ -6,17 +6,16 @@ Ten katalog opisuje realizację MVP: aktualny etap, zakres kolejnych PR-ów, sta
 
 ## Aktualny etap prac
 
-Aktywny etap: **Etap 3 — zlecenia i próbki**, edycja zlecenia w statusie `DRAFT` oraz brakujące elementy procesu.
+Aktywny etap: **Etap 3 — zlecenia i próbki**, historia operacji zlecenia oraz brakujące elementy procesu.
 
-Rekomendowany następny PR: **Edycja zlecenia w statusie `DRAFT`**.
+Rekomendowany następny PR: **Historia operacji zlecenia**.
 
 Zakres następnego PR-a powinien obejmować:
 
-- endpoint `PATCH /api/v1/orders/{orderId}` dostępny tylko dla zleceń w statusie `DRAFT`;
-- aktualizację pacjenta, priorytetu i listy badań zgodnie z dokumentacją produktową;
-- ponowne wyliczenie wymaganych próbek po zmianie badań;
-- widok edycji zlecenia w UI;
-- testy API, domenowe i frontendowe dla scenariuszy `DRAFT`.
+- endpoint historii zlecenia w bieżącym workspace;
+- zapis zdarzeń biznesowych dla utworzenia, edycji, próbek, wysyłki i wyników;
+- widok historii na szczegółach zlecenia;
+- testy API, domenowe i frontendowe dla chronologii oraz izolacji workspace'u.
 
 Nie implementować tego zakresu w PR-ach organizacyjnych.
 
@@ -26,7 +25,7 @@ Nie implementować tego zakresu w PR-ach organizacyjnych.
 |---|---|---|
 | Etap 1 — fundament | `IMPLEMENTED` | Fundament aplikacji, deploymentu, sesji, workspace'ów, OpenAPI i testów jest obecny w kodzie. |
 | Etap 2 — pacjenci | `IMPLEMENTED` | Podstawowa obsługa pacjentów w API i UI jest obecna w kodzie. |
-| Etap 3 — zlecenia i próbki | `IN_PROGRESS` | Główny pion zleceń, katalogu badań, próbek i przebudowany UX nowego zlecenia są zaimplementowane; edycja `DRAFT` i historia wymagają dalszej pracy. |
+| Etap 3 — zlecenia i próbki | `IN_PROGRESS` | Główny pion zleceń, katalogu badań, próbek, przebudowany UX nowego zlecenia i edycja `DRAFT` są zaimplementowane w PR; historia wymaga dalszej pracy. |
 | Etap 4 — laboratorium | `IN_PROGRESS` | Wysyłka, idempotencja, trwała kolejka, scheduler, callback i sukces są zaimplementowane; pełne scenariusze i retry wymagają dalszej pracy. |
 | Etap 5 — dane i obserwowalność | `PLANNED` | Import, eksport, logi aplikacyjne i dokumentacja publikowana z aplikacji nie są ukończone. |
 | Etap 6 — admin i sterowanie | `PLANNED` | Panel `/admin`, reset i globalne sterowanie środowiskiem są zaplanowane. |
@@ -83,7 +82,8 @@ Podstawa oceny:
 
 - struktura repozytorium i aktualny `main` po pobraniu z `origin/main`;
 - merge PR #18 (`4bada8a`, `feat/orders-new-ux`) z przebudową UX formularza nowego zlecenia;
+- PR `feat/orders-draft-edit` z endpointem `PATCH /api/v1/orders/{orderId}`, widokiem `/orders/{orderId}/edit`, współdzielonym formularzem zlecenia oraz testami domenowymi, API i UI;
 - pliki z PR #18: `apps/web/src/orders/PatientPicker.tsx`, `TestCatalogSelector.tsx`, `OrderSummary.tsx`, `NewOrderPage.tsx`, `OrdersUi.test.tsx`, `orderFormState.ts`, `orderFormState.test.ts` i `apps/web/src/styles.css`;
 - obecne kontrolery, serwisy, kontrakty, migracje i testy w `apps/`, `packages/` i `prisma/`;
-- brak endpointu `PATCH /api/v1/orders/{orderId}` dla edycji `DRAFT`, modułów importu/eksportu, powiadomień, `/admin` i kontrolowanych pakietów błędów w kodzie;
+- brak historii operacji zlecenia, modułów importu/eksportu, powiadomień, `/admin` i kontrolowanych pakietów błędów w kodzie;
 - brak sprawdzenia działającego środowiska na Hostingerze w tej sesji, więc żaden zakres nie został podniesiony do `DEPLOYED`.

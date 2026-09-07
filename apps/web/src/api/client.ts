@@ -10,6 +10,7 @@ import type {
   PatientResponse,
   PatientsListResponse,
   RegisterSampleRequest,
+  UpdateOrderRequest,
   UpdatePatientRequest
 } from "@klinika/api-contracts";
 
@@ -155,6 +156,18 @@ export async function getOrder(token: string, orderId: string, signal?: AbortSig
 export async function createOrder(token: string, payload: CreateOrderRequest) {
   return request<OrderResponse>("/api/v1/orders", {
     method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateOrder(
+  token: string,
+  orderId: string,
+  payload: UpdateOrderRequest
+) {
+  return request<OrderResponse>(`/api/v1/orders/${orderId}`, {
+    method: "PATCH",
     headers: authHeaders(token),
     body: JSON.stringify(payload)
   });

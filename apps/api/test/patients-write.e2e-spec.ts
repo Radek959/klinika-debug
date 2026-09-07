@@ -28,8 +28,8 @@ describe("patients write api", () => {
     await closeTestApp(app);
   });
 
-  it("tworzy pacjenta z PESEL-em i nie przyjmuje workspaceId z payloadu", async () => {
-    const { token, workspaceId } = await authenticateWorkspace("staff.a");
+  it("odrzuca workspaceId w payloadzie tworzenia pacjenta", async () => {
+    const { token } = await authenticateWorkspace("staff.a");
 
     const response = await app.inject({
       method: "POST",
@@ -47,26 +47,11 @@ describe("patients write api", () => {
       }
     });
 
-    expect(response.statusCode).toBe(201);
-    const body = JSON.parse(response.body);
-    expect(body).toMatchObject({
-      firstName: "Łukasz",
-      lastName: "Nowak-Testowy",
-      identifierType: "PESEL",
-      pesel: "44051401458",
-      documentType: null,
-      documentNumber: null,
-      documentCountry: null,
-      birthDate: "1944-05-14",
-      gender: "MALE",
-      active: true
-    });
-    expect(body.workspaceId).toBeUndefined();
-
-    const patient = await prisma.patient.findUniqueOrThrow({
-      where: { id: body.id }
-    });
-    expect(patient.workspaceId).toBe(workspaceId);
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body).error.fieldErrors).toContainEqual(
+      expect.objectContaining({ field: "workspaceId", code: "UNKNOWN_FIELD" })
+    );
+    await expect(prisma.patient.count()).resolves.toBe(0);
   });
 
   it("tworzy pacjenta z innym dokumentem", async () => {
