@@ -1,7 +1,7 @@
 # Etap 3 — zlecenia i próbki
 
 **Status etapu:** `IN_PROGRESS`
-**Aktywny kierunek:** poprawa UX formularza nowego zlecenia oraz domknięcie historii operacji.
+**Aktywny kierunek:** edycja zlecenia w statusie `DRAFT` oraz domknięcie historii operacji.
 
 ## Zaimplementowane na `main`
 
@@ -15,35 +15,42 @@
 | Rejestracja próbek | `IMPLEMENTED` | `POST /api/v1/orders/{orderId}/samples`, `apps/api/test/orders-samples.e2e-spec.ts`, `packages/domain/src/orders/sample-collection.ts`. |
 | Podstawowy cykl statusów | `IMPLEMENTED` | `packages/domain/src/orders/order-status.ts`, `apps/api/src/orders/order-status-domain.spec.ts`. |
 | Interfejs zleceń | `IMPLEMENTED` | `apps/web/src/orders/NewOrderPage.tsx`, `OrderListPage.tsx`, `OrderDetailsPage.tsx`, `OrdersUi.test.tsx`. |
+| Przebudowa UX formularza nowego zlecenia | `IMPLEMENTED` | PR #18 zmergowany do `main` jako `4bada8a`; `apps/web/src/orders/NewOrderPage.tsx`, `OrderSummary.tsx`, `PatientPicker.tsx`, `TestCatalogSelector.tsx`, style w `apps/web/src/styles.css`, testy `apps/web/src/orders/OrdersUi.test.tsx` i `orderFormState.test.ts`. |
+| Wybór pacjenta przez wyszukiwanie zamiast ręcznego ID | `IMPLEMENTED` | PR #18: `apps/web/src/orders/PatientPicker.tsx`; test `OrdersUi.test.tsx` sprawdza brak pola "Identyfikator pacjenta", zapytanie `GET /api/v1/patients?active=true&page=1&pageSize=10&search=...`, obsługę klawiatury, retry i ukrycie technicznego ID. |
+| Poprawa wyboru badań | `IMPLEMENTED` | PR #18: `apps/web/src/orders/TestCatalogSelector.tsx`, `OrderSummary.tsx`, `orderFormState.ts`; testy pokrywają zaznaczanie badań, pola dodatkowe, zachowanie wartości `false`, mapowanie błędów API i podsumowanie wymaganych próbek. |
 
 ## Brakujące lub wymagające poprawy
 
 | Element | Status | Uwagi |
 |---|---|---|
-| Przebudowa UX formularza nowego zlecenia | `IN_PROGRESS` | Kod i testy frontendowe przygotowane na gałęzi `feat/orders-new-ux`; status nie jest podniesiony do `IMPLEMENTED`, dopóki wymagane lokalne komendy nie zostaną wykonane. |
-| Wybór pacjenta przez wyszukiwanie zamiast ręcznego ID | `PLANNED` | UI nie powinien wymagać wpisywania technicznego `patientId`. |
-| Poprawa wyboru badań | `PLANNED` | Potrzebny bardziej czytelny wybór z wymaganymi danymi dodatkowymi i podsumowaniem próbek. |
 | Edycja zlecenia w `DRAFT` | `PLANNED` | Endpoint z dokumentacji produktowej nie jest widoczny w kontrolerze zleceń. |
 | Historia operacji | `PLANNED` | Brak osobnego endpointu i widoku historii zlecenia. |
 
 ## Następny PR
 
-**Przebudowa UX formularza nowego zlecenia**
+**Edycja zlecenia w statusie `DRAFT`**
 
 Minimalny zakres:
 
-- wyszukiwany wybór aktywnego pacjenta;
-- brak ręcznego wprowadzania `patientId`;
-- uporządkowany wybór badań;
-- prezentacja wymaganych pól dodatkowych;
-- podsumowanie wybranych badań i wymaganych próbek;
-- dostępność klawiaturą i responsywność;
-- testy frontendowe.
+- endpoint `PATCH /api/v1/orders/{orderId}` dla wersji roboczej;
+- walidacja, że edytować można wyłącznie zlecenia w statusie `DRAFT`;
+- aktualizacja pacjenta, priorytetu i listy badań;
+- ponowne wyliczenie wymaganych próbek po zmianie badań;
+- obsługa danych dodatkowych badań i błędów walidacji;
+- widok edycji zlecenia w UI;
+- testy API, domenowe i frontendowe.
 
-Nie rozszerzać tego PR-a o edycję `DRAFT`, historię operacji ani nowe scenariusze laboratorium.
+Nie rozszerzać tego PR-a o historię operacji ani nowe scenariusze laboratorium.
 
 ## Dowody weryfikacji
 
-Ostatnia ocena statusu w tym dokumencie opiera się na przeglądzie kodu z 2026-09-06. Statusy nie oznaczają `VERIFIED`, dopóki PR z daną zmianą nie przejdzie wymaganych testów, CI i review.
+Ostatnia ocena statusu w tym dokumencie opiera się na przeglądzie kodu z 2026-09-07 po merge PR #18 do `main`.
 
-Dla gałęzi `feat/orders-new-ux` lokalne bramki jakości i weryfikacja wizualna nie zostały wykonane w tej sesji z powodu błędu uruchamiania lokalnego procesu shell w środowisku Codexa (`helper_unknown_error: setup refresh had errors`).
+Dowody dla PR #18:
+
+- merge commit `4bada8a` (`Merge pull request #18 from Radek959/feat/orders-new-ux`);
+- implementacja: `apps/web/src/orders/NewOrderPage.tsx`, `PatientPicker.tsx`, `TestCatalogSelector.tsx`, `OrderSummary.tsx`, `orderFormState.ts`, `apps/web/src/styles.css`;
+- testy: `apps/web/src/orders/OrdersUi.test.tsx` i `apps/web/src/orders/orderFormState.test.ts`;
+- historia commitów PR #18 obejmuje m.in. `331eba8 feat(web): add searchable patient picker`, `e6966a9 feat(web): add order test catalog selector`, `a76f742 feat(web): add new order summary`, `8a4c305 feat(web): rebuild new order page UX`, `2f78ff9 test(web): cover new order UX` i poprawki dostępności `69a5cd1`, `9f02ea4`, `6cb64b4`.
+
+Statusy PR #18 są ustawione na `IMPLEMENTED`, nie na `VERIFIED` ani `DEPLOYED`. W tej sesji nie sprawdzono CI, review ani działającego środowiska na Hostingerze, więc nie ma podstaw do podniesienia statusu wdrożenia.
