@@ -78,6 +78,7 @@ export const orderHistoryEventTypeLabels: Record<OrderHistoryEventType, string> 
   LAB_ORDER_ACCEPTED: "Laboratorium przyjęło zlecenie",
   LAB_RESULT_RECEIVED: "Odebrano wynik",
   LAB_SAMPLE_REJECTED: "Laboratorium odrzuciło próbkę",
+  LAB_ORDER_REJECTED: "Laboratorium odrzuciło zlecenie",
   TECHNICAL_ERROR: "Wystąpił błąd techniczny"
 };
 

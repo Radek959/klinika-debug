@@ -53,6 +53,8 @@ jobs:
 
       - run: npm run test:migration:lab-sample-rejected
 
+      - run: npm run test:migration:lab-validation-error
+
       - run: npm run db:migrate:test
 
       - run: npm run check

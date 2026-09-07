@@ -14,12 +14,15 @@ Scenariusz `PARTIAL_SUCCESS` symulatora laboratorium jest zaimplementowany w PR 
 
 Scenariusz `SAMPLE_REJECTED` symulatora laboratorium jest zaimplementowany w PR `feat/lab-sample-rejected`.
 
-Rekomendowany następny PR: **Scenariusz `VALIDATION_ERROR` symulatora laboratorium** (kolejny brakujący zakres wskazany w [Etapie 4](04-laboratorium.md)).
+Scenariusz `VALIDATION_ERROR` symulatora laboratorium jest zaimplementowany w PR `feat/lab-validation-error`.
+
+Rekomendowany następny PR: **Scenariusz `RATE_LIMIT` symulatora laboratorium** (kolejny brakujący zakres wskazany w [Etapie 4](04-laboratorium.md)).
 
 Zakres następnego PR-a powinien obejmować:
 
-- globalnie sterowany scenariusz odpowiedzi walidacyjnej symulatora na wysyłkę zlecenia;
-- czytelną, polską prezentację odrzucenia walidacyjnego w szczegółach zlecenia i historii operacji;
+- globalnie sterowany scenariusz odpowiedzi `429` symulatora na wysyłkę zlecenia;
+- reguły retry zgodne z dokumentacją produktową;
+- czytelną, polską prezentację ograniczenia przepustowości w szczegółach zlecenia i historii operacji;
 - testy jednostkowe, kontraktowe i e2e dla nowego scenariusza.
 
 Nie implementować tego zakresu w PR-ach organizacyjnych.
@@ -31,7 +34,7 @@ Nie implementować tego zakresu w PR-ach organizacyjnych.
 | Etap 1 — fundament | `IMPLEMENTED` | Fundament aplikacji, deploymentu, sesji, workspace'ów, OpenAPI i testów jest obecny w kodzie. |
 | Etap 2 — pacjenci | `IMPLEMENTED` | Podstawowa obsługa pacjentów w API i UI jest obecna w kodzie. |
 | Etap 3 — zlecenia i próbki | `IMPLEMENTED` | Główny pion zleceń, katalogu badań, próbek, przebudowany UX nowego zlecenia, edycja `DRAFT` i historia operacji zlecenia są zaimplementowane w kodzie. |
-| Etap 4 — laboratorium | `IN_PROGRESS` | Wysyłka, idempotencja, trwała kolejka, scheduler, callback oraz scenariusze `SUCCESS`, `PARTIAL_SUCCESS` i `SAMPLE_REJECTED` są zaimplementowane; pozostałe scenariusze i pełne reguły retry wymagają dalszej pracy. |
+| Etap 4 — laboratorium | `IN_PROGRESS` | Wysyłka, idempotencja, trwała kolejka, scheduler, callback oraz scenariusze `SUCCESS`, `PARTIAL_SUCCESS`, `SAMPLE_REJECTED` i `VALIDATION_ERROR` są zaimplementowane; pozostałe scenariusze (`RATE_LIMIT`, `SERVER_ERROR`, `TIMEOUT`) i pełne reguły retry wymagają dalszej pracy. |
 | Etap 5 — dane i obserwowalność | `PLANNED` | Import, eksport, logi aplikacyjne i dokumentacja publikowana z aplikacji nie są ukończone. |
 | Etap 6 — admin i sterowanie | `PLANNED` | Panel `/admin`, reset i globalne sterowanie środowiskiem są zaplanowane. |
 | Etap 7 — kontrolowane błędy | `PLANNED` | Mechanizm pakietów błędów i wewnętrzny katalog defektów są zaplanowane. |
@@ -81,7 +84,7 @@ Element planu jest gotowy, gdy:
 
 ## Dowody przeglądu aktualnego stanu
 
-Ostatni przegląd planu: 2026-09-07.
+Ostatni przegląd planu: 2026-09-07 (aktualizacja po PR `feat/lab-validation-error`).
 
 Podstawa oceny:
 
@@ -98,4 +101,7 @@ Podstawa oceny:
 - PR `feat/lab-sample-rejected` ze scenariuszem `SAMPLE_REJECTED` symulatora laboratorium: rozszerzenie `LAB_SIMULATOR_SCENARIO` (`apps/api/src/lab-simulator/lab-simulator-scenario.ts`), deterministyczny wybór odrzucanej próbki i syntetyczne przyczyny (`packages/domain/src/orders/lab-sample-rejection.ts`), jedno zadanie `lab_jobs` z terminalnym callbackiem `REJECTED` (`apps/api/src/lab-simulator/lab-simulator.service.ts`, `apps/api/src/orders/orders.service.ts`), rozszerzony kontrakt webhooka o `rejectedSamples` (`packages/api-contracts/src/lab-results.ts`, `apps/api/src/lab-callbacks/dto/lab-results-webhook.dto.ts`), transakcyjna obsługa odrzucenia i zdarzenie historii `LAB_SAMPLE_REJECTED` (`apps/api/src/lab-callbacks/lab-callbacks.service.ts`, `packages/domain/src/orders/order-history.ts`), status badania `OrderTestStatus.REJECTED` w kontrakcie i odpowiedziach API, migracja `prisma/migrations/20260907190000_lab_sample_rejected` wraz z testem `scripts/test-lab-sample-rejected-migration.cjs`, prezentacja po polsku w `apps/web/src/orders/OrderDetailsPage.tsx`, `apps/web/src/orders/OrderHistorySection.tsx` i `apps/web/src/ui/labels.ts`;
 - w sesji PR `feat/lab-sample-rejected` uruchomiono i potwierdzono powodzeniem: `npm ci`, `npm run db:generate`, `npm run lint`, `npm run typecheck`, `npm test` (71 testów `@klinika/api`, 65 `@klinika/web`, 87 `@klinika/domain`), `npm run build`, `git diff --check`, `npm audit --omit=dev`;
 - brak dowodu pozytywnego uruchomienia `npm run test:integration` i `npm run test:migration:lab-sample-rejected` w sesji PR `feat/lab-sample-rejected`, ponieważ środowisko nie miało dostępu do MySQL ani do Dockera; te testy wymagają potwierdzenia w CI przed oznaczeniem scenariusza `SAMPLE_REJECTED` jako `VERIFIED`;
-- poprawki review PR #22 na branchu `feat/lab-sample-rejected`: krok `npm run test:migration:lab-sample-rejected` dodany do `.github/workflows/ci.yml` (wcześniej skrypt istniał, ale CI go nie uruchamiało), sanityzacja publicznej historii zlecenia przez jawną whitelistę pól w `apps/api/src/order-history/order-history.mapper.ts` wraz z usunięciem `scenario` z `LabOrderAcceptedDetails` i `LabOrderAcceptedHistoryDetails`, walidacja spójności wyników, badań i odrzuconych materiałów przed transakcją w `apps/api/src/lab-callbacks/lab-callbacks.service.ts`, pełna lista `rejectedSamples` w szczegółach zdarzenia `LAB_SAMPLE_REJECTED` (`packages/domain/src/orders/order-history.ts`, `packages/api-contracts/src/order-history.ts`, `apps/web/src/orders/OrderHistorySection.tsx`) oraz uzupełnienie enumu i opisów OpenAPI w `apps/api/src/order-history/dto/order-history-response.dto.ts`; zmiany nie wymagały nowej migracji, ponieważ szczegóły historii są kolumną JSON.
+- poprawki review PR #22 na branchu `feat/lab-sample-rejected`: krok `npm run test:migration:lab-sample-rejected` dodany do `.github/workflows/ci.yml` (wcześniej skrypt istniał, ale CI go nie uruchamiało), sanityzacja publicznej historii zlecenia przez jawną whitelistę pól w `apps/api/src/order-history/order-history.mapper.ts` wraz z usunięciem `scenario` z `LabOrderAcceptedDetails` i `LabOrderAcceptedHistoryDetails`, walidacja spójności wyników, badań i odrzuconych materiałów przed transakcją w `apps/api/src/lab-callbacks/lab-callbacks.service.ts`, pełna lista `rejectedSamples` w szczegółach zdarzenia `LAB_SAMPLE_REJECTED` (`packages/domain/src/orders/order-history.ts`, `packages/api-contracts/src/order-history.ts`, `apps/web/src/orders/OrderHistorySection.tsx`) oraz uzupełnienie enumu i opisów OpenAPI w `apps/api/src/order-history/dto/order-history-response.dto.ts`; zmiany nie wymagały nowej migracji, ponieważ szczegóły historii są kolumną JSON;
+- PR `feat/lab-validation-error` ze scenariuszem `VALIDATION_ERROR` symulatora laboratorium: rozszerzenie `LAB_SIMULATOR_SCENARIO` (`apps/api/src/lab-simulator/lab-simulator-scenario.ts`), deterministyczna i syntetyczna treść odrzucenia (`packages/domain/src/orders/lab-order-validation.ts`), przebudowa wyniku `LabSimulatorService.acceptOrder` na unię rozłączną `accepted: true | false` zamiast sterowania przepływem wyjątkami (`apps/api/src/lab-simulator/lab-simulator.service.ts`), synchroniczne HTTP 422 z istniejącego jednolitego formatu błędu API `LAB_ORDER_VALIDATION_ERROR` z `fieldErrors` i `correlationId` żądania (`apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/orders.controller.ts`), zapis wpisu historii `LAB_ORDER_REJECTED` w zatwierdzonej transakcji przed zgłoszeniem 422, brak klucza idempotencji, zadania `lab_jobs` i zmiany statusu zlecenia, nowe zdarzenie historii z jawną whitelistą pól także wewnątrz listy `fieldErrors` (`packages/domain/src/orders/order-history.ts`, `packages/api-contracts/src/order-history.ts`, `apps/api/src/order-history/order-history.mapper.ts`, `apps/api/src/order-history/dto/order-history-response.dto.ts`), migracja `prisma/migrations/20260907210000_lab_order_rejected` wraz z testem `scripts/test-lab-order-rejected-migration.cjs` uruchamianym w `.github/workflows/ci.yml`, prezentacja po polsku w `apps/web/src/orders/OrderDetailsPage.tsx`, `OrderHistorySection.tsx` i `apps/web/src/ui/labels.ts`;
+- w sesji PR `feat/lab-validation-error` uruchomiono i potwierdzono powodzeniem: `npm ci`, `npm run db:generate`, `npm run lint`, `npm run typecheck`, `npm test` (84 testy `@klinika/api`, 69 `@klinika/web`, 103 `@klinika/domain`), `npm run build`, `npm audit --omit=dev` (0 podatności), `git diff --check`, `npm run test:production-start`;
+- brak dowodu pozytywnego uruchomienia `npm run test:integration` i `npm run test:migration:lab-validation-error` w sesji PR `feat/lab-validation-error`, ponieważ środowisko nie miało dostępu do MySQL ani do Dockera (`ECONNREFUSED 127.0.0.1:3307`); z tego samego powodu `npm run build:hostinger` zatrzymał się na kroku `prisma migrate deploy` (`P1001`) po poprawnym `db:generate` i `build`; te kroki wymagają potwierdzenia w CI przed oznaczeniem scenariusza `VALIDATION_ERROR` jako `VERIFIED`.

@@ -9,6 +9,7 @@ export type OrderHistoryEventType =
   | "LAB_ORDER_ACCEPTED"
   | "LAB_RESULT_RECEIVED"
   | "LAB_SAMPLE_REJECTED"
+  | "LAB_ORDER_REJECTED"
   | "TECHNICAL_ERROR";
 
 export type OrderHistoryActorType = "STAFF" | "SYSTEM" | "LAB";
@@ -95,6 +96,32 @@ export interface LabSampleRejectedDetails {
   rejectedTestCodes: string[];
   previousStatus: OrderStatus;
   newStatus: "REJECTED";
+}
+
+/** Pojedynczy błąd pola zgłoszony przez laboratorium przy odrzuceniu zlecenia. */
+export interface LabOrderRejectedFieldError {
+  field: string;
+  code: string;
+  message: string;
+}
+
+/**
+ * Szczegóły synchronicznego odrzucenia zlecenia przez laboratorium przy wysyłce.
+ *
+ * Zdarzenie nie zmienia statusu zlecenia — odrzucenie walidacyjne jest poprawnym
+ * zachowaniem integracji, a nie błędem technicznym, więc `previousStatus` i
+ * `newStatus` są równe i pozostają na `SAMPLE_COLLECTED`.
+ *
+ * Zakres pól jest celowo zamknięty. Nie zapisujemy tu nazwy aktywnego
+ * scenariusza symulatora, danych pacjenta, kodów kreskowych, pełnego payloadu
+ * wysyłanego do laboratorium ani sekretów integracji.
+ */
+export interface LabOrderRejectedDetails {
+  rejectionType: "VALIDATION";
+  errorCode: "LAB_ORDER_VALIDATION_ERROR";
+  fieldErrors: LabOrderRejectedFieldError[];
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
 }
 
 /**
@@ -261,5 +288,34 @@ export function buildLabSampleRejectedDetails(input: {
     rejectedTestCodes: [...input.rejectedTestCodes].sort(),
     previousStatus: input.previousStatus,
     newStatus: input.newStatus
+  };
+}
+
+/**
+ * Buduje bezpieczne szczegóły zdarzenia `LAB_ORDER_REJECTED`.
+ *
+ * Każdy błąd pola jest przepisywany pole po polu, więc żadna dodatkowa wartość
+ * z wewnętrznego wyniku symulatora nie może trafić do publicznej historii.
+ * Kolejność listy jest stabilizowana sortowaniem po `field`, a następnie po
+ * `code`, żeby ten sam błąd zawsze dawał ten sam zapis.
+ */
+export function buildLabOrderRejectedDetails(input: {
+  fieldErrors: LabOrderRejectedFieldError[];
+}): LabOrderRejectedDetails {
+  return {
+    rejectionType: "VALIDATION",
+    errorCode: "LAB_ORDER_VALIDATION_ERROR",
+    fieldErrors: [...input.fieldErrors]
+      .sort(
+        (left, right) =>
+          left.field.localeCompare(right.field) || left.code.localeCompare(right.code)
+      )
+      .map((fieldError) => ({
+        field: fieldError.field,
+        code: fieldError.code,
+        message: fieldError.message
+      })),
+    previousStatus: "SAMPLE_COLLECTED",
+    newStatus: "SAMPLE_COLLECTED"
   };
 }

@@ -167,9 +167,16 @@ function HistoryEntryCard({ item }: { item: OrderHistoryItem }) {
       </div>
       <p className="history-entry-meta">Wykonawca: {actorLabel}</p>
       {description ? <p className="history-entry-meta">{description}</p> : null}
-      {item.previousStatus && item.newStatus ? (
+      {item.previousStatus && item.newStatus && item.previousStatus !== item.newStatus ? (
         <p className="history-entry-status-change">
           Zmiana statusu: {orderStatusLabels[item.previousStatus]} → {orderStatusLabels[item.newStatus]}
+        </p>
+      ) : null}
+      {item.previousStatus && item.newStatus && item.previousStatus === item.newStatus ? (
+        // Zdarzenia takie jak odrzucenie zlecenia przez laboratorium nie zmieniają
+        // statusu; wyświetlanie „X → X” byłoby dla personelu mylące.
+        <p className="history-entry-status-change">
+          Status zlecenia bez zmian: {orderStatusLabels[item.newStatus]}
         </p>
       ) : null}
       {item.correlationId ? (
@@ -260,6 +267,18 @@ function describeDetails(details: OrderHistoryEventDetails): string | null {
         parts.push(`Badania wykonane: ${details.completedTestCodes.join(", ")}`);
       }
       return parts.length ? `${parts.join(". ")}.` : null;
+    }
+    case "LAB_ORDER_REJECTED": {
+      // Oś czasu pokazuje wyłącznie polskie komunikaty z bezpiecznego kontraktu
+      // historii — bez technicznych kodów błędów i bez nazwy trybu symulatora.
+      const parts = ["Zlecenie nie przeszło walidacji po stronie laboratorium."];
+      const messages = (details.fieldErrors ?? [])
+        .map((fieldError) => fieldError.message)
+        .filter(Boolean);
+      if (messages.length) {
+        parts.push(`Zgłoszone uwagi: ${messages.join(" ")}`);
+      }
+      return parts.join(" ");
     }
     case "TECHNICAL_ERROR":
       return details.reason;

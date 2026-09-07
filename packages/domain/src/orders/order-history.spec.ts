@@ -1,5 +1,6 @@
 import {
   buildLabOrderAcceptedDetails,
+  buildLabOrderRejectedDetails,
   buildLabResultReceivedDetails,
   buildLabSampleRejectedDetails,
   buildOrderCreatedDetails,
@@ -295,6 +296,101 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
         "rejectionReason",
         "sampleId"
       ]);
+    });
+  });
+
+  describe("buildLabOrderRejectedDetails", () => {
+    const fieldErrors = [
+      {
+        field: "tests",
+        code: "LAB_TEST_NOT_SUPPORTED",
+        message: "Laboratorium nie obsługuje jednego z wybranych badań."
+      }
+    ];
+
+    it("buduje bezpieczne szczegóły odrzucenia zlecenia", () => {
+      const details = buildLabOrderRejectedDetails({ fieldErrors });
+
+      expect(details).toEqual({
+        rejectionType: "VALIDATION",
+        errorCode: "LAB_ORDER_VALIDATION_ERROR",
+        fieldErrors,
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SAMPLE_COLLECTED"
+      });
+    });
+
+    it("nie zmienia statusu zlecenia — oba pola statusu są równe", () => {
+      const details = buildLabOrderRejectedDetails({ fieldErrors });
+
+      expect(details.previousStatus).toBe(details.newStatus);
+      expect(details.newStatus).toBe("SAMPLE_COLLECTED");
+    });
+
+    it("stabilizuje kolejność fieldErrors niezależnie od kolejności wejściowej", () => {
+      const unsorted = [
+        { field: "tests", code: "B_CODE", message: "Drugi." },
+        { field: "samples", code: "A_CODE", message: "Pierwszy." },
+        { field: "tests", code: "A_CODE", message: "Trzeci." }
+      ];
+
+      const details = buildLabOrderRejectedDetails({ fieldErrors: unsorted });
+      const reversed = buildLabOrderRejectedDetails({
+        fieldErrors: [...unsorted].reverse()
+      });
+
+      expect(details.fieldErrors.map((error) => `${error.field}:${error.code}`)).toEqual([
+        "samples:A_CODE",
+        "tests:A_CODE",
+        "tests:B_CODE"
+      ]);
+      expect(reversed).toEqual(details);
+    });
+
+    it("nie mutuje listy przekazanej na wejściu", () => {
+      const input = [
+        { field: "tests", code: "B_CODE", message: "Drugi." },
+        { field: "samples", code: "A_CODE", message: "Pierwszy." }
+      ];
+      const snapshot = JSON.stringify(input);
+
+      buildLabOrderRejectedDetails({ fieldErrors: input });
+
+      expect(JSON.stringify(input)).toBe(snapshot);
+    });
+
+    it("nie przepuszcza dodatkowych ani wrażliwych pól", () => {
+      const details = buildLabOrderRejectedDetails({
+        fieldErrors: [
+          {
+            ...fieldErrors[0],
+            pesel: "44051401458",
+            barcode: "SMP-1",
+            scenario: "VALIDATION_ERROR"
+          } as never
+        ]
+      });
+
+      const serialized = JSON.stringify(details);
+      expect(serialized).not.toMatch(/pesel|barcode|scenario/i);
+      expect(Object.keys(details).sort()).toEqual([
+        "errorCode",
+        "fieldErrors",
+        "newStatus",
+        "previousStatus",
+        "rejectionType"
+      ]);
+      expect(Object.keys(details.fieldErrors[0]).sort()).toEqual([
+        "code",
+        "field",
+        "message"
+      ]);
+    });
+
+    it("nie zapisuje nazwy aktywnego scenariusza symulatora", () => {
+      const serialized = JSON.stringify(buildLabOrderRejectedDetails({ fieldErrors }));
+
+      expect(serialized).not.toContain(':"VALIDATION_ERROR"');
     });
   });
 });

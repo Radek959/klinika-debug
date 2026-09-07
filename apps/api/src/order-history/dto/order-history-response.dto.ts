@@ -20,6 +20,7 @@ const EVENT_TYPE_ENUM = [
   "LAB_ORDER_ACCEPTED",
   "LAB_RESULT_RECEIVED",
   "LAB_SAMPLE_REJECTED",
+  "LAB_ORDER_REJECTED",
   "TECHNICAL_ERROR"
 ];
 
@@ -33,7 +34,9 @@ export class OrderHistoryItemDto {
       "SAMPLE_REGISTERED — rejestracja pobrania próbki, ORDER_SENT_TO_LAB — wysłanie zlecenia do laboratorium, " +
       "LAB_ORDER_ACCEPTED — synchroniczne przyjęcie zlecenia przez laboratorium, LAB_RESULT_RECEIVED — odebranie " +
       "wyniku przez callback laboratorium, LAB_SAMPLE_REJECTED — odrzucenie próbek zlecenia przez laboratorium " +
-      "terminalnym callbackiem, TECHNICAL_ERROR — błąd techniczny w obsłudze zlecenia (typ zdefiniowany " +
+      "terminalnym callbackiem, LAB_ORDER_REJECTED — synchroniczne odrzucenie zlecenia przez laboratorium " +
+      "podczas wysyłki (zlecenie nie zostało przyjęte i zachowuje status SAMPLE_COLLECTED), " +
+      "TECHNICAL_ERROR — błąd techniczny w obsłudze zlecenia (typ zdefiniowany " +
       "na przyszłość; żaden z obecnie zaimplementowanych procesów jeszcze go nie emituje).",
     enum: EVENT_TYPE_ENUM,
     example: "ORDER_SENT_TO_LAB"
@@ -111,7 +114,11 @@ export class OrderHistoryItemDto {
       "externalOrderId, callbackStatus, resultCount, testCodes i przejście statusu; LAB_SAMPLE_REJECTED zawiera " +
       "eventId, externalOrderId, pełną listę rejectedSamples (sampleId, materialType, rejectionCode, " +
       "rejectionReason), completedTestCodes, rejectedTestCodes i przejście statusu — bez pełnego payloadu webhooka, " +
-      "kodów kreskowych i danych pacjenta. Odpowiedź zawiera wyłącznie pola wymienione dla danego eventType. " +
+      "kodów kreskowych i danych pacjenta; LAB_ORDER_REJECTED zawiera rejectionType (VALIDATION), errorCode " +
+      "(LAB_ORDER_VALIDATION_ERROR), listę fieldErrors (field, code, message — komunikaty po polsku) oraz " +
+      "previousStatus i newStatus, oba równe SAMPLE_COLLECTED, ponieważ nieprzyjęte zlecenie nie zmienia statusu; " +
+      "szczegóły tego zdarzenia nie zawierają danych pacjenta, kodów kreskowych ani payloadu wysyłanego do " +
+      "laboratorium. Odpowiedź zawiera wyłącznie pola wymienione dla danego eventType. " +
       "Wpis odtworzony podczas migracji zawiera dodatkowo pole reconstructed: true i może pomijać pozostałe pola " +
       "szczegółowe.",
     type: "object",

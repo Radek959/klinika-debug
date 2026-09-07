@@ -24,6 +24,7 @@ import {
   buildSampleRegisteredDetails,
   buildOrderSentToLabDetails,
   buildLabOrderAcceptedDetails,
+  buildLabOrderRejectedDetails,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
   type OrderValidationFieldError,
@@ -746,6 +747,7 @@ export class OrdersService {
       correlationId,
       tests: order.tests.map((test) => ({
         medicalTestId: test.medicalTestId,
+        code: test.medicalTest.code,
         materialType: test.medicalTest.materialType,
         parameters: test.medicalTest.parameters
       })),
@@ -756,6 +758,21 @@ export class OrdersService {
         materialType: sample.materialType
       }))
     });
+
+    if (!simulatorResult.accepted) {
+      // Laboratorium nie przyjęło zlecenia. To poprawne zachowanie integracji,
+      // a nie błąd techniczny: zlecenie zostaje w SAMPLE_COLLECTED, nie powstaje
+      // klucz idempotencji, zadanie `lab_jobs` ani wpisy ORDER_SENT_TO_LAB
+      // i LAB_ORDER_ACCEPTED. Dzięki temu 422 nie blokuje zlecenia na stałe —
+      // po zmianie scenariusza ta sama wysyłka przechodzi normalnie.
+      return this.rejectSendByLab({
+        workspaceId,
+        orderId,
+        correlationId,
+        previousStatus: order.status,
+        rejection: simulatorResult
+      });
+    }
 
     let updatedOrder;
     try {
@@ -894,6 +911,55 @@ export class OrdersService {
     }
 
     return toOrderResponse(updatedOrder, updatedOrder.tests, updatedOrder.samples);
+  }
+
+  /**
+   * Zapisuje bezpieczny wpis historii `LAB_ORDER_REJECTED`, a dopiero potem
+   * zgłasza błąd 422.
+   *
+   * Kolejność jest istotna: `throw` musi nastąpić PO zatwierdzeniu transakcji.
+   * Rzucenie wyjątku wewnątrz `$transaction` wycofałoby zapis historii i
+   * odrzucenie nie zostawiłoby żadnego śladu. Jeżeli sam zapis historii się nie
+   * powiedzie, jego błąd propaguje się dalej i kończy się standardowym 500 —
+   * nie udajemy poprawnego 422 bez śladu operacji.
+   *
+   * Każda próba wysyłki daje osobny wpis z własnym `correlationId`, więc kolejne
+   * i równoległe próby są w historii rozróżnialne.
+   */
+  private async rejectSendByLab(input: {
+    workspaceId: string;
+    orderId: string;
+    correlationId: string;
+    previousStatus: OrderStatus;
+    rejection: {
+      errorCode: string;
+      message: string;
+      fieldErrors: Array<{ field: string; code: string; message: string }>;
+    };
+  }): Promise<never> {
+    await this.prisma.$transaction(async (tx) => {
+      await this.orderHistory.record(tx, {
+        workspaceId: input.workspaceId,
+        orderId: input.orderId,
+        eventType: "LAB_ORDER_REJECTED",
+        actorType: "LAB",
+        correlationId: input.correlationId,
+        // Odrzucenie nie zmienia statusu zlecenia — oba pola pozostają na
+        // statusie sprzed próby wysyłki (SAMPLE_COLLECTED).
+        previousStatus: input.previousStatus,
+        newStatus: input.previousStatus,
+        details: buildLabOrderRejectedDetails({
+          fieldErrors: input.rejection.fieldErrors
+        })
+      });
+    });
+
+    throw new ApiErrorException(
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      input.rejection.errorCode,
+      input.rejection.message,
+      input.rejection.fieldErrors
+    );
   }
 
   private hashSendRequest(order: {

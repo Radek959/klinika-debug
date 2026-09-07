@@ -1,7 +1,40 @@
-import { LabSimulatorService, type LabSimulatorOrderInput } from "./lab-simulator.service";
+import {
+  LabSimulatorService,
+  type LabSimulatorOrderAccepted,
+  type LabSimulatorOrderInput,
+  type LabSimulatorOrderRejected
+} from "./lab-simulator.service";
 
 const ORIGINAL_ENV = { ...process.env };
 const TEST_CORRELATION_ID = "correlation-order-1-send";
+
+/**
+ * Zawęża wynik symulatora do wariantu przyjętego. Scenariusze asynchroniczne
+ * zawsze przyjmują zlecenie, więc test, który tego nie dostanie, powinien paść
+ * z czytelnym komunikatem, a nie na dostępie do brakującego pola.
+ */
+function acceptAccepted(
+  service: LabSimulatorService,
+  input: LabSimulatorOrderInput
+): LabSimulatorOrderAccepted {
+  const result = service.acceptOrder(input);
+  if (!result.accepted) {
+    throw new Error("Oczekiwano przyjęcia zlecenia przez symulator laboratorium.");
+  }
+  return result;
+}
+
+/** Zawęża wynik symulatora do wariantu odrzuconego. */
+function acceptRejected(
+  service: LabSimulatorService,
+  input: LabSimulatorOrderInput
+): LabSimulatorOrderRejected {
+  const result = service.acceptOrder(input);
+  if (result.accepted) {
+    throw new Error("Oczekiwano odrzucenia zlecenia przez symulator laboratorium.");
+  }
+  return result;
+}
 
 function buildInput(testCount: number): LabSimulatorOrderInput {
   // Wszystkie badania w tym wariancie korzystają z tego samego materiału, więc
@@ -12,6 +45,7 @@ function buildInput(testCount: number): LabSimulatorOrderInput {
     correlationId: TEST_CORRELATION_ID,
     tests: Array.from({ length: testCount }, (_, index) => ({
       medicalTestId: `test-${index}`,
+      code: `CODE-${index}`,
       materialType: "SERUM" as const,
       parameters: [{ code: "CODE", valueType: "NUMERIC" as const, unit: "mg/L" }]
     })),
@@ -28,16 +62,19 @@ function buildMultiMaterialInput(): LabSimulatorOrderInput {
     tests: [
       {
         medicalTestId: "test-morf",
+        code: "MORF",
         materialType: "EDTA_BLOOD" as const,
         parameters: [{ code: "HGB", valueType: "NUMERIC" as const, unit: "g/dL" }]
       },
       {
         medicalTestId: "test-crp",
+        code: "CRP",
         materialType: "SERUM" as const,
         parameters: [{ code: "CRP", valueType: "NUMERIC" as const, unit: "mg/L" }]
       },
       {
         medicalTestId: "test-urine",
+        code: "URINE",
         materialType: "URINE" as const,
         parameters: [{ code: "PH", valueType: "NUMERIC" as const, unit: null }]
       }
@@ -66,7 +103,7 @@ describe("LabSimulatorService", () => {
       delete process.env.LAB_SIMULATOR_SCENARIO;
       const input = buildInput(2);
 
-      const result = service.acceptOrder(input);
+      const result = acceptAccepted(service,input);
 
       expect(result.jobs).toHaveLength(1);
       expect(result.jobs[0].scenario).toBe("SUCCESS");
@@ -80,7 +117,7 @@ describe("LabSimulatorService", () => {
 
     it("nie zmienia zachowania SUCCESS, gdy jawnie ustawiono LAB_SIMULATOR_SCENARIO=SUCCESS", () => {
       process.env.LAB_SIMULATOR_SCENARIO = "SUCCESS";
-      const result = service.acceptOrder(buildInput(3));
+      const result = acceptAccepted(service,buildInput(3));
 
       expect(result.jobs).toHaveLength(1);
       expect(result.jobs[0].scenario).toBe("SUCCESS");
@@ -90,7 +127,7 @@ describe("LabSimulatorService", () => {
 
     it("ustawia w callbacku correlationId przekazany do symulatora, a nie null", () => {
       delete process.env.LAB_SIMULATOR_SCENARIO;
-      const result = service.acceptOrder(buildInput(2));
+      const result = acceptAccepted(service,buildInput(2));
 
       expect(result.jobs[0].payload.correlationId).not.toBeNull();
       expect(result.jobs[0].payload.correlationId).toBe(TEST_CORRELATION_ID);
@@ -104,12 +141,12 @@ describe("LabSimulatorService", () => {
     });
 
     it("planuje dokładnie dwa zadania dla zlecenia z co najmniej dwoma badaniami", () => {
-      const result = service.acceptOrder(buildInput(2));
+      const result = acceptAccepted(service,buildInput(2));
       expect(result.jobs).toHaveLength(2);
     });
 
     it("pierwszy callback ma status PARTIAL i niepusty właściwy podzbiór wyników", () => {
-      const result = service.acceptOrder(buildInput(2));
+      const result = acceptAccepted(service,buildInput(2));
       const [first] = result.jobs;
 
       expect(first.scenario).toBe("PARTIAL_SUCCESS");
@@ -120,7 +157,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("drugi callback ma status COMPLETED, komplet pozostałych wyników i puste pendingMedicalTestIds", () => {
-      const result = service.acceptOrder(buildInput(2));
+      const result = acceptAccepted(service,buildInput(2));
       const [, second] = result.jobs;
 
       expect(second.scenario).toBe("PARTIAL_SUCCESS");
@@ -131,7 +168,7 @@ describe("LabSimulatorService", () => {
 
     it("oba callbacki razem obejmują dokładnie wszystkie badania zlecenia bez duplikatów", () => {
       const input = buildInput(4);
-      const result = service.acceptOrder(input);
+      const result = acceptAccepted(service,input);
       const [first, second] = result.jobs;
 
       const allResultTestIds = [
@@ -147,7 +184,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("oba callbacki mają unikalne eventId oraz ten sam externalOrderId", () => {
-      const result = service.acceptOrder(buildInput(2));
+      const result = acceptAccepted(service,buildInput(2));
       const [first, second] = result.jobs;
 
       expect(first.payload.eventId).not.toBe(second.payload.eventId);
@@ -156,7 +193,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("oba callbacki mają ten sam correlationId, dokładnie taki jak przekazany do symulatora", () => {
-      const result = service.acceptOrder(buildInput(2));
+      const result = acceptAccepted(service,buildInput(2));
       const [first, second] = result.jobs;
 
       expect(first.payload.correlationId).not.toBeNull();
@@ -166,7 +203,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("pierwszy callback jest zaplanowany wcześniej niż callback końcowy", () => {
-      const result = service.acceptOrder(buildInput(2));
+      const result = acceptAccepted(service,buildInput(2));
       const [first, second] = result.jobs;
 
       expect(first.executeAt.getTime()).toBeLessThan(second.executeAt.getTime());
@@ -175,7 +212,7 @@ describe("LabSimulatorService", () => {
 
     it("zachowuje ścisłą kolejność callbacków nawet przy bardzo małym opóźnieniu", () => {
       process.env.LAB_SIMULATOR_DELAY_MS = "1";
-      const result = service.acceptOrder(buildInput(2));
+      const result = acceptAccepted(service,buildInput(2));
       const [first, second] = result.jobs;
 
       expect(first.executeAt.getTime()).toBeLessThan(second.executeAt.getTime());
@@ -188,8 +225,8 @@ describe("LabSimulatorService", () => {
         tests: [...input.tests].reverse()
       };
 
-      const result = service.acceptOrder(input);
-      const reversedResult = service.acceptOrder(reversedInput);
+      const result = acceptAccepted(service,input);
+      const reversedResult = acceptAccepted(service,reversedInput);
 
       const testIdsOf = (jobResults: typeof result.jobs) =>
         jobResults.map((job) => job.payload.results.map((r) => r.medicalTestId).sort());
@@ -198,7 +235,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("stosuje jawny fallback do scenariusza SUCCESS dla zlecenia z jednym badaniem", () => {
-      const result = service.acceptOrder(buildInput(1));
+      const result = acceptAccepted(service,buildInput(1));
 
       expect(result.jobs).toHaveLength(1);
       expect(result.jobs[0].scenario).toBe("SUCCESS");
@@ -218,7 +255,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("planuje dokładnie jedno zadanie z terminalnym callbackiem REJECTED", () => {
-      const result = service.acceptOrder(buildMultiMaterialInput());
+      const result = acceptAccepted(service,buildMultiMaterialInput());
 
       expect(result.jobs).toHaveLength(1);
       expect(result.jobs[0].scenario).toBe("SAMPLE_REJECTED");
@@ -228,7 +265,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("odrzuca jedyną próbkę zlecenia i nie generuje wtedy żadnych wyników", () => {
-      const result = service.acceptOrder(buildInput(2));
+      const result = acceptAccepted(service,buildInput(2));
       const payload = result.jobs[0].payload;
 
       expect(payload.status).toBe("REJECTED");
@@ -243,7 +280,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("odrzuca dokładnie jedną z wielu próbek", () => {
-      const result = service.acceptOrder(buildMultiMaterialInput());
+      const result = acceptAccepted(service,buildMultiMaterialInput());
 
       expect(result.jobs[0].payload.rejectedSamples).toHaveLength(1);
     });
@@ -256,8 +293,8 @@ describe("LabSimulatorService", () => {
         tests: [...input.tests].reverse()
       };
 
-      const first = service.acceptOrder(input);
-      const second = service.acceptOrder(reversed);
+      const first = acceptAccepted(service,input);
+      const second = acceptAccepted(service,reversed);
 
       expect(first.jobs[0].payload.rejectedSamples).toEqual(
         second.jobs[0].payload.rejectedSamples
@@ -267,7 +304,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("generuje wyniki wyłącznie dla badań z nieodrzuconych materiałów", () => {
-      const result = service.acceptOrder(buildMultiMaterialInput());
+      const result = acceptAccepted(service,buildMultiMaterialInput());
       const payload = result.jobs[0].payload;
 
       expect(payload.results.map((r) => r.medicalTestId).sort()).toEqual([
@@ -278,7 +315,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("przypisuje deterministyczny kod i opis odrzucenia wg rodzaju materiału", () => {
-      const result = service.acceptOrder(buildMultiMaterialInput());
+      const result = acceptAccepted(service,buildMultiMaterialInput());
 
       expect(result.jobs[0].payload.rejectedSamples?.[0]).toEqual({
         sampleId: "sample-blood",
@@ -288,7 +325,7 @@ describe("LabSimulatorService", () => {
     });
 
     it("propaguje externalOrderId i correlationId do payloadu callbacka", () => {
-      const result = service.acceptOrder(buildMultiMaterialInput());
+      const result = acceptAccepted(service,buildMultiMaterialInput());
       const payload = result.jobs[0].payload;
 
       expect(payload.externalOrderId).toBe(result.externalOrderId);
@@ -299,7 +336,7 @@ describe("LabSimulatorService", () => {
 
     it("stosuje jawny fallback do SUCCESS, gdy zlecenie nie ma żadnej próbki", () => {
       const input: LabSimulatorOrderInput = { ...buildInput(1), samples: [] };
-      const result = service.acceptOrder(input);
+      const result = acceptAccepted(service,input);
 
       expect(result.jobs).toHaveLength(1);
       expect(result.jobs[0].scenario).toBe("SUCCESS");
@@ -307,8 +344,97 @@ describe("LabSimulatorService", () => {
     });
   });
 
+  describe("scenariusz VALIDATION_ERROR", () => {
+    beforeEach(() => {
+      process.env.LAB_SIMULATOR_SCENARIO = "VALIDATION_ERROR";
+      process.env.LAB_SIMULATOR_DELAY_MS = "1000";
+    });
+
+    it("odrzuca zlecenie zamiast je przyjąć", () => {
+      const result = service.acceptOrder(buildInput(2));
+
+      expect(result.accepted).toBe(false);
+    });
+
+    it("nie zwraca externalOrderId, estimatedCompletionAt ani zadań do lab_jobs", () => {
+      const result = acceptRejected(service, buildMultiMaterialInput());
+
+      expect(result).not.toHaveProperty("externalOrderId");
+      expect(result).not.toHaveProperty("estimatedCompletionAt");
+      expect(result).not.toHaveProperty("jobs");
+    });
+
+    it("zwraca deterministyczny kod, komunikat i błędy pól", () => {
+      const result = acceptRejected(service, buildMultiMaterialInput());
+
+      expect(result.rejectionType).toBe("VALIDATION");
+      expect(result.errorCode).toBe("LAB_ORDER_VALIDATION_ERROR");
+      expect(result.message).toBe(
+        "Laboratorium odrzuciło zlecenie z powodu błędów walidacji."
+      );
+      expect(result.fieldErrors).toEqual([
+        {
+          field: "tests",
+          code: "LAB_TEST_NOT_SUPPORTED",
+          message: "Laboratorium nie obsługuje jednego z wybranych badań."
+        }
+      ]);
+    });
+
+    it("daje ten sam wynik dla powtórzonych i różnie posortowanych wywołań", () => {
+      const input = buildMultiMaterialInput();
+      const reversed: LabSimulatorOrderInput = {
+        ...input,
+        tests: [...input.tests].reverse(),
+        samples: [...input.samples].reverse()
+      };
+
+      const first = acceptRejected(service, input);
+      const second = acceptRejected(service, input);
+      const third = acceptRejected(service, reversed);
+
+      expect(second).toEqual(first);
+      expect(third).toEqual(first);
+    });
+
+    it("nie ujawnia danych pacjenta, kodów kreskowych ani nazwy scenariusza", () => {
+      const serialized = JSON.stringify(
+        acceptRejected(service, buildMultiMaterialInput())
+      );
+
+      // Kod błędu LAB_ORDER_VALIDATION_ERROR jest kontraktowy; zabroniona jest
+      // wyłącznie sama nazwa aktywnego scenariusza jako wartość JSON.
+      expect(serialized).not.toContain(':"VALIDATION_ERROR"');
+      expect(serialized).not.toContain("scenario");
+      expect(serialized).not.toContain("sample-");
+      expect(serialized).not.toContain("barcode");
+      expect(serialized).not.toContain("pesel");
+    });
+
+    it("odrzuca też zlecenie z jednym badaniem i jedną próbką", () => {
+      const result = acceptRejected(service, buildInput(1));
+
+      expect(result.fieldErrors).toHaveLength(1);
+    });
+  });
+
+  describe("brak regresji pozostałych scenariuszy", () => {
+    it.each(["SUCCESS", "PARTIAL_SUCCESS", "SAMPLE_REJECTED"])(
+      "scenariusz %s nadal przyjmuje zlecenie i tworzy zadania",
+      (scenario) => {
+        process.env.LAB_SIMULATOR_SCENARIO = scenario;
+        const result = acceptAccepted(service, buildMultiMaterialInput());
+
+        expect(result.accepted).toBe(true);
+        expect(result.externalOrderId).toEqual(expect.stringMatching(/^EXT-/));
+        expect(result.estimatedCompletionAt).toBeInstanceOf(Date);
+        expect(result.jobs.length).toBeGreaterThan(0);
+      }
+    );
+  });
+
   it("rzuca czytelny błąd dla nieprawidłowej wartości LAB_SIMULATOR_SCENARIO", () => {
     process.env.LAB_SIMULATOR_SCENARIO = "NOT_A_SCENARIO";
-    expect(() => service.acceptOrder(buildInput(2))).toThrow(/LAB_SIMULATOR_SCENARIO/);
+    expect(() => acceptAccepted(service,buildInput(2))).toThrow(/LAB_SIMULATOR_SCENARIO/);
   });
 });
