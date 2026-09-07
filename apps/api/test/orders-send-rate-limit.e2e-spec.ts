@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PrismaService } from "../src/common/prisma/prisma.service";
+import { LabSendRetryScheduler } from "../src/lab-send-retry/lab-send-retry.scheduler";
 import { LabSendRetryService } from "../src/lab-send-retry/lab-send-retry.service";
 import { OrdersService } from "../src/orders/orders.service";
 import { LabCallbacksService } from "../src/lab-callbacks/lab-callbacks.service";
@@ -37,6 +38,15 @@ describe("orders send api — scenariusz RATE_LIMIT", () => {
     app = await createTestApp();
     prisma = app.get(PrismaService);
     labSendRetry = app.get(LabSendRetryService);
+
+    // Kolejka ponowień jest w tym pliku sterowana WYŁĄCZNIE jawnymi wywołaniami
+    // `processDueJobs`. Pętla czasowa schedulera tyka w testach co 100 ms
+    // (`LAB_SCHEDULER_POLL_INTERVAL_MS`) i konkurowałaby o te same zadania:
+    // przejęcie zadania przez przebieg w tle sprawiłoby, że asercje wykonują się
+    // w trakcie trwającej jeszcze transakcji wysyłki. Zatrzymujemy pętlę, żeby
+    // wynik nie zależał od wyścigu; sama odporność na równoległe przebiegi jest
+    // sprawdzana osobnym przypadkiem, który wywołuje je jawnie.
+    app.get(LabSendRetryScheduler).onModuleDestroy();
   });
 
   beforeEach(async () => {
