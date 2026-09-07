@@ -765,7 +765,10 @@ export class OrdersService {
         throw await this.buildPendingRetryError(workspaceId, orderId);
       }
 
-      if (existingKey.responseStatus === HttpStatus.SERVICE_UNAVAILABLE) {
+      if (
+        existingKey.responseStatus === HttpStatus.SERVICE_UNAVAILABLE ||
+        existingKey.responseStatus === HttpStatus.GATEWAY_TIMEOUT
+      ) {
         throw await this.buildServerRetryError(workspaceId, orderId);
       }
 
@@ -979,7 +982,10 @@ export class OrdersService {
         throw await this.buildPendingRetryError(workspaceId, orderId);
       }
 
-      if (concurrentKey.responseStatus === HttpStatus.SERVICE_UNAVAILABLE) {
+      if (
+        concurrentKey.responseStatus === HttpStatus.SERVICE_UNAVAILABLE ||
+        concurrentKey.responseStatus === HttpStatus.GATEWAY_TIMEOUT
+      ) {
         throw await this.buildServerRetryError(workspaceId, orderId);
       }
 
@@ -1534,9 +1540,10 @@ export class OrdersService {
    * nim wpis historii zlecenia.
    *
    * Z tego samego powodu zwalniamy rezerwację klucza idempotencji: usuwamy
-   * wyłącznie wiersz w stanie oczekiwania na ponowienie (`responseStatus` 429 albo 503),
-   * nigdy zakończonej sukcesem operacji. Dzięki temu kolejny `POST /send`
-   * startuje jak pierwsza próba, zamiast dostać 429 albo 409 na zawsze.
+   * wyłącznie wiersz w stanie oczekiwania na ponowienie (`responseStatus` 429,
+   * 503 albo 504), nigdy zakończonej sukcesem operacji. Dzięki temu kolejny
+   * `POST /send` startuje jak pierwsza próba, zamiast dostać 429, 409 albo 504
+   * na zawsze.
    *
    * Całość jest jedną transakcją — nie może powstać stan, w którym zadanie
    * zniknęło, ale klucz idempotencji blokuje ponowną wysyłkę albo historia nie
@@ -1571,7 +1578,11 @@ export class OrdersService {
           workspaceId: job.workspaceId,
           key: job.idempotencyKey,
           responseStatus: {
-            in: [HttpStatus.TOO_MANY_REQUESTS, HttpStatus.SERVICE_UNAVAILABLE]
+            in: [
+              HttpStatus.TOO_MANY_REQUESTS,
+              HttpStatus.SERVICE_UNAVAILABLE,
+              HttpStatus.GATEWAY_TIMEOUT
+            ]
           }
         }
       });
