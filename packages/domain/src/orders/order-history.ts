@@ -1,3 +1,4 @@
+import type { LabSendRetryCancellationReason } from "./lab-send-retry";
 import type { OrderMaterialType } from "./order-creation";
 import type { OrderStatus } from "./order-status";
 
@@ -147,17 +148,40 @@ export interface LabRateLimitReceivedDetails {
 }
 
 /**
- * Szczegóły automatycznego ponowienia wysyłki wykonanego przez system.
+ * Szczegóły automatycznego ponowienia wysyłki zakończonego przyjęciem zlecenia.
  *
  * Wpis powstaje wyłącznie dla próby wykonanej przez scheduler, nigdy dla
  * kliknięcia użytkownika — dlatego zapisujemy go z `actorType: SYSTEM`.
  */
-export interface LabSendRetryDetails {
+export interface LabSendRetryAcceptedDetails {
   attemptNumber: number;
   outcome: "ACCEPTED";
   previousStatus: "SAMPLE_COLLECTED";
   newStatus: "SENT_TO_LAB";
 }
+
+/**
+ * Szczegóły automatycznego ponowienia ANULOWANEGO przed wysyłką.
+ *
+ * Anulowanie następuje, gdy między pierwszą próbą a wykonaniem ponowienia
+ * zmieniły się warunki biznesowe (pacjent przestał być aktywny) albo dane objęte
+ * hashem żądania wysyłki. Zlecenie nie zmienia statusu, więc `previousStatus`
+ * i `newStatus` są równe `SAMPLE_COLLECTED`.
+ *
+ * `reason` jest zamkniętym kodem technicznym. Wpis nie zawiera danych pacjenta,
+ * kodów kreskowych, hashy, payloadu wysyłki ani nazwy scenariusza symulatora.
+ */
+export interface LabSendRetryCancelledDetails {
+  attemptNumber: number;
+  outcome: "CANCELLED";
+  reason: LabSendRetryCancellationReason;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
+}
+
+export type LabSendRetryDetails =
+  | LabSendRetryAcceptedDetails
+  | LabSendRetryCancelledDetails;
 
 /**
  * Definiowany na wypadek wystąpienia błędu technicznego w obsługiwanym obecnie procesie.
@@ -385,11 +409,31 @@ export function buildLabRateLimitReceivedDetails(input: {
  */
 export function buildLabSendRetryDetails(input: {
   attemptNumber: number;
-}): LabSendRetryDetails {
+}): LabSendRetryAcceptedDetails {
   return {
     attemptNumber: input.attemptNumber,
     outcome: "ACCEPTED",
     previousStatus: "SAMPLE_COLLECTED",
     newStatus: "SENT_TO_LAB"
+  };
+}
+
+/**
+ * Buduje bezpieczne szczegóły ANULOWANEGO automatycznego ponowienia.
+ *
+ * Zapisujemy wyłącznie numer próby i zamknięty kod przyczyny — nigdy danych
+ * pacjenta, hasha żądania, kodów kreskowych ani payloadu wysyłki. Anulowanie nie
+ * zmienia statusu zlecenia, więc oba pola statusu zostają na `SAMPLE_COLLECTED`.
+ */
+export function buildLabSendRetryCancelledDetails(input: {
+  attemptNumber: number;
+  reason: LabSendRetryCancellationReason;
+}): LabSendRetryCancelledDetails {
+  return {
+    attemptNumber: input.attemptNumber,
+    outcome: "CANCELLED",
+    reason: input.reason,
+    previousStatus: "SAMPLE_COLLECTED",
+    newStatus: "SAMPLE_COLLECTED"
   };
 }

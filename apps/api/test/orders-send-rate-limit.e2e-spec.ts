@@ -434,6 +434,248 @@ describe("orders send api — scenariusz RATE_LIMIT", () => {
       const key = await prisma.idempotencyKey.findFirstOrThrow({ where: { orderId } });
       expect(key.responseStatus).toBe(429);
     });
+
+    it("po błędzie wykonania odsuwa zadanie w przyszłość zamiast wpadać w gorącą pętlę", async () => {
+      const { token, orderId } = await createSendableOrder("SMP-RL-0032");
+      expect((await sendOrder(token, orderId)).statusCode).toBe(429);
+      await makeRetryJobDue(orderId);
+
+      const historySpy = jest
+        .spyOn(app.get(OrderHistoryService), "record")
+        .mockRejectedValue(
+          new Error("Awaria zapisu: SELECT * FROM patients WHERE pesel = '44051401458'")
+        );
+
+      const failedAt = new Date();
+      await labSendRetry.processDueJobs(failedAt);
+
+      const job = await prisma.labSendRetryJob.findFirstOrThrow({ where: { orderId } });
+      expect(job.status).toBe("PENDING");
+      expect(job.executeAt.getTime()).toBeGreaterThanOrEqual(failedAt.getTime() + 15_000);
+      // Numer próby wysyłki opisuje komunikację z laboratorium — błąd techniczny
+      // workera go nie zużywa; techniczne uruchomienia liczy `attempts`.
+      expect(job.attemptNumber).toBe(2);
+      expect(job.attempts).toBe(1);
+
+      // `lastError` nie może zawierać treści wyjątku ani stack trace'a.
+      expect(job.lastError).toBe("Techniczny błąd wykonania zadania ponowienia wysyłki.");
+      expect(job.lastError).not.toContain("44051401458");
+      expect(job.lastError).not.toContain("SELECT");
+
+      // Kolejne, natychmiastowe przebiegi schedulera nie podejmują zadania.
+      expect(await labSendRetry.processDueJobs(new Date())).toBe(0);
+      expect(
+        await labSendRetry.processDueJobs(new Date(failedAt.getTime() + 2_000))
+      ).toBe(0);
+      expect(
+        (await prisma.labSendRetryJob.findFirstOrThrow({ where: { orderId } })).attempts
+      ).toBe(1);
+
+      // Po nadejściu nowego terminu zadanie jest znów podejmowalne i kończy się
+      // sukcesem — odsunięcie nie oznacza porzucenia wysyłki.
+      historySpy.mockRestore();
+      await makeRetryJobDue(orderId);
+      expect(await labSendRetry.processDueJobs(new Date())).toBe(1);
+      expect(
+        (await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status
+      ).toBe("SENT_TO_LAB");
+    });
+  });
+
+  /**
+   * Automatyczne ponowienie odtwarza dane z bazy, więc musi ponownie sprawdzić
+   * warunki wysyłki. Zlecenie, którego nie wolno już wysłać ręcznie, nie może
+   * zostać wysłane automatycznie „na podstawie” stanu sprzed 15 sekund.
+   */
+  describe("weryfikacja aktualności zlecenia przed automatycznym ponowieniem", () => {
+    it("nie wysyła zlecenia, gdy pacjent został dezaktywowany po pierwszym 429", async () => {
+      const { token, orderId, patient } = await createSendableOrder("SMP-RL-0033");
+      expect((await sendOrder(token, orderId)).statusCode).toBe(429);
+
+      await deactivatePatient(patient.id);
+      await makeRetryJobDue(orderId);
+      await labSendRetry.processDueJobs(new Date());
+
+      const persisted = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+      expect(persisted.status).toBe("SAMPLE_COLLECTED");
+      expect(persisted.externalOrderId).toBeNull();
+      expect(persisted.sentAt).toBeNull();
+      expect(persisted.estimatedCompletionAt).toBeNull();
+
+      // Brak jakichkolwiek częściowych skutków wysyłki.
+      expect(await prisma.labJob.count({ where: { orderId } })).toBe(0);
+      expect(await prisma.result.count({ where: { orderId } })).toBe(0);
+      const eventTypes = await readEventTypes(orderId);
+      expect(eventTypes).not.toContain("ORDER_SENT_TO_LAB");
+      expect(eventTypes).not.toContain("LAB_ORDER_ACCEPTED");
+      expect(eventTypes).not.toContain("TECHNICAL_ERROR");
+    });
+
+    it("anuluje zadanie terminalnie i nie zostawia go w gorącej pętli", async () => {
+      const { token, orderId, patient } = await createSendableOrder("SMP-RL-0034");
+      expect((await sendOrder(token, orderId)).statusCode).toBe(429);
+
+      await deactivatePatient(patient.id);
+      await makeRetryJobDue(orderId);
+      await labSendRetry.processDueJobs(new Date());
+
+      // Zadanie nie wraca do PENDING i nie zostaje jako wiersz terminalny, który
+      // przez unikalność (workspaceId, orderId) zablokowałby kolejne ponowienie.
+      expect(await prisma.labSendRetryJob.count({ where: { orderId } })).toBe(0);
+      expect(await labSendRetry.processDueJobs(new Date())).toBe(0);
+
+      // Rezerwacja idempotencji jest zwolniona, więc wysyłkę można zacząć od zera.
+      expect(await prisma.idempotencyKey.count({ where: { orderId } })).toBe(0);
+    });
+
+    it("zapisuje bezpieczny wpis historii o anulowaniu ponowienia", async () => {
+      const { token, orderId, patient } = await createSendableOrder("SMP-RL-0035");
+      const correlationId = "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c60";
+      expect((await sendOrder(token, orderId, { correlationId })).statusCode).toBe(429);
+
+      await deactivatePatient(patient.id);
+      await makeRetryJobDue(orderId);
+      await labSendRetry.processDueJobs(new Date());
+
+      const entry = await prisma.orderHistory.findFirstOrThrow({
+        where: { orderId, eventType: "LAB_SEND_RETRY" }
+      });
+      expect(entry.actorType).toBe("SYSTEM");
+      expect(entry.actorUserId).toBeNull();
+      expect(entry.correlationId).toBe(correlationId);
+      // Anulowanie nie zmienia statusu zlecenia.
+      expect(entry.previousStatus).toBe("SAMPLE_COLLECTED");
+      expect(entry.newStatus).toBe("SAMPLE_COLLECTED");
+      expect(entry.details).toEqual({
+        attemptNumber: 2,
+        outcome: "CANCELLED",
+        reason: "PATIENT_INACTIVE",
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SAMPLE_COLLECTED"
+      });
+    });
+
+    it("publiczna historia anulowania nie ujawnia danych pacjenta ani scenariusza", async () => {
+      const { token, orderId, patient } = await createSendableOrder("SMP-RL-0036");
+      expect((await sendOrder(token, orderId)).statusCode).toBe(429);
+
+      await deactivatePatient(patient.id);
+      await makeRetryJobDue(orderId);
+      await labSendRetry.processDueJobs(new Date());
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/v1/orders/${orderId}/history`,
+        headers: { authorization: `Bearer ${token}` }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).not.toContain('"scenario"');
+      expect(response.body).not.toContain(':"RATE_LIMIT"');
+      expect(response.body).not.toContain("SMP-RL-0036");
+      expect(response.body).not.toContain(patient.lastName);
+      if (patient.pesel) {
+        expect(response.body).not.toContain(patient.pesel);
+      }
+
+      const items = JSON.parse(response.body).items as Array<{
+        eventType: string;
+        details: Record<string, unknown>;
+      }>;
+      const retryItem = items.find((item) => item.eventType === "LAB_SEND_RETRY");
+      expect(Object.keys(retryItem!.details).sort()).toEqual([
+        "attemptNumber",
+        "eventType",
+        "newStatus",
+        "outcome",
+        "previousStatus",
+        "reason"
+      ]);
+    });
+
+    it("po przywróceniu pacjenta można rozpocząć wysyłkę od zera", async () => {
+      const { token, orderId, patient } = await createSendableOrder("SMP-RL-0037");
+      expect((await sendOrder(token, orderId)).statusCode).toBe(429);
+
+      await deactivatePatient(patient.id);
+      await makeRetryJobDue(orderId);
+      await labSendRetry.processDueJobs(new Date());
+
+      // Dopóki pacjent jest nieaktywny, ręczna wysyłka jest odrzucana regułą
+      // biznesową — a nie 429 ani konfliktem idempotencji.
+      const blocked = await sendOrder(token, orderId);
+      expect(blocked.statusCode).toBe(422);
+      expect(JSON.parse(blocked.body).error.code).toBe("ORDER_SEND_ERROR");
+
+      await prisma.patient.update({ where: { id: patient.id }, data: { active: true } });
+
+      // Pierwsza próba nowej wysyłki znów dostaje 429 i tworzy NOWE zadanie —
+      // unikalność (workspaceId, orderId) nie blokuje kolejnego ponowienia.
+      const restarted = await sendOrder(token, orderId);
+      expect(restarted.statusCode).toBe(429);
+      expect(await prisma.labSendRetryJob.count({ where: { orderId } })).toBe(1);
+
+      await makeRetryJobDue(orderId);
+      expect(await labSendRetry.processDueJobs(new Date())).toBe(1);
+      expect(
+        (await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status
+      ).toBe("SENT_TO_LAB");
+    });
+
+    /**
+     * Model produktu nie pozwala personelowi zmienić danych objętych hashem
+     * wysyłki dla zlecenia w `SAMPLE_COLLECTED`: edycja zlecenia jest dopuszczona
+     * wyłącznie w `DRAFT` (`canEditDraftOrder`), a rejestracja próbki wyłącznie
+     * w `DRAFT`/`SAMPLE_COLLECTION_IN_PROGRESS`. Zabezpieczenie chroni więc przed
+     * zmianą spoza publicznego API (import danych, operacja serwisowa, wyścig na
+     * poziomie bazy), dlatego test wywołuje ją zapisem bezpośrednio w bazie.
+     */
+    it("anuluje ponowienie, gdy dane objęte hashem zmieniły się po pierwszej próbie", async () => {
+      const { token, orderId } = await createSendableOrder("SMP-RL-0038");
+      expect((await sendOrder(token, orderId)).statusCode).toBe(429);
+
+      await prisma.sample.updateMany({
+        where: { orderId },
+        data: { barcode: "SMP-RL-0038-INNY" }
+      });
+      await makeRetryJobDue(orderId);
+      await labSendRetry.processDueJobs(new Date());
+
+      const persisted = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+      expect(persisted.status).toBe("SAMPLE_COLLECTED");
+      expect(persisted.externalOrderId).toBeNull();
+      expect(await prisma.labJob.count({ where: { orderId } })).toBe(0);
+
+      const entry = await prisma.orderHistory.findFirstOrThrow({
+        where: { orderId, eventType: "LAB_SEND_RETRY" }
+      });
+      expect(entry.details).toMatchObject({
+        outcome: "CANCELLED",
+        reason: "REQUEST_CHANGED"
+      });
+      expect(JSON.stringify(entry.details)).not.toContain("SMP-RL-0038");
+
+      // Zadanie i rezerwacja idempotencji są zwolnione, więc nowa wysyłka
+      // startuje z aktualnym hashem zamiast dostawać 409 na zawsze.
+      expect(await prisma.labSendRetryJob.count({ where: { orderId } })).toBe(0);
+      expect(await prisma.idempotencyKey.count({ where: { orderId } })).toBe(0);
+
+      const restarted = await sendOrder(token, orderId);
+      expect(restarted.statusCode).toBe(429);
+    });
+
+    it("nie anuluje ponowienia, gdy warunki wysyłki się nie zmieniły", async () => {
+      const { token, orderId } = await createSendableOrder("SMP-RL-0039");
+      expect((await sendOrder(token, orderId)).statusCode).toBe(429);
+
+      await makeRetryJobDue(orderId);
+      await labSendRetry.processDueJobs(new Date());
+
+      const entry = await prisma.orderHistory.findFirstOrThrow({
+        where: { orderId, eventType: "LAB_SEND_RETRY" }
+      });
+      expect(entry.details).toMatchObject({ outcome: "ACCEPTED" });
+    });
   });
 
   describe("historia, callback i izolacja", () => {
@@ -687,6 +929,14 @@ describe("orders send api — scenariusz RATE_LIMIT", () => {
       where: { orderId },
       data: { executeAt: new Date(Date.now() - 1_000) }
     });
+  }
+
+  /**
+   * Dezaktywuje pacjenta „w tle”, między pierwszą odpowiedzią 429 a wykonaniem
+   * ponowienia — tak jak zrobiłby to inny użytkownik w osobnym żądaniu.
+   */
+  async function deactivatePatient(patientId: string) {
+    await prisma.patient.update({ where: { id: patientId }, data: { active: false } });
   }
 
   async function readEventTypes(orderId: string) {

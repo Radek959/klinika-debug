@@ -28,6 +28,60 @@ export const MAX_LAB_SEND_RETRY_COUNT = LAB_SEND_RETRY_DELAYS_SECONDS.length;
 /** Numer pierwszej, ręcznej próby wysyłki. */
 export const FIRST_LAB_SEND_ATTEMPT_NUMBER = 1;
 
+/**
+ * Opóźnienie przed ponownym podjęciem zadania, którego WYKONANIE zakończyło się
+ * błędem technicznym (np. chwilowa awaria bazy).
+ *
+ * To nie jest opóźnienie kolejnej próby wysyłki do laboratorium — numer próby
+ * (`attemptNumber`) się wtedy nie zmienia. Chodzi wyłącznie o to, żeby zadanie
+ * zwrócone do `PENDING` nie było natychmiast znowu wymagalne: bez nowego terminu
+ * scheduler podejmowałby je przy każdym ticku (co ~2 s) w nieskończonej,
+ * gorącej pętli.
+ *
+ * Wartość jest celowo nie mniejsza niż najkrótsze opóźnienie harmonogramu
+ * ponowień (15 s) i wyraźnie większa niż okres odpytywania schedulera.
+ */
+export const LAB_SEND_RETRY_FAILURE_BACKOFF_SECONDS = 15;
+
+/**
+ * Bezpieczny, stały komunikat techniczny zapisywany w `lastError` po nieudanym
+ * wykonaniu zadania.
+ *
+ * Treść jest STAŁA i nie zawiera żadnego fragmentu oryginalnego wyjątku:
+ * komunikat błędu może zawierać dane pacjenta, kod kreskowy, fragment zapytania
+ * SQL albo stack trace, a kolumna `lastError` jest częścią danych aplikacji.
+ * Szczegóły diagnostyczne trafiają wyłącznie do logu serwera.
+ */
+export const LAB_SEND_RETRY_FAILURE_MESSAGE =
+  "Techniczny błąd wykonania zadania ponowienia wysyłki.";
+
+/**
+ * Wynik zakończonego automatycznego ponowienia wysyłki.
+ *
+ * `CANCELLED` oznacza, że ponowienie NIE zostało wykonane, ponieważ warunki
+ * biznesowe albo dane objęte hashem zmieniły się od pierwszej próby.
+ */
+export type LabSendRetryOutcome = "ACCEPTED" | "CANCELLED";
+
+/**
+ * Bezpieczny kod przyczyny anulowania automatycznego ponowienia.
+ *
+ * Kody są zamkniętym zbiorem wartości technicznych — nie zawierają danych
+ * pacjenta, treści payloadu wysyłki ani nazwy scenariusza symulatora.
+ */
+export type LabSendRetryCancellationReason = "PATIENT_INACTIVE" | "REQUEST_CHANGED";
+
+/**
+ * Wylicza nowy termin wykonania zadania zwróconego do `PENDING` po błędzie
+ * technicznym.
+ *
+ * Termin jest liczony z jawnie przekazanego `now`, żeby wynik był w pełni
+ * deterministyczny i testowalny.
+ */
+export function computeLabSendRetryFailureExecuteAt(input: { now: Date }): Date {
+  return new Date(input.now.getTime() + LAB_SEND_RETRY_FAILURE_BACKOFF_SECONDS * 1000);
+}
+
 export const LAB_RATE_LIMITED_ERROR_CODE = "LAB_RATE_LIMITED";
 
 export const LAB_RATE_LIMITED_MESSAGE =

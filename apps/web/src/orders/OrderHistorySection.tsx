@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { OrderHistoryEventDetails, OrderHistoryItem } from "@klinika/api-contracts";
+import type {
+  LabSendRetryCancellationReason,
+  OrderHistoryEventDetails,
+  OrderHistoryItem
+} from "@klinika/api-contracts";
 import { ApiClientError, getOrderHistory } from "../api/client";
 import { formatDateTime } from "../ui/dates";
 import {
@@ -291,12 +295,35 @@ function describeDetails(details: OrderHistoryEventDetails): string | null {
       }
       return parts.join(" ");
     }
-    case "LAB_SEND_RETRY":
+    case "LAB_SEND_RETRY": {
+      if (details.outcome === "CANCELLED") {
+        // Anulowane ponowienie NIE wysłało zlecenia. Personel musi wiedzieć, co
+        // poprawić — bez technicznego kodu przyczyny i bez danych pacjenta.
+        return `Automatyczna próba nr ${details.attemptNumber} została anulowana: ${describeRetryCancellation(details.reason)}`;
+      }
       return `Automatyczna próba nr ${details.attemptNumber} zakończona przyjęciem zlecenia przez laboratorium.`;
+    }
     case "TECHNICAL_ERROR":
       return details.reason;
     default:
       return null;
+  }
+}
+
+/**
+ * Polskie wyjaśnienie przyczyny anulowania automatycznego ponowienia.
+ *
+ * Interfejs nigdy nie pokazuje technicznego kodu (`PATIENT_INACTIVE`,
+ * `REQUEST_CHANGED`) ani danych pacjenta — tylko to, co personel ma zrobić dalej.
+ */
+function describeRetryCancellation(reason: LabSendRetryCancellationReason): string {
+  switch (reason) {
+    case "PATIENT_INACTIVE":
+      return "pacjent nie jest już aktywny. Zlecenie nie zostało wysłane — po przywróceniu pacjenta wyślij je ponownie.";
+    case "REQUEST_CHANGED":
+      return "dane zlecenia zmieniły się po pierwszej próbie. Zlecenie nie zostało wysłane — sprawdź dane i wyślij je ponownie.";
+    default:
+      return "warunki wysyłki zmieniły się po pierwszej próbie. Zlecenie nie zostało wysłane.";
   }
 }
 

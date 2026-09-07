@@ -1,12 +1,15 @@
 import {
   canScheduleLabSendRetry,
   computeLabSendRetryExecuteAt,
+  computeLabSendRetryFailureExecuteAt,
   computeRetryAfterSeconds,
   getLabSendRetryDelaySeconds,
   FIRST_LAB_SEND_ATTEMPT_NUMBER,
   LAB_RATE_LIMITED_ERROR_CODE,
   LAB_RATE_LIMITED_MESSAGE,
   LAB_SEND_RETRY_DELAYS_SECONDS,
+  LAB_SEND_RETRY_FAILURE_BACKOFF_SECONDS,
+  LAB_SEND_RETRY_FAILURE_MESSAGE,
   MAX_LAB_SEND_RETRY_COUNT
 } from "./lab-send-retry";
 
@@ -109,6 +112,39 @@ describe("harmonogram ponowień wysyłki do laboratorium", () => {
           executeAt: new Date("2026-09-07T10:00:15.000Z")
         })
       ).toBe(0);
+    });
+  });
+
+  describe("odsunięcie zadania po błędzie technicznym wykonania", () => {
+    it("definiuje opóźnienie nie krótsze niż najkrótsze ponowienie harmonogramu", () => {
+      expect(LAB_SEND_RETRY_FAILURE_BACKOFF_SECONDS).toBe(15);
+      expect(LAB_SEND_RETRY_FAILURE_BACKOFF_SECONDS).toBeGreaterThanOrEqual(
+        LAB_SEND_RETRY_DELAYS_SECONDS[0]
+      );
+    });
+
+    it("przesuwa termin wykonania w przyszłość względem przekazanego czasu", () => {
+      const now = new Date("2026-09-07T10:00:00.000Z");
+
+      const executeAt = computeLabSendRetryFailureExecuteAt({ now });
+
+      expect(executeAt).toEqual(new Date("2026-09-07T10:00:15.000Z"));
+      expect(executeAt.getTime()).toBeGreaterThan(now.getTime());
+    });
+
+    it("nie zależy od zegara wewnątrz funkcji", () => {
+      const now = new Date("2026-09-07T10:00:00.000Z");
+
+      expect(computeLabSendRetryFailureExecuteAt({ now })).toEqual(
+        computeLabSendRetryFailureExecuteAt({ now })
+      );
+    });
+
+    it("udostępnia stały, bezpieczny komunikat techniczny bez danych wrażliwych", () => {
+      expect(LAB_SEND_RETRY_FAILURE_MESSAGE).toBe(
+        "Techniczny błąd wykonania zadania ponowienia wysyłki."
+      );
+      expect(LAB_SEND_RETRY_FAILURE_MESSAGE).not.toMatch(/pesel|barcode|select |at .*\.ts:/i);
     });
   });
 

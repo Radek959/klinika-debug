@@ -15,6 +15,9 @@ interface LabSendRetryJobRow {
   status: "PENDING" | "PROCESSING" | "DONE" | "FAILED";
   executeAt: Date;
   lockedAt: Date | null;
+  /** Numer próby wysyłki do laboratorium — techniczny błąd workera go NIE zmienia. */
+  attemptNumber: number;
+  /** Licznik technicznych uruchomień zadania przez scheduler. */
   attempts: number;
   lastError: string | null;
 }
@@ -83,10 +86,19 @@ function createPrismaStub(rows: LabSendRetryJobRow[]) {
             if (typeof args.data.lastError === "string") {
               row.lastError = args.data.lastError;
             }
+            if (args.data.executeAt instanceof Date) {
+              row.executeAt = args.data.executeAt;
+            }
             const increment = (args.data.attempts as { increment?: number } | undefined)
               ?.increment;
             if (typeof increment === "number") {
               row.attempts += increment;
+            }
+            const attemptNumberIncrement = (
+              args.data.attemptNumber as { increment?: number } | undefined
+            )?.increment;
+            if (typeof attemptNumberIncrement === "number") {
+              row.attemptNumber += attemptNumberIncrement;
             }
           }
 
@@ -113,6 +125,7 @@ function pendingJob(overrides: Partial<LabSendRetryJobRow> = {}): LabSendRetryJo
     status: "PENDING",
     executeAt: new Date("2026-09-07T10:00:15.000Z"),
     lockedAt: null,
+    attemptNumber: 2,
     attempts: 0,
     lastError: null,
     ...overrides
@@ -199,18 +212,97 @@ describe("LabSendRetryService", () => {
     expect(orders.executeSendRetry).not.toHaveBeenCalled();
   });
 
-  it("zwraca zadanie do PENDING i zapisuje krótki błąd po nieudanym wykonaniu", async () => {
-    const { prisma, rows } = createPrismaStub([pendingJob()]);
-    const orders = createOrdersStub(async () => {
-      throw new Error("Awaria bazy podczas ponowienia.");
+  describe("błąd wykonania zadania", () => {
+    /**
+     * Wyjątek celowo niosący treść, która NIE MOŻE trafić do danych aplikacji:
+     * dane pacjenta, kod kreskowy i fragment zapytania SQL.
+     */
+    function failingOrdersStub() {
+      const error = new Error(
+        "SELECT * FROM patients WHERE pesel = '44051401458' — próbka SMP-0001"
+      );
+      error.stack = `${error.message}\n    at OrdersService.executeSendRetry (orders.service.ts:1200:11)`;
+      return createOrdersStub(async () => {
+        throw error;
+      });
+    }
+
+    it("zwraca zadanie do PENDING zamiast pozostawiać je w PROCESSING", async () => {
+      const { prisma, rows } = createPrismaStub([pendingJob()]);
+      const service = new LabSendRetryService(prisma, failingOrdersStub());
+
+      await service.processDueJobs(NOW);
+
+      expect(rows[0].status).toBe("PENDING");
+      expect(rows[0].lockedAt).toBeNull();
     });
-    const service = new LabSendRetryService(prisma, orders);
 
-    await service.processDueJobs(NOW);
+    it("przesuwa executeAt w przyszłość, zamiast zostawiać termin z przeszłości", async () => {
+      const { prisma, rows } = createPrismaStub([pendingJob()]);
+      const service = new LabSendRetryService(prisma, failingOrdersStub());
 
-    expect(rows[0].status).toBe("PENDING");
-    expect(rows[0].lockedAt).toBeNull();
-    expect(rows[0].lastError).toBe("Awaria bazy podczas ponowienia.");
+      await service.processDueJobs(NOW);
+
+      expect(rows[0].executeAt.getTime()).toBeGreaterThan(NOW.getTime());
+      // Odsunięcie o co najmniej 15 sekund, czyli wielokrotność okresu ticku.
+      expect(rows[0].executeAt.getTime() - NOW.getTime()).toBeGreaterThanOrEqual(15_000);
+    });
+
+    it("nie podejmuje zadania w tym samym ani w następnym ticku schedulera", async () => {
+      const { prisma, rows } = createPrismaStub([pendingJob()]);
+      const orders = failingOrdersStub();
+      const service = new LabSendRetryService(prisma, orders);
+
+      await service.processDueJobs(NOW);
+      expect(orders.executeSendRetry).toHaveBeenCalledTimes(1);
+
+      // Natychmiastowy kolejny przebieg oraz przebieg po typowym ticku (~2 s).
+      expect(await service.processDueJobs(NOW)).toBe(0);
+      expect(await service.processDueJobs(new Date(NOW.getTime() + 2_000))).toBe(0);
+      expect(orders.executeSendRetry).toHaveBeenCalledTimes(1);
+      expect(rows[0].attempts).toBe(1);
+    });
+
+    it("podejmuje zadanie dopiero po nadejściu nowego executeAt", async () => {
+      const { prisma, rows } = createPrismaStub([pendingJob()]);
+      const orders = failingOrdersStub();
+      const service = new LabSendRetryService(prisma, orders);
+
+      await service.processDueJobs(NOW);
+      const newExecuteAt = rows[0].executeAt;
+
+      expect(
+        await service.processDueJobs(new Date(newExecuteAt.getTime() - 1))
+      ).toBe(0);
+      expect(await service.processDueJobs(newExecuteAt)).toBe(1);
+      expect(orders.executeSendRetry).toHaveBeenCalledTimes(2);
+    });
+
+    it("nie zwiększa attemptNumber, ale liczy techniczne uruchomienia workera", async () => {
+      const { prisma, rows } = createPrismaStub([pendingJob({ attemptNumber: 2 })]);
+      const service = new LabSendRetryService(prisma, failingOrdersStub());
+
+      await service.processDueJobs(NOW);
+
+      // `attemptNumber` opisuje próbę komunikacji z laboratorium — techniczny
+      // błąd workera jej nie zużywa.
+      expect(rows[0].attemptNumber).toBe(2);
+      expect(rows[0].attempts).toBe(1);
+    });
+
+    it("zapisuje wyłącznie stały komunikat techniczny, bez stack trace'a i danych wrażliwych", async () => {
+      const { prisma, rows } = createPrismaStub([pendingJob()]);
+      const service = new LabSendRetryService(prisma, failingOrdersStub());
+
+      await service.processDueJobs(NOW);
+
+      expect(rows[0].lastError).toBe("Techniczny błąd wykonania zadania ponowienia wysyłki.");
+      expect(rows[0].lastError).not.toContain("44051401458");
+      expect(rows[0].lastError).not.toContain("SMP-0001");
+      expect(rows[0].lastError).not.toContain("SELECT");
+      expect(rows[0].lastError).not.toContain("orders.service.ts");
+      expect(rows[0].lastError).not.toContain("    at ");
+    });
   });
 
   it("uwalnia osierocone blokady zadań zawieszonych w PROCESSING", async () => {

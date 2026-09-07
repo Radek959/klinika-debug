@@ -27,10 +27,12 @@ import {
   buildLabOrderRejectedDetails,
   buildLabRateLimitReceivedDetails,
   buildLabSendRetryDetails,
+  buildLabSendRetryCancelledDetails,
   computeRetryAfterSeconds,
   FIRST_LAB_SEND_ATTEMPT_NUMBER,
   LAB_RATE_LIMITED_ERROR_CODE,
   LAB_RATE_LIMITED_MESSAGE,
+  type LabSendRetryCancellationReason,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
   type OrderValidationFieldError,
@@ -1156,6 +1158,10 @@ export class OrdersService {
     const order = await this.prisma.order.findFirst({
       where: { id: job.orderId, workspaceId: job.workspaceId },
       include: {
+        // Aktywność pacjenta jest jedną z reguł wysyłki egzekwowanych przy
+        // pierwszej, ręcznej próbie (`sendOrder`). Automatyczne ponowienie musi
+        // sprawdzać dokładnie tę samą regułę na świeżym stanie z bazy.
+        patient: { select: { active: true } },
         tests: {
           include: {
             medicalTest: {
@@ -1183,6 +1189,22 @@ export class OrdersService {
       throw new Error(
         `Ponowienie wysyłki: zlecenie ${job.orderId} nie jest już gotowe do wysyłki.`
       );
+    }
+
+    // Warunki biznesowe sprzed pierwszej próby mogły przestać obowiązywać.
+    // Automatyczne ponowienie nie może wysłać zlecenia dla pacjenta, dla którego
+    // ręczna wysyłka zostałaby dziś odrzucona.
+    if (!order.patient.active) {
+      await this.cancelSendRetry({ job, reason: "PATIENT_INACTIVE" });
+      return;
+    }
+
+    // Ten sam mechanizm hashowania co przy pierwszej próbie — jedna implementacja
+    // dla obu ścieżek, więc nie da się ich rozjechać. Inny hash oznacza, że dane
+    // objęte żądaniem wysyłki zmieniły się po zaplanowaniu ponowienia.
+    if (this.hashSendRequest(order) !== job.requestHash) {
+      await this.cancelSendRetry({ job, reason: "REQUEST_CHANGED" });
+      return;
     }
 
     const simulatorResult = this.labSimulator.acceptOrder({
@@ -1215,6 +1237,83 @@ export class OrdersService {
     }
 
     await this.commitAcceptedSendRetry({ job, previousStatus: order.status, simulatorResult });
+  }
+
+  /**
+   * Anuluje TO KONKRETNE zadanie automatycznego ponowienia w sposób
+   * nieponawialny i bez żadnych skutków wysyłki.
+   *
+   * Symulator nie jest wywoływany, więc nie powstaje `externalOrderId`, zadanie
+   * callbacka ani zmiana statusu zlecenia — zlecenie zostaje w
+   * `SAMPLE_COLLECTED`.
+   *
+   * Zadanie jest USUWANE, a nie oznaczane jako `FAILED`/`DONE`. Tabela
+   * `lab_send_retry_jobs` ma unikalność `(workspaceId, orderId)` (MySQL nie ma
+   * indeksów częściowych, więc „jedno aktywne ponowienie na zlecenie” jest
+   * realizowane jako jeden wiersz na zlecenie). Wiersz pozostawiony w stanie
+   * terminalnym zablokowałby NA ZAWSZE utworzenie kolejnego zadania ponowienia
+   * dla tego zlecenia — a użytkownik ma móc po poprawieniu danych rozpocząć
+   * wysyłkę od zera. Usunięcie wiersza jest jedynym rozwiązaniem zgodnym z tym
+   * schematem, które nie wymaga zmiany migracji. Ślad operacji nie ginie: jest
+   * nim wpis historii zlecenia.
+   *
+   * Z tego samego powodu zwalniamy rezerwację klucza idempotencji: usuwamy
+   * wyłącznie wiersz w stanie oczekiwania na ponowienie (`responseStatus` 429),
+   * nigdy zakończonej sukcesem operacji. Dzięki temu kolejny `POST /send`
+   * startuje jak pierwsza próba, zamiast dostać 429 albo 409 na zawsze.
+   *
+   * Całość jest jedną transakcją — nie może powstać stan, w którym zadanie
+   * zniknęło, ale klucz idempotencji blokuje ponowną wysyłkę albo historia nie
+   * zawiera śladu anulowania.
+   */
+  private async cancelSendRetry(input: {
+    job: {
+      id: string;
+      workspaceId: string;
+      orderId: string;
+      attemptNumber: number;
+      correlationId: string;
+      idempotencyKey: string;
+    };
+    reason: LabSendRetryCancellationReason;
+  }): Promise<void> {
+    const { job } = input;
+
+    await this.prisma.$transaction(async (tx) => {
+      const released = await tx.labSendRetryJob.deleteMany({
+        where: { id: job.id, status: "PROCESSING" }
+      });
+      if (released.count === 0) {
+        // Zadanie przestało należeć do tego procesu — przerywamy bez skutków.
+        throw new Error(
+          `Anulowanie ponowienia: zadanie ${job.id} nie jest już w stanie PROCESSING.`
+        );
+      }
+
+      await tx.idempotencyKey.deleteMany({
+        where: {
+          workspaceId: job.workspaceId,
+          key: job.idempotencyKey,
+          responseStatus: HttpStatus.TOO_MANY_REQUESTS
+        }
+      });
+
+      await this.orderHistory.record(tx, {
+        workspaceId: job.workspaceId,
+        orderId: job.orderId,
+        eventType: "LAB_SEND_RETRY",
+        // Anulowanie jest decyzją systemu, a nie akcją personelu.
+        actorType: "SYSTEM",
+        correlationId: job.correlationId,
+        // Anulowane ponowienie nie zmienia statusu zlecenia.
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SAMPLE_COLLECTED",
+        details: buildLabSendRetryCancelledDetails({
+          attemptNumber: job.attemptNumber,
+          reason: input.reason
+        })
+      });
+    });
   }
 
   private async commitAcceptedSendRetry(input: {

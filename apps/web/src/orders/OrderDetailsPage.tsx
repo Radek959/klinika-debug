@@ -160,6 +160,14 @@ export function OrderDetailsPage({ token }: { token: string }) {
             setSuccess("Zlecenie zostało wysłane do laboratorium.");
             reload();
           }}
+          onHistoryRecorded={() => {
+            // Kontrolowana odmowa laboratorium (429 / 422) NIE jest sukcesem —
+            // komunikat błędu zostaje, a status zlecenia się nie zmienia. Backend
+            // zapisał jednak wpis historii, więc odświeżamy WYŁĄCZNIE sekcję
+            // historii: bez przeładowania strony, bez pobierania szczegółów
+            // zlecenia i bez pollingu.
+            setHistoryRefreshKey((current) => current + 1);
+          }}
         />
       ) : null}
 
@@ -330,14 +338,39 @@ function SampleRow({
   );
 }
 
+/**
+ * Kody kontrolowanych odmów wysyłki, przy których backend ZAPISUJE wpis historii
+ * zlecenia mimo zwrócenia błędu.
+ *
+ * `LAB_RATE_LIMITED` (429) zapisuje `LAB_RATE_LIMIT_RECEIVED`, a
+ * `LAB_ORDER_VALIDATION_ERROR` (422) — `LAB_ORDER_REJECTED`. Tylko dla tych
+ * przypadków ma sens odświeżenie historii. Zwykły błąd sieci, 401, 404, konflikt
+ * idempotencji ani lokalna walidacja (`ORDER_SEND_ERROR`) nie zapisują niczego,
+ * więc nie wywołują niepotrzebnego żądania.
+ */
+const HISTORY_RECORDING_SEND_ERROR_CODES = new Set([
+  "LAB_RATE_LIMITED",
+  "LAB_ORDER_VALIDATION_ERROR"
+]);
+
+function recordsSendHistory(caught: unknown): boolean {
+  return (
+    caught instanceof ApiClientError &&
+    caught.code !== undefined &&
+    HISTORY_RECORDING_SEND_ERROR_CODES.has(caught.code)
+  );
+}
+
 function SendToLabAction({
   token,
   orderId,
-  onSent
+  onSent,
+  onHistoryRecorded
 }: {
   token: string;
   orderId: string;
   onSent: () => void;
+  onHistoryRecorded: () => void;
 }) {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -361,6 +394,12 @@ function SendToLabAction({
       setError(toApiMessage(caught, "Nie udało się wysłać zlecenia do laboratorium."));
       setFieldErrors(caught instanceof ApiClientError ? caught.fieldErrors : []);
       setRetryNotice(describeAutomaticRetry(caught));
+
+      // Backend zapisał wpis historii dla tej odmowy, więc oś czasu jest już
+      // nieaktualna. Odświeżamy ją bez pokazywania fałszywego sukcesu.
+      if (recordsSendHistory(caught)) {
+        onHistoryRecorded();
+      }
     } finally {
       setIsSending(false);
     }

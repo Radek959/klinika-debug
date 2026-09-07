@@ -1,4 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
+import {
+  computeLabSendRetryFailureExecuteAt,
+  LAB_SEND_RETRY_FAILURE_MESSAGE
+} from "@klinika/domain";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { OrdersService } from "../orders/orders.service";
 
@@ -93,7 +97,7 @@ export class LabSendRetryService {
     try {
       await this.orders.executeSendRetry(jobId);
     } catch (error) {
-      await this.markJobFailed(jobId, error);
+      await this.markJobFailed(jobId, error, now);
     }
 
     return true;
@@ -102,20 +106,33 @@ export class LabSendRetryService {
   /**
    * Zwalnia zadanie po nieudanym wykonaniu.
    *
-   * Zadanie wraca do `PENDING` z zachowanym terminem, więc kolejny przebieg
-   * spróbuje ponownie. Zapisujemy wyłącznie krótki komunikat błędu — bez stack
-   * trace'a i bez danych pacjenta.
+   * Zadanie wraca do `PENDING`, ale ZAWSZE z nowym terminem w przyszłości.
+   * Pozostawienie terminu z przeszłości oznaczałoby, że scheduler podejmuje to
+   * samo zadanie przy każdym ticku (co ~2 s) — gorąca pętla, która potrafi
+   * trwać w nieskończoność i obciążać bazę oraz symulator.
+   *
+   * `attemptNumber` NIE jest zwiększany: opisuje próbę komunikacji z
+   * laboratorium, a nie techniczne uruchomienie workera. Techniczne uruchomienia
+   * liczy kolumna `attempts`, inkrementowana przy przejęciu zadania.
+   *
+   * W `lastError` zapisujemy STAŁY, bezpieczny komunikat techniczny. Oryginalna
+   * treść wyjątku może zawierać dane pacjenta, kod kreskowy albo fragment
+   * zapytania SQL, więc trafia wyłącznie do logu serwera — nigdy do danych
+   * aplikacji. Nie zapisujemy też stack trace'a.
    */
-  private async markJobFailed(jobId: string, error: unknown): Promise<void> {
-    const message = error instanceof Error ? error.message : String(error);
-    this.logger.error(`Nie udało się ponowić wysyłki zlecenia (zadanie ${jobId}).`, message);
+  private async markJobFailed(jobId: string, error: unknown, now: Date): Promise<void> {
+    this.logger.error(
+      `Nie udało się ponowić wysyłki zlecenia (zadanie ${jobId}).`,
+      error instanceof Error ? error.message : String(error)
+    );
 
     await this.prisma.labSendRetryJob.updateMany({
       where: { id: jobId, status: "PROCESSING" },
       data: {
         status: "PENDING",
         lockedAt: null,
-        lastError: message.slice(0, 180)
+        executeAt: computeLabSendRetryFailureExecuteAt({ now }),
+        lastError: LAB_SEND_RETRY_FAILURE_MESSAGE
       }
     });
   }

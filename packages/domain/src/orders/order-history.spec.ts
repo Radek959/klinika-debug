@@ -4,6 +4,7 @@ import {
   buildLabRateLimitReceivedDetails,
   buildLabResultReceivedDetails,
   buildLabSampleRejectedDetails,
+  buildLabSendRetryCancelledDetails,
   buildLabSendRetryDetails,
   buildOrderCreatedDetails,
   buildOrderSentToLabDetails,
@@ -471,6 +472,55 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
         "newStatus",
         "outcome",
         "previousStatus"
+      ]);
+    });
+
+    it("buduje szczegóły anulowania dla nieaktywnego pacjenta bez zmiany statusu", () => {
+      const details = buildLabSendRetryCancelledDetails({
+        attemptNumber: 2,
+        reason: "PATIENT_INACTIVE"
+      });
+
+      expect(details).toEqual({
+        attemptNumber: 2,
+        outcome: "CANCELLED",
+        reason: "PATIENT_INACTIVE",
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SAMPLE_COLLECTED"
+      });
+    });
+
+    it("buduje szczegóły anulowania dla zmienionych danych żądania", () => {
+      const details = buildLabSendRetryCancelledDetails({
+        attemptNumber: 2,
+        reason: "REQUEST_CHANGED"
+      });
+
+      expect(details.outcome).toBe("CANCELLED");
+      expect(details.reason).toBe("REQUEST_CHANGED");
+      // Anulowane ponowienie nie wysyła zlecenia, więc status się nie zmienia.
+      expect(details.previousStatus).toBe(details.newStatus);
+    });
+
+    it("nie przepuszcza danych pacjenta ani hasha do szczegółów anulowania", () => {
+      const details = buildLabSendRetryCancelledDetails({
+        attemptNumber: 2,
+        reason: "REQUEST_CHANGED",
+        scenario: "RATE_LIMIT",
+        pesel: "44051401458",
+        requestHash: "9f2c1b4d",
+        barcode: "SMP-0001"
+      } as never);
+
+      const serialized = JSON.stringify(details);
+      expect(serialized).not.toMatch(/pesel|scenario|requestHash|barcode/i);
+      expect(serialized).not.toContain("RATE_LIMIT");
+      expect(Object.keys(details).sort()).toEqual([
+        "attemptNumber",
+        "newStatus",
+        "outcome",
+        "previousStatus",
+        "reason"
       ]);
     });
   });

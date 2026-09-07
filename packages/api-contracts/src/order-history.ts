@@ -136,17 +136,46 @@ export interface LabRateLimitReceivedHistoryDetails {
 }
 
 /**
- * Szczegóły automatycznego ponowienia wysyłki wykonanego przez system.
+ * Bezpieczny kod przyczyny anulowania automatycznego ponowienia wysyłki.
+ *
+ * `PATIENT_INACTIVE` — pacjent przestał być aktywny po pierwszej próbie.
+ * `REQUEST_CHANGED` — dane zlecenia objęte hashem żądania wysyłki zmieniły się
+ * po pierwszej próbie.
+ */
+export type LabSendRetryCancellationReason = "PATIENT_INACTIVE" | "REQUEST_CHANGED";
+
+/**
+ * Szczegóły automatycznego ponowienia wysyłki zakończonego przyjęciem zlecenia.
  *
  * Wpis dotyczy wyłącznie próby wykonanej automatycznie przez Klinikę Debug,
  * dlatego jego `actorType` to `SYSTEM`, a nie `STAFF`.
  */
-export interface LabSendRetryHistoryDetails {
+export interface LabSendRetryAcceptedHistoryDetails {
   attemptNumber: number;
   outcome: "ACCEPTED";
   previousStatus: "SAMPLE_COLLECTED";
   newStatus: "SENT_TO_LAB";
 }
+
+/**
+ * Szczegóły automatycznego ponowienia ANULOWANEGO przed wysyłką.
+ *
+ * Anulowanie oznacza, że zlecenie NIE zostało wysłane: warunki biznesowe albo
+ * dane objęte hashem zmieniły się od pierwszej próby, więc status zlecenia
+ * pozostaje `SAMPLE_COLLECTED`. Kontrakt nie zawiera danych pacjenta, hasha
+ * żądania, kodów kreskowych ani nazwy scenariusza symulatora.
+ */
+export interface LabSendRetryCancelledHistoryDetails {
+  attemptNumber: number;
+  outcome: "CANCELLED";
+  reason: LabSendRetryCancellationReason;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
+}
+
+export type LabSendRetryHistoryDetails =
+  | LabSendRetryAcceptedHistoryDetails
+  | LabSendRetryCancelledHistoryDetails;
 
 export interface TechnicalErrorHistoryDetails {
   reason: string;

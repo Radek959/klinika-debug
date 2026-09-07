@@ -40,7 +40,9 @@ export class OrderHistoryItemDto {
       "podczas wysyłki (zlecenie nie zostało przyjęte i zachowuje status SAMPLE_COLLECTED), " +
       "LAB_RATE_LIMIT_RECEIVED — laboratorium chwilowo ograniczyło liczbę żądań i wysyłka została zaplanowana " +
       "do automatycznego ponowienia (zlecenie zachowuje status SAMPLE_COLLECTED), LAB_SEND_RETRY — automatyczne " +
-      "ponowienie wysyłki wykonane przez system (actorType SYSTEM, nie jest to nowa akcja personelu), " +
+      "ponowienie wysyłki wykonane przez system (actorType SYSTEM, nie jest to nowa akcja personelu; " +
+      "outcome ACCEPTED oznacza przyjęcie zlecenia, a outcome CANCELLED — anulowanie ponowienia, ponieważ " +
+      "warunki wysyłki zmieniły się po pierwszej próbie), " +
       "TECHNICAL_ERROR — błąd techniczny w obsłudze zlecenia (typ zdefiniowany " +
       "na przyszłość; żaden z obecnie zaimplementowanych procesów jeszcze go nie emituje).",
     enum: EVENT_TYPE_ENUM,
@@ -125,8 +127,12 @@ export class OrderHistoryItemDto {
       "szczegóły tego zdarzenia nie zawierają danych pacjenta, kodów kreskowych ani payloadu wysyłanego do " +
       "laboratorium; LAB_RATE_LIMIT_RECEIVED zawiera attemptNumber, retryAfterSeconds, nextRetryAt oraz " +
       "previousStatus i newStatus, oba równe SAMPLE_COLLECTED, ponieważ ograniczenie przepustowości jest " +
-      "przejściowe i nie zmienia statusu zlecenia; LAB_SEND_RETRY zawiera attemptNumber, outcome (ACCEPTED) " +
-      "oraz przejście statusu SAMPLE_COLLECTED → SENT_TO_LAB. Szczegóły zdarzeń integracyjnych nie zawierają " +
+      "przejściowe i nie zmienia statusu zlecenia; LAB_SEND_RETRY zawiera attemptNumber i outcome: dla " +
+      "outcome ACCEPTED także przejście statusu SAMPLE_COLLECTED → SENT_TO_LAB, a dla outcome CANCELLED " +
+      "dodatkowo reason (PATIENT_INACTIVE — pacjent przestał być aktywny, REQUEST_CHANGED — dane zlecenia " +
+      "objęte hashem żądania wysyłki zmieniły się po pierwszej próbie) oraz previousStatus i newStatus, oba " +
+      "równe SAMPLE_COLLECTED, ponieważ anulowane ponowienie nie wysyła zlecenia. Szczegóły zdarzeń " +
+      "integracyjnych nie zawierają " +
       "nazwy aktywnego scenariusza symulatora. Odpowiedź zawiera wyłącznie pola wymienione dla danego eventType. " +
       "Wpis odtworzony podczas migracji zawiera dodatkowo pole reconstructed: true i może pomijać pozostałe pola " +
       "szczegółowe.",

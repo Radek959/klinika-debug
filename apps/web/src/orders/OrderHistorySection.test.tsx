@@ -273,6 +273,78 @@ describe("OrderHistorySection", () => {
     expect(screen.queryByText(/SAMPLE_COLLECTED|SENT_TO_LAB/)).not.toBeInTheDocument();
   });
 
+  it("pokazuje anulowane ponowienie wysyłki po polsku, bez kodu przyczyny", async () => {
+    mockHistoryResponse(
+      historyResponse([
+        historyItem({
+          eventType: "LAB_SEND_RETRY",
+          actorType: "SYSTEM",
+          actorUserId: null,
+          correlationId: "corr-cancelled-1",
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: {
+            eventType: "LAB_SEND_RETRY",
+            attemptNumber: 2,
+            outcome: "CANCELLED",
+            reason: "PATIENT_INACTIVE",
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "SAMPLE_COLLECTED"
+          }
+        })
+      ])
+    );
+
+    render(<OrderHistorySection token="token" orderId="order-1" refreshKey={0} />);
+
+    expect(
+      await screen.findByText(
+        /Automatyczna próba nr 2 została anulowana: pacjent nie jest już aktywny\./
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Zlecenie nie zostało wysłane/)).toBeInTheDocument();
+
+    // Anulowanie nie zmienia statusu zlecenia.
+    expect(
+      screen.getByText("Status zlecenia bez zmian: Próbki pobrane")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Zmiana statusu:/)).not.toBeInTheDocument();
+
+    // Bez surowych kodów technicznych i nazwy scenariusza.
+    expect(screen.queryByText(/PATIENT_INACTIVE/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/CANCELLED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/RATE_LIMIT/)).not.toBeInTheDocument();
+  });
+
+  it("pokazuje anulowanie ponowienia po zmianie danych zlecenia", async () => {
+    mockHistoryResponse(
+      historyResponse([
+        historyItem({
+          eventType: "LAB_SEND_RETRY",
+          actorType: "SYSTEM",
+          actorUserId: null,
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: {
+            eventType: "LAB_SEND_RETRY",
+            attemptNumber: 2,
+            outcome: "CANCELLED",
+            reason: "REQUEST_CHANGED",
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "SAMPLE_COLLECTED"
+          }
+        })
+      ])
+    );
+
+    render(<OrderHistorySection token="token" orderId="order-1" refreshKey={0} />);
+
+    expect(
+      await screen.findByText(/dane zlecenia zmieniły się po pierwszej próbie/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/REQUEST_CHANGED/)).not.toBeInTheDocument();
+  });
+
   it("pokazuje odrzucenie zlecenia bez błędów pól", async () => {
     mockHistoryResponse(
       historyResponse([
