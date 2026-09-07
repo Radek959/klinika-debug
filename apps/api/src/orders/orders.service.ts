@@ -743,6 +743,7 @@ export class OrdersService {
     const simulatorResult = this.labSimulator.acceptOrder({
       workspaceId,
       orderId,
+      correlationId,
       tests: order.tests.map((test) => ({
         medicalTestId: test.medicalTestId,
         parameters: test.medicalTest.parameters

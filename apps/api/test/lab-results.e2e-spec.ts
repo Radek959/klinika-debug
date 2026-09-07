@@ -242,12 +242,22 @@ describe("lab results webhook and scheduler", () => {
     const completedOrder = await waitForOrderStatus(order.id, "COMPLETED", 8000);
     expect(completedOrder.status).toBe("COMPLETED");
     expect(completedOrder.externalOrderId).not.toBeNull();
+    expect(completedOrder.correlationId).not.toBeNull();
 
     const resultCount = await prisma.result.count({ where: { orderId: order.id } });
     expect(resultCount).toBe(1);
 
     const labJob = await prisma.labJob.findFirstOrThrow({ where: { orderId: order.id } });
     expect(labJob.status).toBe("DONE");
+    const jobPayload = labJob.payload as unknown as { correlationId: string | null };
+    expect(jobPayload.correlationId).not.toBeNull();
+    expect(jobPayload.correlationId).toBe(completedOrder.correlationId);
+
+    const resultReceivedEvent = await prisma.orderHistory.findFirstOrThrow({
+      where: { orderId: order.id, eventType: "LAB_RESULT_RECEIVED" }
+    });
+    expect(resultReceivedEvent.correlationId).not.toBeNull();
+    expect(resultReceivedEvent.correlationId).toBe(completedOrder.correlationId);
   });
 
   describe("scenariusz symulatora PARTIAL_SUCCESS", () => {
@@ -285,6 +295,10 @@ describe("lab results webhook and scheduler", () => {
       const sendBody = JSON.parse(sendResponse.body);
       expect(sendBody.status).toBe("SENT_TO_LAB");
 
+      const sentOrder = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(sentOrder.correlationId).not.toBeNull();
+      expect(sentOrder.correlationId).not.toBe("");
+
       const jobs = await prisma.labJob.findMany({
         where: { orderId: order.id },
         orderBy: { executeAt: "asc" }
@@ -296,12 +310,14 @@ describe("lab results webhook and scheduler", () => {
       const firstPayload = jobs[0].payload as unknown as {
         eventId: string;
         status: string;
+        correlationId: string | null;
         pendingMedicalTestIds: string[];
         results: Array<{ medicalTestId: string }>;
       };
       const secondPayload = jobs[1].payload as unknown as {
         eventId: string;
         status: string;
+        correlationId: string | null;
         pendingMedicalTestIds: string[];
         results: Array<{ medicalTestId: string }>;
       };
@@ -316,6 +332,12 @@ describe("lab results webhook and scheduler", () => {
         ...secondPayload.results.map((r) => r.medicalTestId)
       ].sort();
       expect(allTestIds).toEqual([tests.CRP.id, tests.MORF.id].sort());
+
+      // Oba zaplanowane callbacki muszą mieć dokładnie ten sam correlationId
+      // co Order.correlationId zapisany podczas wysyłki — nie może to być null.
+      expect(firstPayload.correlationId).not.toBeNull();
+      expect(firstPayload.correlationId).toBe(sentOrder.correlationId);
+      expect(secondPayload.correlationId).toBe(sentOrder.correlationId);
 
       await waitForOrderStatus(order.id, "PARTIAL", 8000);
       const afterFirstJob = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
@@ -369,6 +391,14 @@ describe("lab results webhook and scheduler", () => {
       );
       expect(partialTransition).toBeDefined();
       expect(completionTransition).toBeDefined();
+
+      const resultReceivedEvents = historyEvents.filter(
+        (event) => event.eventType === "LAB_RESULT_RECEIVED"
+      );
+      expect(resultReceivedEvents.every((event) => event.correlationId !== null)).toBe(true);
+      expect(resultReceivedEvents.every((event) => event.correlationId === sentOrder.correlationId)).toBe(
+        true
+      );
     }, 15000);
 
     it("nie tworzy dodatkowych zadań przy ponownej wysyłce z tym samym kluczem idempotencji", async () => {
@@ -472,12 +502,20 @@ describe("lab results webhook and scheduler", () => {
       const sendResponse = await sendOrder(token, order.id);
       expect(sendResponse.statusCode).toBe(200);
 
+      const sentOrder = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+
       const jobs = await prisma.labJob.findMany({ where: { orderId: order.id } });
       expect(jobs).toHaveLength(1);
       expect(jobs[0].scenario).toBe("SUCCESS");
-      const payload = jobs[0].payload as unknown as { status: string; pendingMedicalTestIds: string[] };
+      const payload = jobs[0].payload as unknown as {
+        status: string;
+        correlationId: string | null;
+        pendingMedicalTestIds: string[];
+      };
       expect(payload.status).toBe("COMPLETED");
       expect(payload.pendingMedicalTestIds).toEqual([]);
+      expect(payload.correlationId).not.toBeNull();
+      expect(payload.correlationId).toBe(sentOrder.correlationId);
 
       const completedOrder = await waitForOrderStatus(order.id, "COMPLETED", 8000);
       expect(completedOrder.status).toBe("COMPLETED");

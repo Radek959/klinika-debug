@@ -22,6 +22,7 @@ export interface LabSimulatorTestInput {
 export interface LabSimulatorOrderInput {
   workspaceId: string;
   orderId: string;
+  correlationId: string;
   tests: LabSimulatorTestInput[];
 }
 
@@ -72,7 +73,7 @@ export class LabSimulatorService {
     const payload: LabResultsWebhookRequest = {
       externalOrderId,
       eventId: randomUUID(),
-      correlationId: null,
+      correlationId: input.correlationId,
       status: "COMPLETED",
       results,
       pendingMedicalTestIds: []
@@ -117,7 +118,7 @@ export class LabSimulatorService {
     const partialPayload: LabResultsWebhookRequest = {
       externalOrderId,
       eventId: randomUUID(),
-      correlationId: null,
+      correlationId: input.correlationId,
       status: "PARTIAL",
       results: firstResults,
       pendingMedicalTestIds: secondBatchTestIds
@@ -126,7 +127,7 @@ export class LabSimulatorService {
     const completionPayload: LabResultsWebhookRequest = {
       externalOrderId,
       eventId: randomUUID(),
-      correlationId: null,
+      correlationId: input.correlationId,
       status: "COMPLETED",
       results: secondResults,
       pendingMedicalTestIds: []

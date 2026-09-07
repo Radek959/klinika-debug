@@ -1,11 +1,13 @@
 import { LabSimulatorService, type LabSimulatorOrderInput } from "./lab-simulator.service";
 
 const ORIGINAL_ENV = { ...process.env };
+const TEST_CORRELATION_ID = "correlation-order-1-send";
 
 function buildInput(testCount: number): LabSimulatorOrderInput {
   return {
     workspaceId: "workspace-1",
     orderId: "order-1",
+    correlationId: TEST_CORRELATION_ID,
     tests: Array.from({ length: testCount }, (_, index) => ({
       medicalTestId: `test-${index}`,
       parameters: [{ code: "CODE", valueType: "NUMERIC" as const, unit: "mg/L" }]
@@ -49,6 +51,14 @@ describe("LabSimulatorService", () => {
       expect(result.jobs[0].scenario).toBe("SUCCESS");
       expect(result.jobs[0].payload.status).toBe("COMPLETED");
       expect(result.jobs[0].payload.results).toHaveLength(3);
+    });
+
+    it("ustawia w callbacku correlationId przekazany do symulatora, a nie null", () => {
+      delete process.env.LAB_SIMULATOR_SCENARIO;
+      const result = service.acceptOrder(buildInput(2));
+
+      expect(result.jobs[0].payload.correlationId).not.toBeNull();
+      expect(result.jobs[0].payload.correlationId).toBe(TEST_CORRELATION_ID);
     });
   });
 
@@ -110,6 +120,16 @@ describe("LabSimulatorService", () => {
       expect(second.payload.externalOrderId).toBe(result.externalOrderId);
     });
 
+    it("oba callbacki mają ten sam correlationId, dokładnie taki jak przekazany do symulatora", () => {
+      const result = service.acceptOrder(buildInput(2));
+      const [first, second] = result.jobs;
+
+      expect(first.payload.correlationId).not.toBeNull();
+      expect(first.payload.correlationId).toBe(TEST_CORRELATION_ID);
+      expect(second.payload.correlationId).toBe(TEST_CORRELATION_ID);
+      expect(first.payload.correlationId).toBe(second.payload.correlationId);
+    });
+
     it("pierwszy callback jest zaplanowany wcześniej niż callback końcowy", () => {
       const result = service.acceptOrder(buildInput(2));
       const [first, second] = result.jobs;
@@ -151,6 +171,8 @@ describe("LabSimulatorService", () => {
       expect(result.jobs[0].payload.pendingMedicalTestIds).toEqual([]);
       expect(result.jobs[0].payload.results).toHaveLength(1);
       expect(result.jobs[0].payload.results[0].parameters).toHaveLength(1);
+      expect(result.jobs[0].payload.correlationId).not.toBeNull();
+      expect(result.jobs[0].payload.correlationId).toBe(TEST_CORRELATION_ID);
     });
   });
 
