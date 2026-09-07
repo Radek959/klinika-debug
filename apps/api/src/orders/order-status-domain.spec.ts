@@ -58,6 +58,10 @@ describe("order status domain", () => {
     }
   });
 
+  it("pozwala oznaczyć zlecenie jako TECHNICAL_ERROR przed przyjęciem przez laboratorium", () => {
+    expect(canTransitionOrderStatus("SAMPLE_COLLECTED", "TECHNICAL_ERROR")).toBe(true);
+  });
+
   it("odrzuca powrót z TECHNICAL_ERROR do pobierania próbek", () => {
     expect(canTransitionOrderStatus("TECHNICAL_ERROR", "DRAFT")).toBe(false);
     expect(

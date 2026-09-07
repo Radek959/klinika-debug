@@ -296,10 +296,19 @@ function describeDetails(details: OrderHistoryEventDetails): string | null {
       return parts.join(" ");
     }
     case "LAB_SEND_RETRY": {
+      if (details.outcome === "SCHEDULED") {
+        return `Laboratorium jest chwilowo niedostępne. Automatyczna próba nr ${details.nextAttemptNumber} została zaplanowana na ${formatDateTime(details.nextRetryAt)}.`;
+      }
+      if (details.outcome === "FAILED_RETRY") {
+        return `Automatyczna próba nr ${details.attemptNumber} nie powiodła się z powodu chwilowej niedostępności laboratorium. Kolejna próba nr ${details.nextAttemptNumber} została zaplanowana na ${formatDateTime(details.nextRetryAt)}.`;
+      }
       if (details.outcome === "CANCELLED") {
         // Anulowane ponowienie NIE wysłało zlecenia. Personel musi wiedzieć, co
         // poprawić — bez technicznego kodu przyczyny i bez danych pacjenta.
         return `Automatyczna próba nr ${details.attemptNumber} została anulowana: ${describeRetryCancellation(details.reason)}`;
+      }
+      if (details.outcome === "EXHAUSTED") {
+        return `Automatyczna próba nr ${details.attemptNumber} nie powiodła się. Wyczerpano dostępne ponowienia, a zlecenie oznaczono jako błąd techniczny.`;
       }
       return `Automatyczna próba nr ${details.attemptNumber} zakończona przyjęciem zlecenia przez laboratorium.`;
     }

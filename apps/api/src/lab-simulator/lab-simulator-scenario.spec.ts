@@ -30,6 +30,10 @@ describe("resolveLabSimulatorScenario", () => {
     expect(resolveLabSimulatorScenario("RATE_LIMIT")).toBe("RATE_LIMIT");
   });
 
+  it("rozpoznaje SERVER_ERROR", () => {
+    expect(resolveLabSimulatorScenario("SERVER_ERROR")).toBe("SERVER_ERROR");
+  });
+
   it("toleruje otaczające białe znaki", () => {
     expect(resolveLabSimulatorScenario("  PARTIAL_SUCCESS  ")).toBe("PARTIAL_SUCCESS");
   });
@@ -51,11 +55,14 @@ describe("resolveLabSimulatorScenario", () => {
     expect(() => resolveLabSimulatorScenario("rate_limit")).toThrow(
       /LAB_SIMULATOR_SCENARIO/
     );
+    expect(() => resolveLabSimulatorScenario("server_error")).toThrow(
+      /LAB_SIMULATOR_SCENARIO/
+    );
   });
 
   it("wymienia w komunikacie błędu wszystkie dozwolone scenariusze", () => {
     expect(() => resolveLabSimulatorScenario("NOT_A_SCENARIO")).toThrow(
-      /SUCCESS, PARTIAL_SUCCESS, SAMPLE_REJECTED, VALIDATION_ERROR, RATE_LIMIT/
+      /SUCCESS, PARTIAL_SUCCESS, SAMPLE_REJECTED, VALIDATION_ERROR, RATE_LIMIT, SERVER_ERROR/
     );
   });
 
@@ -68,7 +75,7 @@ describe("resolveLabSimulatorScenario", () => {
     expect(() => resolveLabSimulatorScenario("LAB_RATE_LIMITED")).toThrow(
       /LAB_SIMULATOR_SCENARIO/
     );
-    expect(() => resolveLabSimulatorScenario("SERVER_ERROR")).toThrow(
+    expect(() => resolveLabSimulatorScenario("LAB_SERVER_ERROR")).toThrow(
       /LAB_SIMULATOR_SCENARIO/
     );
   });

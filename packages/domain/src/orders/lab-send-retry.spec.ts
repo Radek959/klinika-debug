@@ -10,6 +10,9 @@ import {
   LAB_SEND_RETRY_DELAYS_SECONDS,
   LAB_SEND_RETRY_FAILURE_BACKOFF_SECONDS,
   LAB_SEND_RETRY_FAILURE_MESSAGE,
+  LAB_SEND_RETRY_EXHAUSTED_REASON,
+  LAB_SERVER_ERROR_CODE,
+  LAB_SERVER_ERROR_MESSAGE,
   MAX_LAB_SEND_RETRY_COUNT
 } from "./lab-send-retry";
 
@@ -152,6 +155,16 @@ describe("harmonogram ponowień wysyłki do laboratorium", () => {
     expect(LAB_RATE_LIMITED_ERROR_CODE).toBe("LAB_RATE_LIMITED");
     expect(LAB_RATE_LIMITED_MESSAGE).toBe(
       "Laboratorium chwilowo ograniczyło liczbę żądań. Wysyłka zostanie ponowiona automatycznie."
+    );
+  });
+
+  it("udostępnia stały kod i polski komunikat chwilowej niedostępności laboratorium", () => {
+    expect(LAB_SERVER_ERROR_CODE).toBe("LAB_SERVER_ERROR");
+    expect(LAB_SERVER_ERROR_MESSAGE).toBe(
+      "Laboratorium jest chwilowo niedostępne. Wysyłka zostanie ponowiona automatycznie."
+    );
+    expect(LAB_SEND_RETRY_EXHAUSTED_REASON).toBe(
+      "Automatyczne ponowienia wysyłki do laboratorium zostały wyczerpane."
     );
   });
 });

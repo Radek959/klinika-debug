@@ -16,19 +16,21 @@ Scenariusz `SAMPLE_REJECTED` symulatora laboratorium jest zaimplementowany w PR 
 
 Scenariusz `VALIDATION_ERROR` symulatora laboratorium jest zaimplementowany w PR `feat/lab-validation-error`.
 
-Scenariusz `RATE_LIMIT` symulatora laboratorium jest zaimplementowany w PR `feat/lab-rate-limit` razem z fundamentem trwałych ponowień wysyłki oraz poprawkami po review (brak gorącej pętli schedulera po błędzie zadania, weryfikacja aktualności zlecenia przed automatycznym ponowieniem wraz z transakcyjnym anulowaniem, odświeżanie historii w UI po 429 i 422). Pełne reguły retry (trzy próby 15/30/60 s, wyczerpanie prób, końcowy `TECHNICAL_ERROR`) pozostają `IN_PROGRESS`.
+Scenariusz `RATE_LIMIT` symulatora laboratorium jest zaimplementowany w PR `feat/lab-rate-limit` razem z fundamentem trwałych ponowień wysyłki oraz poprawkami po review (brak gorącej pętli schedulera po błędzie zadania, weryfikacja aktualności zlecenia przed automatycznym ponowieniem wraz z transakcyjnym anulowaniem, odświeżanie historii w UI po 429 i 422).
 
-Rekomendowany następny PR: **Scenariusz `SERVER_ERROR` symulatora laboratorium** (kolejny brakujący zakres wskazany w [Etapie 4](04-laboratorium.md)).
+Scenariusz `SERVER_ERROR` symulatora laboratorium jest implementowany w PR `feat/lab-server-error`: początkowy HTTP 503 (`LAB_SERVER_ERROR`) planuje automatyczne ponowienia 15/30/60 s, a po trzecim nieudanym retry zlecenie przechodzi z `SAMPLE_COLLECTED` do `TECHNICAL_ERROR`.
 
-Zakres następnego PR-a powinien obejmować:
+Rekomendowany następny PR: **Scenariusz `TIMEOUT` symulatora laboratorium** (kolejny brakujący zakres wskazany w [Etapie 4](04-laboratorium.md)).
 
-- globalnie sterowany scenariusz odpowiedzi `5xx` symulatora na wysyłkę zlecenia;
-- wykorzystanie istniejącej kolejki `lab_send_retry_jobs` do kolejnych ponowień (30 s i 60 s);
-- wyczerpanie dozwolonych prób i przejście zlecenia w `TECHNICAL_ERROR`;
-- czytelną, polską prezentację błędu i ponowień w szczegółach zlecenia i historii operacji;
-- testy jednostkowe, kontraktowe i e2e dla nowego scenariusza.
+Zakres następnego PR-a powinien obejmować timeout wysyłki albo callbacka bez implementowania powiadomień, panelu `/admin`, gotowych narzędzi warsztatowych ani promptów prowadzącego.
 
 Nie implementować tego zakresu w PR-ach organizacyjnych.
+
+## Granice narzędzi warsztatowych
+
+Narzędzia warsztatowe nie są etapem implementacji aplikacji w tym repozytorium. Po zakończeniu aplikacji i weryfikacji wdrożenia powstaną osobne notatki prowadzącego w Notion na podstawie finalnej wersji produktu. Notatki będą zawierały ćwiczenia, wymagania, kryteria weryfikacji i prompty umieszczone bezpośrednio w poszczególnych blokach; nie powstanie osobna baza ćwiczeń.
+
+Dokumentacja produktowa opisuje zachowanie aplikacji, a nie notatki prowadzącego. Repozytorium ma dostarczyć stabilne formularze, REST API, dane syntetyczne i `correlationId`, z których będzie można korzystać podczas ćwiczeń.
 
 ## Status etapów
 
@@ -37,11 +39,11 @@ Nie implementować tego zakresu w PR-ach organizacyjnych.
 | Etap 1 — fundament | `IMPLEMENTED` | Fundament aplikacji, deploymentu, sesji, workspace'ów, OpenAPI i testów jest obecny w kodzie. |
 | Etap 2 — pacjenci | `IMPLEMENTED` | Podstawowa obsługa pacjentów w API i UI jest obecna w kodzie. |
 | Etap 3 — zlecenia i próbki | `IMPLEMENTED` | Główny pion zleceń, katalogu badań, próbek, przebudowany UX nowego zlecenia, edycja `DRAFT` i historia operacji zlecenia są zaimplementowane w kodzie. |
-| Etap 4 — laboratorium | `IN_PROGRESS` | Wysyłka, idempotencja, trwała kolejka callbacków, scheduler, callback oraz scenariusze `SUCCESS`, `PARTIAL_SUCCESS`, `SAMPLE_REJECTED`, `VALIDATION_ERROR` i `RATE_LIMIT` są zaimplementowane; powstał też fundament trwałych ponowień wysyłki (`lab_send_retry_jobs`, harmonogram 15/30/60 s). Pozostałe scenariusze (`SERVER_ERROR`, `TIMEOUT`), kolejne ponowienia, wyczerpanie prób i końcowy `TECHNICAL_ERROR` wymagają dalszej pracy. |
+| Etap 4 — laboratorium | `IN_PROGRESS` | Wysyłka, idempotencja, trwała kolejka callbacków, scheduler, callback oraz scenariusze `SUCCESS`, `PARTIAL_SUCCESS`, `SAMPLE_REJECTED`, `VALIDATION_ERROR`, `RATE_LIMIT` i `SERVER_ERROR` są zaimplementowane; działa też trwałe ponawianie wysyłki 15/30/60 s z wyczerpaniem prób do `TECHNICAL_ERROR` dla kontrolowanego 5xx. Pozostały scenariusz `TIMEOUT` wymaga dalszej pracy. |
 | Etap 5 — dane i obserwowalność | `PLANNED` | Import, eksport, logi aplikacyjne i dokumentacja publikowana z aplikacji nie są ukończone. |
 | Etap 6 — admin i sterowanie | `PLANNED` | Panel `/admin`, reset i globalne sterowanie środowiskiem są zaplanowane. |
 | Etap 7 — kontrolowane błędy | `PLANNED` | Mechanizm pakietów błędów i wewnętrzny katalog defektów są zaplanowane. |
-| Etap 8 — narzędzia warsztatowe | `PLANNED` | Narzędzia pomocnicze dla warsztatu są zaplanowane poza głównym produktem. |
+| Etap 8 — narzędzia warsztatowe | `OUT_OF_SCOPE` | Gotowe rozszerzenie Chrome, skrypt Python i notatki prowadzącego nie są implementowane w tym repozytorium; powstaną poza repo po finalizacji aplikacji. |
 
 ## Plany etapów
 
@@ -63,6 +65,7 @@ Etapy 1 i 2 są opisane podsumowaniem w tym indeksie, ponieważ ich podstawowy z
 | `IMPLEMENTED` | Kod i testy znajdują się w PR |
 | `VERIFIED` | Wymagane testy, CI i review zakończyły się powodzeniem |
 | `DEPLOYED` | Zmiana została wdrożona i sprawdzona na Hostingerze |
+| `OUT_OF_SCOPE` | Obszar świadomie wyłączony z implementacji w tym repozytorium |
 
 ## Zasady aktualizowania statusu
 

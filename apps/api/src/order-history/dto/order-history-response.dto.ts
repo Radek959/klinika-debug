@@ -41,10 +41,11 @@ export class OrderHistoryItemDto {
       "LAB_RATE_LIMIT_RECEIVED — laboratorium chwilowo ograniczyło liczbę żądań i wysyłka została zaplanowana " +
       "do automatycznego ponowienia (zlecenie zachowuje status SAMPLE_COLLECTED), LAB_SEND_RETRY — automatyczne " +
       "ponowienie wysyłki wykonane przez system (actorType SYSTEM, nie jest to nowa akcja personelu; " +
-      "outcome ACCEPTED oznacza przyjęcie zlecenia, a outcome CANCELLED — anulowanie ponowienia, ponieważ " +
-      "warunki wysyłki zmieniły się po pierwszej próbie), " +
-      "TECHNICAL_ERROR — błąd techniczny w obsłudze zlecenia (typ zdefiniowany " +
-      "na przyszłość; żaden z obecnie zaimplementowanych procesów jeszcze go nie emituje).",
+      "outcome SCHEDULED oznacza zaplanowanie ponowienia po kontrolowanym 5xx, FAILED_RETRY — nieudaną " +
+      "automatyczną próbę z kolejnym terminem, ACCEPTED — przyjęcie zlecenia, CANCELLED — anulowanie " +
+      "ponowienia, ponieważ warunki wysyłki zmieniły się po pierwszej próbie, a EXHAUSTED — wyczerpanie " +
+      "prób i przejście do TECHNICAL_ERROR), " +
+      "TECHNICAL_ERROR — terminalny błąd techniczny w obsłudze zlecenia.",
     enum: EVENT_TYPE_ENUM,
     example: "ORDER_SENT_TO_LAB"
   })
@@ -128,10 +129,14 @@ export class OrderHistoryItemDto {
       "laboratorium; LAB_RATE_LIMIT_RECEIVED zawiera attemptNumber, retryAfterSeconds, nextRetryAt oraz " +
       "previousStatus i newStatus, oba równe SAMPLE_COLLECTED, ponieważ ograniczenie przepustowości jest " +
       "przejściowe i nie zmienia statusu zlecenia; LAB_SEND_RETRY zawiera attemptNumber i outcome: dla " +
+      "outcome SCHEDULED oraz FAILED_RETRY także labStatusCode, nextAttemptNumber, retryAfterSeconds, " +
+      "nextRetryAt oraz previousStatus i newStatus, oba równe SAMPLE_COLLECTED; dla " +
       "outcome ACCEPTED także przejście statusu SAMPLE_COLLECTED → SENT_TO_LAB, a dla outcome CANCELLED " +
       "dodatkowo reason (PATIENT_INACTIVE — pacjent przestał być aktywny, REQUEST_CHANGED — dane zlecenia " +
       "objęte hashem żądania wysyłki zmieniły się po pierwszej próbie) oraz previousStatus i newStatus, oba " +
-      "równe SAMPLE_COLLECTED, ponieważ anulowane ponowienie nie wysyła zlecenia. Szczegóły zdarzeń " +
+      "równe SAMPLE_COLLECTED, ponieważ anulowane ponowienie nie wysyła zlecenia; dla outcome EXHAUSTED " +
+      "zawiera labStatusCode oraz przejście SAMPLE_COLLECTED → TECHNICAL_ERROR. TECHNICAL_ERROR zawiera " +
+      "bezpieczny powód, numer ostatniej próby i przejście statusu. Szczegóły zdarzeń " +
       "integracyjnych nie zawierają " +
       "nazwy aktywnego scenariusza symulatora. Odpowiedź zawiera wyłącznie pola wymienione dla danego eventType. " +
       "Wpis odtworzony podczas migracji zawiera dodatkowo pole reconstructed: true i może pomijać pozostałe pola " +

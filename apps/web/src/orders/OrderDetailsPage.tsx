@@ -161,7 +161,7 @@ export function OrderDetailsPage({ token }: { token: string }) {
             reload();
           }}
           onHistoryRecorded={() => {
-            // Kontrolowana odmowa laboratorium (429 / 422) NIE jest sukcesem —
+            // Kontrolowana odmowa laboratorium (429 / 422 / 503) NIE jest sukcesem —
             // komunikat błędu zostaje, a status zlecenia się nie zmienia. Backend
             // zapisał jednak wpis historii, więc odświeżamy WYŁĄCZNIE sekcję
             // historii: bez przeładowania strony, bez pobierania szczegółów
@@ -342,7 +342,8 @@ function SampleRow({
  * Kody kontrolowanych odmów wysyłki, przy których backend ZAPISUJE wpis historii
  * zlecenia mimo zwrócenia błędu.
  *
- * `LAB_RATE_LIMITED` (429) zapisuje `LAB_RATE_LIMIT_RECEIVED`, a
+ * `LAB_RATE_LIMITED` (429) zapisuje `LAB_RATE_LIMIT_RECEIVED`,
+ * `LAB_SERVER_ERROR` (503) — `LAB_SEND_RETRY`, a
  * `LAB_ORDER_VALIDATION_ERROR` (422) — `LAB_ORDER_REJECTED`. Tylko dla tych
  * przypadków ma sens odświeżenie historii. Zwykły błąd sieci, 401, 404, konflikt
  * idempotencji ani lokalna walidacja (`ORDER_SEND_ERROR`) nie zapisują niczego,
@@ -350,6 +351,7 @@ function SampleRow({
  */
 const HISTORY_RECORDING_SEND_ERROR_CODES = new Set([
   "LAB_RATE_LIMITED",
+  "LAB_SERVER_ERROR",
   "LAB_ORDER_VALIDATION_ERROR"
 ]);
 
@@ -386,8 +388,9 @@ function SendToLabAction({
       await sendOrderToLab(token, orderId);
       onSent();
     } catch (caught) {
-      // Laboratorium może odrzucić poprawne zlecenie (HTTP 422) albo chwilowo
-      // ograniczyć liczbę żądań (HTTP 429). Pokazujemy polski komunikat i
+      // Laboratorium może odrzucić poprawne zlecenie (HTTP 422), chwilowo
+      // ograniczyć liczbę żądań (HTTP 429) albo zwrócić kontrolowany błąd 5xx.
+      // Pokazujemy polski komunikat i
       // szczegóły pól, ale nigdy technicznego kodu błędu ani nazwy aktywnego
       // trybu symulatora. Przycisk wysyłki zostaje aktywny — żaden z tych
       // przypadków nie blokuje zlecenia.
@@ -434,17 +437,20 @@ function SendToLabAction({
 }
 
 /**
- * Uzupełnia komunikat o ograniczeniu przepustowości informacją, kiedy nastąpi
- * automatyczne ponowienie.
+ * Uzupełnia komunikat o przejściowym problemie laboratorium informacją, kiedy
+ * nastąpi automatyczne ponowienie.
  *
  * Komunikat główny („Wysyłka zostanie ponowiona automatycznie.”) pochodzi z API,
  * a tutaj dokładamy wyłącznie czas najbliższej próby odczytany z nagłówka
  * `Retry-After`. Bez odczytanej wartości nie podajemy zmyślonej liczby sekund —
- * pokazujemy sam fakt automatycznego ponowienia. Interfejs nie pokazuje kodu
- * `LAB_RATE_LIMITED` ani nazwy scenariusza symulatora.
+ * pokazujemy sam fakt automatycznego ponowienia. Interfejs nie pokazuje kodów
+ * `LAB_RATE_LIMITED` / `LAB_SERVER_ERROR` ani nazwy scenariusza symulatora.
  */
 function describeAutomaticRetry(caught: unknown): string | null {
-  if (!(caught instanceof ApiClientError) || caught.status !== 429) {
+  if (
+    !(caught instanceof ApiClientError) ||
+    (caught.status !== 429 && caught.status !== 503)
+  ) {
     return null;
   }
 
@@ -481,6 +487,9 @@ function describeMissingResults(order: OrderDetailsResponse): string {
   );
   if (order.status === "REJECTED" || hasRejectedTests) {
     return "Brak wyników — laboratorium odrzuciło wymagane próbki.";
+  }
+  if (order.status === "TECHNICAL_ERROR") {
+    return "Brak wyników — komunikacja z laboratorium zakończyła się błędem technicznym po automatycznych ponowieniach.";
   }
   return "Brak wyników. Wyniki pojawią się automatycznie po ich odebraniu.";
 }

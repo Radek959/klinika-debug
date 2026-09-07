@@ -57,6 +57,8 @@ Wariant minimalny obejmuje główną ścieżkę każdego bloku. Wariant pełny p
 - Python 3 dla ćwiczenia ze skryptem API;
 - przeglądarka Chrome dla ćwiczenia z rozszerzeniem.
 
+Skrypt Python, rozszerzenie Chrome i lokalne narzędzia analityczne są tworzone podczas warsztatu przy pomocy AI albo pozostają lokalnymi artefaktami prowadzącego i uczestników. Repozytorium Kliniki Debug nie przechowuje gotowych implementacji tych narzędzi.
+
 Wszystkie używane dane muszą być syntetyczne. Do modeli AI nie należy przekazywać rzeczywistych danych pacjentów, danych uwierzytelniających ani produkcyjnych sekretów.
 
 ---

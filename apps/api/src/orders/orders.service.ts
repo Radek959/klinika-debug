@@ -28,10 +28,18 @@ import {
   buildLabRateLimitReceivedDetails,
   buildLabSendRetryDetails,
   buildLabSendRetryCancelledDetails,
+  buildLabSendRetryExhaustedDetails,
+  buildLabSendRetryFailedDetails,
+  buildLabSendRetryScheduledDetails,
+  buildTechnicalErrorDetails,
+  canScheduleLabSendRetry,
   computeRetryAfterSeconds,
   FIRST_LAB_SEND_ATTEMPT_NUMBER,
   LAB_RATE_LIMITED_ERROR_CODE,
   LAB_RATE_LIMITED_MESSAGE,
+  LAB_SEND_RETRY_EXHAUSTED_REASON,
+  LAB_SERVER_ERROR_CODE,
+  LAB_SERVER_ERROR_MESSAGE,
   type LabSendRetryCancellationReason,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
@@ -55,7 +63,8 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import {
   LabSimulatorService,
   type LabSimulatorOrderAccepted,
-  type LabSimulatorOrderRateLimited
+  type LabSimulatorOrderRateLimited,
+  type LabSimulatorOrderServerError
 } from "../lab-simulator/lab-simulator.service";
 import { resolveLabSimulatorScenario } from "../lab-simulator/lab-simulator-scenario";
 import {
@@ -752,6 +761,10 @@ export class OrdersService {
         throw await this.buildPendingRetryError(workspaceId, orderId);
       }
 
+      if (existingKey.responseStatus === HttpStatus.SERVICE_UNAVAILABLE) {
+        throw await this.buildServerRetryError(workspaceId, orderId);
+      }
+
       // Ponowne żądanie z tym samym payloadem: zwróć bieżący, już zaktualizowany stan zlecenia.
       return toOrderResponse(order, order.tests, order.samples);
     }
@@ -803,6 +816,18 @@ export class OrdersService {
         idempotencyKey,
         requestHash,
         rateLimit: simulatorResult
+      });
+    }
+
+    if (!simulatorResult.accepted && simulatorResult.rejectionType === "SERVER_ERROR") {
+      return this.scheduleSendRetryAfterServerError({
+        workspaceId,
+        orderId,
+        correlationId,
+        scenario,
+        idempotencyKey,
+        requestHash,
+        serverError: simulatorResult
       });
     }
 
@@ -936,6 +961,10 @@ export class OrdersService {
       // nie wolno zwrócić sukcesu dla wysyłki, która nie została przyjęta.
       if (concurrentKey.responseStatus === HttpStatus.TOO_MANY_REQUESTS) {
         throw await this.buildPendingRetryError(workspaceId, orderId);
+      }
+
+      if (concurrentKey.responseStatus === HttpStatus.SERVICE_UNAVAILABLE) {
+        throw await this.buildServerRetryError(workspaceId, orderId);
       }
 
       const concurrentOrder = await this.prisma.order.findFirst({
@@ -1107,13 +1136,88 @@ export class OrdersService {
     throw this.rateLimitError(rateLimit.retryAfterSeconds);
   }
 
+  private async scheduleSendRetryAfterServerError(input: {
+    workspaceId: string;
+    orderId: string;
+    correlationId: string;
+    scenario: string;
+    idempotencyKey: string;
+    requestHash: string;
+    serverError: LabSimulatorOrderServerError;
+  }): Promise<never> {
+    const { serverError } = input;
+    if (!serverError.nextRetryAt || !serverError.nextAttemptNumber) {
+      throw new Error("Pierwszy błąd 5xx laboratorium nie ma terminu ponowienia.");
+    }
+
+    const nextRetryAt = serverError.nextRetryAt;
+    const nextAttemptNumber = serverError.nextAttemptNumber;
+    const retryAfterSeconds = serverError.retryAfterSeconds ?? 0;
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.idempotencyKey.create({
+          data: {
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+            key: input.idempotencyKey,
+            requestHash: input.requestHash,
+            responseStatus: HttpStatus.SERVICE_UNAVAILABLE,
+            responseBody: {
+              state: PENDING_SEND_RETRY_STATE,
+              attemptNumber: nextAttemptNumber,
+              nextRetryAt: nextRetryAt.toISOString()
+            }
+          }
+        });
+
+        await tx.labSendRetryJob.create({
+          data: {
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+            attemptNumber: nextAttemptNumber,
+            executeAt: nextRetryAt,
+            status: "PENDING",
+            correlationId: input.correlationId,
+            scenario: input.scenario,
+            idempotencyKey: input.idempotencyKey,
+            requestHash: input.requestHash
+          }
+        });
+
+        await this.orderHistory.record(tx, {
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+          eventType: "LAB_SEND_RETRY",
+          actorType: "LAB",
+          correlationId: input.correlationId,
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: buildLabSendRetryScheduledDetails({
+            attemptNumber: FIRST_LAB_SEND_ATTEMPT_NUMBER,
+            nextAttemptNumber,
+            retryAfterSeconds,
+            nextRetryAt
+          })
+        });
+      });
+    } catch (error) {
+      if (!this.isPrismaUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      throw await this.buildPendingRetryError(input.workspaceId, input.orderId);
+    }
+
+    throw this.serverError(retryAfterSeconds);
+  }
+
   /**
    * Buduje odpowiedź `429` dla żądania trafiającego w trwające oczekiwanie na
    * automatyczne ponowienie.
    *
    * `Retry-After` wskazuje pozostały czas do zaplanowanego terminu, nigdy nie
-   * jest ujemny, a brak zadania (np. już wykonanego) daje `0` — zlecenie czeka
-   * wtedy wyłącznie na najbliższy przebieg schedulera.
+   * jest ujemny, a brak zadania (np. już wykonanego) daje `0`.
    */
   private async buildPendingRetryError(
     workspaceId: string,
@@ -1127,7 +1231,28 @@ export class OrdersService {
       ? computeRetryAfterSeconds({ now: new Date(), executeAt: job.executeAt })
       : 0;
 
+    if (job?.scenario === "SERVER_ERROR") {
+      return this.serverError(retryAfterSeconds);
+    }
+
     return this.rateLimitError(retryAfterSeconds);
+  }
+
+  private async buildServerRetryError(
+    workspaceId: string,
+    orderId: string
+  ): Promise<ApiErrorException> {
+    const job = await this.prisma.labSendRetryJob.findFirst({
+      where: { workspaceId, orderId, status: { in: ["PENDING", "PROCESSING"] } }
+    });
+
+    if (!job) {
+      return this.serverTerminalError();
+    }
+
+    return this.serverError(
+      computeRetryAfterSeconds({ now: new Date(), executeAt: job.executeAt })
+    );
   }
 
   private rateLimitError(retryAfterSeconds: number): ApiErrorException {
@@ -1137,6 +1262,24 @@ export class OrdersService {
       LAB_RATE_LIMITED_MESSAGE,
       undefined,
       { "Retry-After": String(Math.max(0, Math.trunc(retryAfterSeconds))) }
+    );
+  }
+
+  private serverError(retryAfterSeconds: number): ApiErrorException {
+    return new ApiErrorException(
+      HttpStatus.SERVICE_UNAVAILABLE,
+      LAB_SERVER_ERROR_CODE,
+      LAB_SERVER_ERROR_MESSAGE,
+      undefined,
+      { "Retry-After": String(Math.max(0, Math.trunc(retryAfterSeconds))) }
+    );
+  }
+
+  private serverTerminalError(): ApiErrorException {
+    return new ApiErrorException(
+      HttpStatus.SERVICE_UNAVAILABLE,
+      LAB_SERVER_ERROR_CODE,
+      "Laboratorium pozostaje niedostępne po automatycznych ponowieniach. Zlecenie oznaczono jako błąd techniczny."
     );
   }
 
@@ -1226,13 +1369,18 @@ export class OrdersService {
       }))
     });
 
+    if (!simulatorResult.accepted && simulatorResult.rejectionType === "SERVER_ERROR") {
+      await this.handleFailedSendRetry({
+        job,
+        previousStatus: order.status,
+        serverError: simulatorResult
+      });
+      return;
+    }
+
     if (!simulatorResult.accepted) {
-      // W zakresie tego etapu druga próba scenariusza RATE_LIMIT zawsze kończy
-      // się przyjęciem. Kolejne odmowy (wyczerpanie prób, TECHNICAL_ERROR) są
-      // zaplanowane na późniejsze PR-y, więc tutaj traktujemy je jako błąd
-      // zadania — bez cichego pozostawienia zlecenia w niespójnym stanie.
       throw new Error(
-        `Ponowienie wysyłki: laboratorium nie przyjęło zlecenia ${job.orderId}.`
+        `Ponowienie wysyłki: laboratorium zwróciło nieponawialną odmowę dla zlecenia ${job.orderId}.`
       );
     }
 
@@ -1258,7 +1406,7 @@ export class OrdersService {
    * nim wpis historii zlecenia.
    *
    * Z tego samego powodu zwalniamy rezerwację klucza idempotencji: usuwamy
-   * wyłącznie wiersz w stanie oczekiwania na ponowienie (`responseStatus` 429),
+   * wyłącznie wiersz w stanie oczekiwania na ponowienie (`responseStatus` 429 albo 503),
    * nigdy zakończonej sukcesem operacji. Dzięki temu kolejny `POST /send`
    * startuje jak pierwsza próba, zamiast dostać 429 albo 409 na zawsze.
    *
@@ -1294,7 +1442,9 @@ export class OrdersService {
         where: {
           workspaceId: job.workspaceId,
           key: job.idempotencyKey,
-          responseStatus: HttpStatus.TOO_MANY_REQUESTS
+          responseStatus: {
+            in: [HttpStatus.TOO_MANY_REQUESTS, HttpStatus.SERVICE_UNAVAILABLE]
+          }
         }
       });
 
@@ -1311,6 +1461,185 @@ export class OrdersService {
         details: buildLabSendRetryCancelledDetails({
           attemptNumber: job.attemptNumber,
           reason: input.reason
+        })
+      });
+    });
+  }
+
+  private async handleFailedSendRetry(input: {
+    job: {
+      id: string;
+      workspaceId: string;
+      orderId: string;
+      attemptNumber: number;
+      correlationId: string;
+      idempotencyKey: string;
+    };
+    previousStatus: OrderStatus;
+    serverError: LabSimulatorOrderServerError;
+  }): Promise<void> {
+    const { job, serverError } = input;
+    const nextAttemptNumber = job.attemptNumber + 1;
+
+    if (
+      canScheduleLabSendRetry(nextAttemptNumber) &&
+      serverError.nextRetryAt &&
+      serverError.nextAttemptNumber === nextAttemptNumber
+    ) {
+      await this.scheduleNextFailedSendRetry({
+        job,
+        nextAttemptNumber,
+        nextRetryAt: serverError.nextRetryAt,
+        retryAfterSeconds: serverError.retryAfterSeconds ?? 0
+      });
+      return;
+    }
+
+    await this.exhaustSendRetry({
+      job,
+      previousStatus: input.previousStatus
+    });
+  }
+
+  private async scheduleNextFailedSendRetry(input: {
+    job: {
+      id: string;
+      workspaceId: string;
+      orderId: string;
+      attemptNumber: number;
+      correlationId: string;
+      idempotencyKey: string;
+    };
+    nextAttemptNumber: number;
+    nextRetryAt: Date;
+    retryAfterSeconds: number;
+  }): Promise<void> {
+    const { job } = input;
+
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.labSendRetryJob.updateMany({
+        where: { id: job.id, status: "PROCESSING" },
+        data: {
+          status: "PENDING",
+          lockedAt: null,
+          lastError: null,
+          attemptNumber: input.nextAttemptNumber,
+          executeAt: input.nextRetryAt
+        }
+      });
+      if (updated.count === 0) {
+        throw new Error(
+          `Ponowienie wysyłki: zadanie ${job.id} nie jest już w stanie PROCESSING.`
+        );
+      }
+
+      await tx.idempotencyKey.update({
+        where: {
+          workspaceId_key: { workspaceId: job.workspaceId, key: job.idempotencyKey }
+        },
+        data: {
+          responseStatus: HttpStatus.SERVICE_UNAVAILABLE,
+          responseBody: {
+            state: PENDING_SEND_RETRY_STATE,
+            attemptNumber: input.nextAttemptNumber,
+            nextRetryAt: input.nextRetryAt.toISOString()
+          }
+        }
+      });
+
+      await this.orderHistory.record(tx, {
+        workspaceId: job.workspaceId,
+        orderId: job.orderId,
+        eventType: "LAB_SEND_RETRY",
+        actorType: "SYSTEM",
+        correlationId: job.correlationId,
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "SAMPLE_COLLECTED",
+        details: buildLabSendRetryFailedDetails({
+          attemptNumber: job.attemptNumber,
+          nextAttemptNumber: input.nextAttemptNumber,
+          retryAfterSeconds: input.retryAfterSeconds,
+          nextRetryAt: input.nextRetryAt
+        })
+      });
+    });
+  }
+
+  private async exhaustSendRetry(input: {
+    job: {
+      id: string;
+      workspaceId: string;
+      orderId: string;
+      attemptNumber: number;
+      correlationId: string;
+      idempotencyKey: string;
+    };
+    previousStatus: OrderStatus;
+  }): Promise<void> {
+    const { job } = input;
+    const finishedAt = new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.labSendRetryJob.updateMany({
+        where: { id: job.id, status: "PROCESSING" },
+        data: { status: "FAILED", lockedAt: null, lastError: null }
+      });
+      if (updated.count === 0) {
+        throw new Error(
+          `Ponowienie wysyłki: zadanie ${job.id} nie jest już w stanie PROCESSING.`
+        );
+      }
+
+      await tx.idempotencyKey.update({
+        where: {
+          workspaceId_key: { workspaceId: job.workspaceId, key: job.idempotencyKey }
+        },
+        data: {
+          responseStatus: HttpStatus.SERVICE_UNAVAILABLE,
+          responseBody: {
+            state: "TECHNICAL_ERROR",
+            attemptNumber: job.attemptNumber,
+            reason: LAB_SEND_RETRY_EXHAUSTED_REASON
+          }
+        }
+      });
+
+      await tx.order.update({
+        where: { id: job.orderId },
+        data: {
+          status: "TECHNICAL_ERROR",
+          correlationId: job.correlationId
+        }
+      });
+
+      await this.orderHistory.record(tx, {
+        workspaceId: job.workspaceId,
+        orderId: job.orderId,
+        eventType: "LAB_SEND_RETRY",
+        actorType: "SYSTEM",
+        occurredAt: finishedAt,
+        correlationId: job.correlationId,
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "TECHNICAL_ERROR",
+        details: buildLabSendRetryExhaustedDetails({
+          attemptNumber: job.attemptNumber
+        })
+      });
+
+      await this.orderHistory.record(tx, {
+        workspaceId: job.workspaceId,
+        orderId: job.orderId,
+        eventType: "TECHNICAL_ERROR",
+        actorType: "SYSTEM",
+        occurredAt: finishedAt,
+        correlationId: job.correlationId,
+        previousStatus: "SAMPLE_COLLECTED",
+        newStatus: "TECHNICAL_ERROR",
+        details: buildTechnicalErrorDetails({
+          reason: LAB_SEND_RETRY_EXHAUSTED_REASON,
+          attemptNumber: job.attemptNumber,
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "TECHNICAL_ERROR"
         })
       });
     });

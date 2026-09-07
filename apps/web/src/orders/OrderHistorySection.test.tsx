@@ -273,6 +273,115 @@ describe("OrderHistorySection", () => {
     expect(screen.queryByText(/SAMPLE_COLLECTED|SENT_TO_LAB/)).not.toBeInTheDocument();
   });
 
+  it("pokazuje zaplanowane ponowienie po błędzie 5xx laboratorium", async () => {
+    mockHistoryResponse(
+      historyResponse([
+        historyItem({
+          eventType: "LAB_SEND_RETRY",
+          actorType: "LAB",
+          actorUserId: null,
+          correlationId: "corr-server-error-1",
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: {
+            eventType: "LAB_SEND_RETRY",
+            attemptNumber: 1,
+            outcome: "SCHEDULED",
+            labStatusCode: 503,
+            nextAttemptNumber: 2,
+            retryAfterSeconds: 15,
+            nextRetryAt: "2026-09-07T10:00:15.000Z",
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "SAMPLE_COLLECTED"
+          }
+        })
+      ])
+    );
+
+    render(<OrderHistorySection token="token" orderId="order-1" refreshKey={0} />);
+
+    expect(await screen.findByText("Automatyczne ponowienie wysyłki")).toBeInTheDocument();
+    expect(screen.getByText(/Laboratorium jest chwilowo niedostępne/)).toBeInTheDocument();
+    expect(screen.getByText(/Automatyczna próba nr 2 została zaplanowana/)).toBeInTheDocument();
+    expect(screen.getByText("Status zlecenia bez zmian: Próbki pobrane")).toBeInTheDocument();
+    expect(screen.queryByText(/LAB_SERVER_ERROR/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SERVER_ERROR/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SCHEDULED/)).not.toBeInTheDocument();
+  });
+
+  it("pokazuje nieudane ponowienie i wyczerpanie prób bez surowych kodów", async () => {
+    mockHistoryResponse(
+      historyResponse([
+        historyItem({
+          eventType: "TECHNICAL_ERROR",
+          actorType: "SYSTEM",
+          actorUserId: null,
+          correlationId: "corr-server-error-1",
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "TECHNICAL_ERROR",
+          details: {
+            eventType: "TECHNICAL_ERROR",
+            reason:
+              "Automatyczne ponowienia wysyłki do laboratorium zostały wyczerpane.",
+            attemptNumber: 4,
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "TECHNICAL_ERROR"
+          }
+        }),
+        historyItem({
+          eventType: "LAB_SEND_RETRY",
+          actorType: "SYSTEM",
+          actorUserId: null,
+          correlationId: "corr-server-error-1",
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "TECHNICAL_ERROR",
+          details: {
+            eventType: "LAB_SEND_RETRY",
+            attemptNumber: 4,
+            outcome: "EXHAUSTED",
+            labStatusCode: 503,
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "TECHNICAL_ERROR"
+          }
+        }),
+        historyItem({
+          eventType: "LAB_SEND_RETRY",
+          actorType: "SYSTEM",
+          actorUserId: null,
+          correlationId: "corr-server-error-1",
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SAMPLE_COLLECTED",
+          details: {
+            eventType: "LAB_SEND_RETRY",
+            attemptNumber: 2,
+            outcome: "FAILED_RETRY",
+            labStatusCode: 503,
+            nextAttemptNumber: 3,
+            retryAfterSeconds: 30,
+            nextRetryAt: "2026-09-07T10:00:45.000Z",
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "SAMPLE_COLLECTED"
+          }
+        })
+      ])
+    );
+
+    render(<OrderHistorySection token="token" orderId="order-1" refreshKey={0} />);
+
+    expect(
+      await screen.findByText(/Automatyczna próba nr 2 nie powiodła się/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Kolejna próba nr 3 została zaplanowana/)).toBeInTheDocument();
+    expect(screen.getByText(/Wyczerpano dostępne ponowienia/)).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Zmiana statusu: Próbki pobrane → Błąd techniczny").length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Automatyczne ponowienia wysyłki do laboratorium zostały wyczerpane.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/FAILED_RETRY|EXHAUSTED|LAB_SERVER_ERROR|SERVER_ERROR/)).not.toBeInTheDocument();
+  });
+
   it("pokazuje anulowane ponowienie wysyłki po polsku, bez kodu przyczyny", async () => {
     mockHistoryResponse(
       historyResponse([

@@ -500,10 +500,11 @@ Materiały wewnętrzne, panel `/admin`, katalog kontrolowanych błędów i instr
 - natywna aplikacja mobilna;
 - integracja z zewnętrznym systemem zgłoszeń błędów;
 - konfiguracja błędów dla pojedynczego konta;
-- generator danych pacjentów jako osobne narzędzie;
-- rozszerzenie Chrome do raportowania błędów.
+- gotowa implementacja generatora danych pacjentów jako osobnego narzędzia;
+- gotowa implementacja rozszerzenia Chrome do raportowania błędów;
+- skrypt Python i inne narzędzia warsztatowe przechowywane w tym repozytorium.
 
-Dwa ostatnie elementy będą osobnymi produktami pomocniczymi korzystającymi z API Kliniki Debug.
+Aplikacja ma zapewnić stabilne formularze, API, dane syntetyczne i `correlationId`, aby takie narzędzia można było tworzyć podczas ćwiczeń lub utrzymać poza repozytorium.
 
 ## 16. Kryteria akceptacji MVP
 

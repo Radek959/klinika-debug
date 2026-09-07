@@ -560,6 +560,60 @@ describe("interfejs zleceń", () => {
     expect(orderRequests).toBe(1);
   });
 
+  it("pokazuje chwilową niedostępność laboratorium i odświeża historię po 503", async () => {
+    window.history.pushState({}, "", "/orders/order-1");
+    const collectedOrder = sendableOrderDetails();
+    let historyRequests = 0;
+    let orderRequests = 0;
+
+    mockFetch(({ url, init }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url.startsWith("/api/v1/orders/order-1/history")) {
+        historyRequests += 1;
+        return json(
+          historyRequests === 1
+            ? historyListResponse([])
+            : historyListResponse([serverErrorRetryHistoryItem()])
+        );
+      }
+      if (url === "/api/v1/orders/order-1/send" && init?.method === "POST") {
+        return serverError(15);
+      }
+      if (url === "/api/v1/orders/order-1") {
+        orderRequests += 1;
+        return json(collectedOrder);
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByText("Brak zarejestrowanych zdarzeń dla tego zlecenia.")
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Wyślij do laboratorium" }));
+
+    expect(
+      await screen.findByText(
+        "Laboratorium jest chwilowo niedostępne. Wysyłka zostanie ponowiona automatycznie."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Kolejna próba za około 15 sekund.")).toBeInTheDocument();
+    expect(await screen.findByText("Automatyczne ponowienie wysyłki")).toBeInTheDocument();
+    await waitFor(() => expect(historyRequests).toBe(2));
+
+    expect(screen.getByText("Próbki pobrane")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Zlecenie zostało wysłane do laboratorium.")
+    ).not.toBeInTheDocument();
+    expect(orderRequests).toBe(1);
+    expect(screen.queryByText(/LAB_SERVER_ERROR/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SERVER_ERROR/)).not.toBeInTheDocument();
+  });
+
   it("odświeża historię po zapisanym odrzuceniu walidacyjnym (422)", async () => {
     window.history.pushState({}, "", "/orders/order-1");
     const collectedOrder = sendableOrderDetails();
@@ -1368,6 +1422,32 @@ function rateLimitHistoryItem() {
   };
 }
 
+function serverErrorRetryHistoryItem() {
+  return {
+    id: "history-server-error-1",
+    eventType: "LAB_SEND_RETRY",
+    occurredAt: "2026-09-07T10:00:00.000Z",
+    actorType: "LAB",
+    actorUserId: null,
+    actorDisplayName: null,
+    correlationId: "corr-server-error-1",
+    integrationEventId: null,
+    previousStatus: "SAMPLE_COLLECTED",
+    newStatus: "SAMPLE_COLLECTED",
+    details: {
+      eventType: "LAB_SEND_RETRY",
+      attemptNumber: 1,
+      outcome: "SCHEDULED",
+      labStatusCode: 503,
+      nextAttemptNumber: 2,
+      retryAfterSeconds: 15,
+      nextRetryAt: "2026-09-07T10:00:15.000Z",
+      previousStatus: "SAMPLE_COLLECTED",
+      newStatus: "SAMPLE_COLLECTED"
+    }
+  };
+}
+
 function orderRejectedHistoryItem() {
   return {
     id: "history-rejected-1",
@@ -1424,6 +1504,25 @@ function rateLimitError(retryAfterSeconds?: number) {
       }
     }),
     { status: 429, headers }
+  );
+}
+
+function serverError(retryAfterSeconds?: number) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (retryAfterSeconds !== undefined) {
+    headers["Retry-After"] = String(retryAfterSeconds);
+  }
+
+  return new Response(
+    JSON.stringify({
+      error: {
+        code: "LAB_SERVER_ERROR",
+        message:
+          "Laboratorium jest chwilowo niedostępne. Wysyłka zostanie ponowiona automatycznie.",
+        correlationId: "corr-server-error-1"
+      }
+    }),
+    { status: 503, headers }
   );
 }
 

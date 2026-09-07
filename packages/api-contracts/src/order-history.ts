@@ -157,6 +157,17 @@ export interface LabSendRetryAcceptedHistoryDetails {
   newStatus: "SENT_TO_LAB";
 }
 
+export interface LabSendRetryScheduledHistoryDetails {
+  attemptNumber: number;
+  outcome: "SCHEDULED" | "FAILED_RETRY";
+  labStatusCode: 503;
+  nextAttemptNumber: number;
+  retryAfterSeconds: number;
+  nextRetryAt: string;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "SAMPLE_COLLECTED";
+}
+
 /**
  * Szczegóły automatycznego ponowienia ANULOWANEGO przed wysyłką.
  *
@@ -173,12 +184,23 @@ export interface LabSendRetryCancelledHistoryDetails {
   newStatus: "SAMPLE_COLLECTED";
 }
 
+export interface LabSendRetryExhaustedHistoryDetails {
+  attemptNumber: number;
+  outcome: "EXHAUSTED";
+  labStatusCode: 503;
+  previousStatus: "SAMPLE_COLLECTED";
+  newStatus: "TECHNICAL_ERROR";
+}
+
 export type LabSendRetryHistoryDetails =
   | LabSendRetryAcceptedHistoryDetails
-  | LabSendRetryCancelledHistoryDetails;
+  | LabSendRetryScheduledHistoryDetails
+  | LabSendRetryCancelledHistoryDetails
+  | LabSendRetryExhaustedHistoryDetails;
 
 export interface TechnicalErrorHistoryDetails {
   reason: string;
+  attemptNumber?: number;
   previousStatus: OrderStatus;
   newStatus: OrderStatus;
 }
