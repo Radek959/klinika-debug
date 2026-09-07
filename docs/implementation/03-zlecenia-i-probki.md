@@ -1,7 +1,7 @@
 # Etap 3 — zlecenia i próbki
 
-**Status etapu:** `IN_PROGRESS`
-**Aktywny kierunek:** historia operacji zlecenia.
+**Status etapu:** `IMPLEMENTED`
+**Aktywny kierunek:** brak — zakres etapu jest zaimplementowany w kodzie. Aktywnym etapem jest [Etap 4 — laboratorium](04-laboratorium.md).
 
 ## Zaimplementowane na `main`
 
@@ -19,26 +19,11 @@
 | Wybór pacjenta przez wyszukiwanie zamiast ręcznego ID | `IMPLEMENTED` | PR #18: `apps/web/src/orders/PatientPicker.tsx`; test `OrdersUi.test.tsx` sprawdza brak pola "Identyfikator pacjenta", zapytanie `GET /api/v1/patients?active=true&page=1&pageSize=10&search=...`, obsługę klawiatury, retry i ukrycie technicznego ID. |
 | Poprawa wyboru badań | `IMPLEMENTED` | PR #18: `apps/web/src/orders/TestCatalogSelector.tsx`, `OrderSummary.tsx`, `orderFormState.ts`; testy pokrywają zaznaczanie badań, pola dodatkowe, zachowanie wartości `false`, mapowanie błędów API i podsumowanie wymaganych próbek. |
 | Edycja zlecenia w `DRAFT` | `IMPLEMENTED` | PR `feat/orders-draft-edit`: kontrakt `UpdateOrderRequest`, `PATCH /api/v1/orders/{orderId}`, transakcyjna aktualizacja badań i próbek, trasa `/orders/:orderId/edit`, współdzielony `OrderForm`, testy `orders-update.e2e-spec.ts`, `order-draft-edit.spec.ts`, `OrdersUi.test.tsx` i `orderFormState.test.ts`. |
+| Historia operacji zlecenia | `IMPLEMENTED` | PR `feat/order-history`: model `OrderHistory` w `prisma/schema.prisma`, migracja `20260907120000_order_history` z backfillem, `GET /api/v1/orders/{orderId}/history`, zapis zdarzeń w transakcjach `OrdersService` i `LabCallbacksService`, widok `apps/web/src/orders/OrderHistorySection.tsx`, testy `apps/api/test/orders-history.e2e-spec.ts`, `packages/domain/src/orders/order-history.spec.ts`, `apps/web/src/orders/OrderHistorySection.test.tsx`. |
 
 ## Brakujące lub wymagające poprawy
 
-| Element | Status | Uwagi |
-|---|---|---|
-| Historia operacji | `PLANNED` | Brak osobnego endpointu i widoku historii zlecenia. |
-
-## Następny PR
-
-**Historia operacji zlecenia**
-
-Minimalny zakres:
-
-- model lub zapis zdarzeń historii zgodny z architekturą;
-- endpoint historii zlecenia z izolacją workspace'u;
-- zdarzenia dla utworzenia, edycji, rejestracji próbek, wysyłki i wyników;
-- widok historii na szczegółach zlecenia;
-- testy API, domenowe i frontendowe.
-
-Nie rozszerzać tego PR-a o powiadomienia, retry, eksport ani nowe scenariusze laboratorium.
+Brak elementów planu Etapu 3 pozostających do zaimplementowania. Kolejne prace nad zleceniami należą już do zakresu [Etapu 4 — laboratorium](04-laboratorium.md) (pełne scenariusze symulatora, retry, powiadomienia).
 
 ## Dowody weryfikacji
 
@@ -64,3 +49,16 @@ Dowody dla PR `feat/orders-draft-edit`:
 - `npm run test:integration` nie zostało wykonane pozytywnie, ponieważ środowisko nie miało ustawionego `TEST_DATABASE_URL`, a Docker nie był dostępny do uruchomienia `mysql-test`.
 
 Status edycji `DRAFT` jest ustawiony na `IMPLEMENTED`, nie na `VERIFIED` ani `DEPLOYED`. W tej sesji nie ma dowodu pozytywnego CI, review ani sprawdzenia środowiska Hostingera.
+
+Dowody dla PR `feat/order-history`:
+
+- model danych: `prisma/schema.prisma` (`OrderHistory`, `OrderHistoryEventType`, `OrderHistoryActorType`), migracja `prisma/migrations/20260907120000_order_history/migration.sql` z bezpiecznym backfillem `ORDER_CREATED` dla istniejących zleceń;
+- kontrakty: `packages/api-contracts/src/order-history.ts`;
+- domena: `packages/domain/src/orders/order-history.ts`, testy `packages/domain/src/orders/order-history.spec.ts`;
+- backend: `apps/api/src/order-history/order-history.service.ts`, `order-history.mapper.ts`, `order-history.module.ts`, `dto/order-history-query.dto.ts`, `dto/order-history-response.dto.ts`; zapis zdarzeń wewnątrz istniejących transakcji w `apps/api/src/orders/orders.service.ts` (utworzenie, edycja `DRAFT`, rejestracja próbki, wysyłka, synchroniczne przyjęcie przez laboratorium) oraz `apps/api/src/lab-callbacks/lab-callbacks.service.ts` (odebranie wyniku); endpoint `GET /api/v1/orders/{orderId}/history` w `apps/api/src/orders/orders.controller.ts`;
+- frontend: `apps/web/src/orders/OrderHistorySection.tsx`, integracja w `apps/web/src/orders/OrderDetailsPage.tsx`, etykiety w `apps/web/src/ui/labels.ts`, funkcja klienta `getOrderHistory` w `apps/web/src/api/client.ts`;
+- testy dodane: `apps/api/test/orders-history.e2e-spec.ts` (izolacja workspace'u, atomowość, idempotencja wysyłki i callbacku, paginacja, stabilne sortowanie, wpis odtworzony migracją, publikacja w OpenAPI), `packages/domain/src/orders/order-history.spec.ts`, `apps/web/src/orders/OrderHistorySection.test.tsx`, `scripts/test-order-history-migration.cjs` (dodany do CI jako `npm run test:migration:order-history`);
+- wykonane lokalnie z wynikiem pozytywnym: `npm run db:generate`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `git diff --check`, `npm audit --omit=dev`;
+- `npm run test:migration:orders`, `npm run test:migration:order-history` i `npm run test:integration` **nie zostały wykonane**, ponieważ środowisko sesji nie miało dostępu do serwera MySQL ani do Dockera (ten sam znany brak środowiska co w sesji PR `feat/orders-draft-edit`). Poprawność migracji i testów integracyjnych zweryfikowano przeglądem kodu i porównaniem z istniejącymi wzorcami migracji/testów w repozytorium, ale nie ma na to dowodu z realnego uruchomienia — status pozostaje `IMPLEMENTED`, a CI musi potwierdzić te trzy komendy przed podniesieniem do `VERIFIED`.
+
+Status historii operacji zlecenia jest ustawiony na `IMPLEMENTED`, nie na `VERIFIED` ani `DEPLOYED`.

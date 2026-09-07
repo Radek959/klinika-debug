@@ -16,12 +16,15 @@ import type {
   AuthenticatedUser,
   OrderResponse,
   OrdersListResponse,
-  OrderDetailsResponse
+  OrderDetailsResponse,
+  OrderHistoryListResponse
 } from "@klinika/api-contracts";
 import { AuthGuard } from "../auth/auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { CurrentCorrelationId } from "../common/correlation/current-correlation-id.decorator";
 import { ApiErrorResponseDto } from "../common/errors/api-error-response.dto";
+import { OrderHistoryQueryDto } from "../order-history/dto/order-history-query.dto";
+import { OrderHistoryListResponseDto } from "../order-history/dto/order-history-response.dto";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { OrderResponseDto } from "./dto/order-response.dto";
 import { OrdersListQueryDto } from "./dto/orders-list-query.dto";
@@ -161,6 +164,38 @@ export class OrdersController {
     return this.ordersService.getById(user.workspace.id, orderId);
   }
 
+  @Get(":orderId/history")
+  @ApiOperation({
+    summary: "Historia operacji zlecenia",
+    description:
+      "Zwraca paginowaną historię najważniejszych zdarzeń zlecenia (utworzenie, edycja, rejestracja próbek, " +
+      "wysyłka do laboratorium, synchroniczne przyjęcie przez laboratorium, odebranie wyniku przez callback, " +
+      "zmiana statusu) od najnowszego. Zlecenie musi należeć do bieżącego workspace'u."
+  })
+  @ApiOkResponse({
+    type: OrderHistoryListResponseDto,
+    description: "Paginowana historia operacji zlecenia, posortowana od najnowszego zdarzenia."
+  })
+  @ApiBadRequestResponse({
+    type: ApiErrorResponseDto,
+    description: "Niepoprawne parametry paginacji."
+  })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorResponseDto,
+    description: "Brak poprawnego tokenu Bearer konta personelu."
+  })
+  @ApiNotFoundResponse({
+    type: ApiErrorResponseDto,
+    description: "Zlecenie nie istnieje albo należy do innego workspace'u."
+  })
+  async getHistory(
+    @Param("orderId") orderId: string,
+    @Query() query: OrderHistoryQueryDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderHistoryListResponse> {
+    return this.ordersService.getHistory(user.workspace.id, orderId, query);
+  }
+
   @Patch(":orderId")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -229,7 +264,7 @@ export class OrdersController {
     @Body() body: UpdateOrderDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<OrderResponse> {
-    return this.ordersService.updateDraft(user.workspace.id, orderId, body);
+    return this.ordersService.updateDraft(user.workspace.id, orderId, user.id, body);
   }
 
   @Post(":orderId/samples")
@@ -321,6 +356,6 @@ export class OrdersController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentCorrelationId() correlationId: string
   ): Promise<OrderResponse> {
-    return this.ordersService.sendOrder(user.workspace.id, orderId, correlationId);
+    return this.ordersService.sendOrder(user.workspace.id, orderId, user.id, correlationId);
   }
 }

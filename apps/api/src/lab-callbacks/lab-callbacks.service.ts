@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
+  buildLabResultReceivedDetails,
   canTransitionOrderStatus,
   determineOrderStatusAfterResults,
   type OrderStatus,
@@ -9,15 +10,21 @@ import {
 import type { LabResultsWebhookRequest } from "@klinika/api-contracts";
 import { ApiErrorException } from "../common/errors/api-error.exception";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { OrderHistoryService } from "../order-history/order-history.service";
 
 @Injectable()
 export class LabCallbacksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly orderHistory: OrderHistoryService
+  ) {}
 
   async processResults(payload: LabResultsWebhookRequest): Promise<void> {
     const order = await this.prisma.order.findFirst({
       where: { externalOrderId: payload.externalOrderId },
-      include: { tests: true }
+      include: {
+        tests: { include: { medicalTest: { select: { code: true } } } }
+      }
     });
 
     if (!order) {
@@ -102,6 +109,34 @@ export class LabCallbacksService {
       }
 
       await tx.order.update({ where: { id: order.id }, data: dataToUpdate });
+
+      const resultCount = payload.results.reduce(
+        (sum, testResult) => sum + testResult.parameters.length,
+        0
+      );
+
+      await this.orderHistory.record(tx, {
+        workspaceId: order.workspaceId,
+        orderId: order.id,
+        eventType: "LAB_RESULT_RECEIVED",
+        actorType: "LAB",
+        occurredAt: resultedAt,
+        correlationId: payload.correlationId ?? null,
+        integrationEventId: payload.eventId,
+        previousStatus: order.status,
+        newStatus: nextStatus,
+        details: buildLabResultReceivedDetails({
+          eventId: payload.eventId,
+          externalOrderId: payload.externalOrderId,
+          callbackStatus: payload.status,
+          testCodes: order.tests
+            .filter((test) => completedMedicalTestIds.includes(test.medicalTestId))
+            .map((test) => test.medicalTest.code),
+          resultCount,
+          previousStatus: order.status,
+          newStatus: nextStatus
+        })
+      });
     });
   }
 

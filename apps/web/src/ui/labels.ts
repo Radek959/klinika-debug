@@ -2,6 +2,8 @@ import type {
   Gender,
   IdentifierType,
   MaterialType,
+  OrderHistoryActorType,
+  OrderHistoryEventType,
   OrderPriority,
   OrderStatus,
   ResultFlag,
@@ -59,6 +61,22 @@ export const resultFlagLabels: Record<ResultFlag, string> = {
   NORMAL: "W normie",
   HIGH: "Wysoki",
   NOT_APPLICABLE: "Nie dotyczy"
+};
+
+export const orderHistoryEventTypeLabels: Record<OrderHistoryEventType, string> = {
+  ORDER_CREATED: "Utworzono zlecenie",
+  ORDER_UPDATED: "Edytowano zlecenie",
+  SAMPLE_REGISTERED: "Zarejestrowano próbkę",
+  ORDER_SENT_TO_LAB: "Wysłano do laboratorium",
+  LAB_ORDER_ACCEPTED: "Laboratorium przyjęło zlecenie",
+  LAB_RESULT_RECEIVED: "Odebrano wynik",
+  TECHNICAL_ERROR: "Wystąpił błąd techniczny"
+};
+
+export const orderHistoryActorTypeLabels: Record<OrderHistoryActorType, string> = {
+  STAFF: "Personel",
+  SYSTEM: "System",
+  LAB: "Laboratorium"
 };
 
 export function formatIdentifier(input: {

@@ -19,6 +19,11 @@ import {
   getDraftOrderChangeSet,
   hasDraftOrderChanges,
   mergeDraftOrderPatch,
+  buildOrderCreatedDetails,
+  buildOrderUpdatedDetails,
+  buildSampleRegisteredDetails,
+  buildOrderSentToLabDetails,
+  buildLabOrderAcceptedDetails,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
   type OrderValidationFieldError,
@@ -32,12 +37,17 @@ import type {
   OrdersListResponse,
   OrdersListParams,
   OrderDetailsResponse,
+  OrderHistoryListResponse,
   RegisterSampleRequest,
   UpdateOrderRequest
 } from "@klinika/api-contracts";
 import { ApiErrorException } from "../common/errors/api-error.exception";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { LabSimulatorService } from "../lab-simulator/lab-simulator.service";
+import {
+  OrderHistoryService,
+  type OrderHistoryListParams
+} from "../order-history/order-history.service";
 import { toOrderResponse, toOrderListResponse, toOrderDetailsResponse } from "./orders.mapper";
 
 type MedicalTestWithRequiredFields = MedicalTest & {
@@ -52,7 +62,8 @@ type MedicalTestWithRequiredFields = MedicalTest & {
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly labSimulator: LabSimulatorService
+    private readonly labSimulator: LabSimulatorService,
+    private readonly orderHistory: OrderHistoryService
   ) {}
 
   async create(
@@ -140,6 +151,22 @@ export class OrdersService {
           })
         );
       }
+
+      await this.orderHistory.record(tx, {
+        workspaceId,
+        orderId: order.id,
+        eventType: "ORDER_CREATED",
+        actorType: "STAFF",
+        actorUserId: createdByUserId,
+        previousStatus: null,
+        newStatus: "DRAFT",
+        details: buildOrderCreatedDetails({
+          priority: input.priority,
+          testCodes: sortedCatalog.map((catalogItem) => catalogItem.code),
+          requiredMaterials: sampleMaterials,
+          finalStatus: "DRAFT"
+        })
+      });
 
       return { order, orderTests, samples };
     });
@@ -235,9 +262,31 @@ export class OrdersService {
     return toOrderDetailsResponse(order);
   }
 
+  async getHistory(
+    workspaceId: string,
+    orderId: string,
+    params: OrderHistoryListParams
+  ): Promise<OrderHistoryListResponse> {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, workspaceId },
+      select: { id: true }
+    });
+
+    if (!order) {
+      throw new ApiErrorException(
+        HttpStatus.NOT_FOUND,
+        "ORDER_NOT_FOUND",
+        "Nie znaleziono zlecenia."
+      );
+    }
+
+    return this.orderHistory.list(workspaceId, orderId, params);
+  }
+
   async updateDraft(
     workspaceId: string,
     orderId: string,
+    actorUserId: string,
     input: UpdateOrderRequest
   ): Promise<OrderResponse> {
     if (!this.hasPatchShape(input)) {
@@ -346,6 +395,16 @@ export class OrdersService {
       }
     }
 
+    const previousTestCodes = order.tests.map((test) => test.medicalTest.code);
+    const testCodeById = new Map(
+      (validationCatalog ?? []).map((catalogItem) => [catalogItem.id, catalogItem.code])
+    );
+    const nextTestCodes = changes.testsChanged
+      ? nextState.tests.map(
+          (test) => testCodeById.get(test.medicalTestId) ?? test.medicalTestId
+        )
+      : previousTestCodes;
+
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
       if (changes.patientChanged || changes.priorityChanged) {
         await tx.order.update({
@@ -430,6 +489,22 @@ export class OrdersService {
           });
         }
       }
+
+      await this.orderHistory.record(tx, {
+        workspaceId,
+        orderId: order.id,
+        eventType: "ORDER_UPDATED",
+        actorType: "STAFF",
+        actorUserId,
+        details: buildOrderUpdatedDetails({
+          patientChanged: changes.patientChanged,
+          priorityChanged: changes.priorityChanged,
+          previousPriority: currentState.priority,
+          newPriority: nextState.priority,
+          previousTestCodes,
+          nextTestCodes
+        })
+      });
 
       return tx.order.findUniqueOrThrow({
         where: { id: order.id },
@@ -549,7 +624,7 @@ export class OrdersService {
           ? nextStatus
           : order.status;
 
-      return tx.order.update({
+      const updated = await tx.order.update({
         where: { id: orderId },
         data: { status: statusToPersist },
         include: {
@@ -568,6 +643,24 @@ export class OrdersService {
           }
         }
       });
+
+      await this.orderHistory.record(tx, {
+        workspaceId,
+        orderId,
+        eventType: "SAMPLE_REGISTERED",
+        actorType: "STAFF",
+        actorUserId: userId,
+        previousStatus: order.status,
+        newStatus: statusToPersist,
+        details: buildSampleRegisteredDetails({
+          materialType: input.materialType,
+          sampleId: sample!.id,
+          previousOrderStatus: order.status,
+          newOrderStatus: statusToPersist
+        })
+      });
+
+      return updated;
     });
 
     return toOrderResponse(updatedOrder, updatedOrder.tests, updatedOrder.samples);
@@ -576,6 +669,7 @@ export class OrdersService {
   async sendOrder(
     workspaceId: string,
     orderId: string,
+    actorUserId: string,
     correlationId: string
   ): Promise<OrderResponse> {
     const order = await this.prisma.order.findFirst({
@@ -682,13 +776,14 @@ export class OrdersService {
           }
         });
 
-        return tx.order.update({
+        const sentAt = new Date();
+        const updated = await tx.order.update({
           where: { id: orderId },
           data: {
             status: "SENT_TO_LAB",
             externalOrderId: simulatorResult.externalOrderId,
             correlationId,
-            sentAt: new Date(),
+            sentAt,
             estimatedCompletionAt: simulatorResult.estimatedCompletionAt
           },
           include: {
@@ -707,6 +802,40 @@ export class OrdersService {
             }
           }
         });
+
+        await this.orderHistory.record(tx, {
+          workspaceId,
+          orderId,
+          eventType: "ORDER_SENT_TO_LAB",
+          actorType: "STAFF",
+          actorUserId,
+          occurredAt: sentAt,
+          correlationId,
+          previousStatus: order.status,
+          newStatus: "SENT_TO_LAB",
+          details: buildOrderSentToLabDetails({
+            idempotencyKey,
+            correlationId,
+            previousStatus: order.status,
+            newStatus: "SENT_TO_LAB"
+          })
+        });
+
+        await this.orderHistory.record(tx, {
+          workspaceId,
+          orderId,
+          eventType: "LAB_ORDER_ACCEPTED",
+          actorType: "LAB",
+          occurredAt: sentAt,
+          correlationId,
+          details: buildLabOrderAcceptedDetails({
+            externalOrderId: simulatorResult.externalOrderId,
+            estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString(),
+            scenario: simulatorResult.job.scenario
+          })
+        });
+
+        return updated;
       });
     } catch (error) {
       if (!this.isPrismaUniqueConstraintError(error)) {

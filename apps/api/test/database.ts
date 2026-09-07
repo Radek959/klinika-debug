@@ -21,6 +21,7 @@ export function configureTestEnvironment() {
 }
 
 export async function resetTestDatabase(prisma: PrismaClient) {
+  await prisma.orderHistory.deleteMany();
   await prisma.processedLabEvent.deleteMany();
   await prisma.labJob.deleteMany();
   await prisma.result.deleteMany();
