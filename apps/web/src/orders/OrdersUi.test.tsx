@@ -193,6 +193,191 @@ describe("interfejs zleceń", () => {
     expect(await screen.findByText("EXT-123")).toBeInTheDocument();
   });
 
+  it("pokazuje przycisk edycji tylko dla zlecenia DRAFT", async () => {
+    window.history.pushState({}, "", "/orders/order-1");
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(orderDetails({ status: "DRAFT" }));
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("link", { name: "Edytuj zlecenie" })).toHaveAttribute(
+      "href",
+      "/orders/order-1/edit"
+    );
+
+    cleanup();
+    window.history.pushState({}, "", "/orders/order-1");
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(orderDetails({ status: "SAMPLE_COLLECTED" }));
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Edytuj zlecenie" })).not.toBeInTheDocument();
+  });
+
+  it("pobiera i wypełnia formularz edycji zlecenia", async () => {
+    window.history.pushState({}, "", "/orders/order-1/edit");
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(
+          orderDetails({
+            status: "DRAFT",
+            priority: "URGENT",
+            tests: [
+              {
+                id: "order-test-glu",
+                medicalTestId: "test-glu",
+                code: "GLU",
+                name: "Glukoza z bardzo długą nazwą kontrolną",
+                materialType: "SERUM",
+                additionalData: { fastingConfirmed: false }
+              }
+            ]
+          })
+        );
+      }
+      if (url === "/api/v1/tests?pageSize=100") {
+        return json(medicalTestsResponse);
+      }
+      if (url.startsWith("/api/v1/patients?")) {
+        return json(patientsResponse([annaPatient]));
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Edycja zlecenia: Anna Nowak" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Wybrany pacjent" })).toHaveTextContent("Nowak Anna");
+    expect(screen.getByLabelText("Priorytet")).toHaveValue("URGENT");
+    expect(await screen.findByLabelText(/Glukoza/)).toBeChecked();
+    expect(screen.getByLabelText("Potwierdzenie przygotowania pacjenta")).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Zapisz zmiany" })).toBeDisabled();
+  });
+
+  it("wysyła tylko zmieniony priorytet i przekierowuje po sukcesie", async () => {
+    window.history.pushState({}, "", "/orders/order-1/edit");
+    let patchPayload: unknown;
+    mockFetch(({ url, init }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1" && init?.method === "PATCH") {
+        patchPayload = JSON.parse(String(init.body));
+        return json(orderDetails({ status: "DRAFT", priority: "URGENT" }));
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(orderDetails({ status: "DRAFT", priority: "ROUTINE" }));
+      }
+      if (url === "/api/v1/tests?pageSize=100") {
+        return json(medicalTestsResponse);
+      }
+      if (url.startsWith("/api/v1/patients?")) {
+        return json(patientsResponse([annaPatient]));
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    await userEvent.selectOptions(await screen.findByLabelText("Priorytet"), "URGENT");
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz zmiany" }));
+
+    await waitFor(() => expect(patchPayload).toEqual({ priority: "URGENT" }));
+    expect(await screen.findByText("Zlecenie zostało zaktualizowane.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })).toBeInTheDocument();
+  });
+
+  it("pokazuje błędy edycji bez czyszczenia formularza i z correlationId", async () => {
+    window.history.pushState({}, "", "/orders/order-1/edit");
+    mockFetch(({ url, init }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1" && init?.method === "PATCH") {
+        return jsonError(422, "ORDER_UPDATE_ERROR", "Nie udało się zaktualizować zlecenia.", "corr-edit", [
+          {
+            field: "tests.0.additionalData.fastingConfirmed",
+            code: "REQUIRED_CONFIRMATION",
+            message: "Potwierdzenie jest wymagane."
+          }
+        ]);
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(
+          orderDetails({
+            status: "DRAFT",
+            tests: [
+              {
+                id: "order-test-glu",
+                medicalTestId: "test-glu",
+                code: "GLU",
+                name: "Glukoza z bardzo długą nazwą kontrolną",
+                materialType: "SERUM",
+                additionalData: { fastingConfirmed: false }
+              }
+            ]
+          })
+        );
+      }
+      if (url === "/api/v1/tests?pageSize=100") {
+        return json(medicalTestsResponse);
+      }
+      if (url.startsWith("/api/v1/patients?")) {
+        return json(patientsResponse([annaPatient]));
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByLabelText("Potwierdzenie przygotowania pacjenta"));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz zmiany" }));
+
+    expect(await screen.findByText(/corr-edit/)).toBeInTheDocument();
+    expect(screen.getByText("Potwierdzenie jest wymagane.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Potwierdzenie przygotowania pacjenta")).toBeChecked();
+  });
+
+  it("pokazuje osobny komunikat dla zlecenia nieedytowalnego", async () => {
+    window.history.pushState({}, "", "/orders/order-1/edit");
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(orderDetails({ status: "SAMPLE_COLLECTED" }));
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Tego zlecenia nie można edytować" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Wróć do szczegółów" })).toHaveAttribute(
+      "href",
+      "/orders/order-1"
+    );
+  });
+
   it("zastępuje ręczne patientId wyszukiwanym pickerem aktywnych pacjentów", async () => {
     const patientRequests: string[] = [];
     renderNewOrder(({ url }) => {
@@ -519,7 +704,9 @@ function orderDetails(overrides: Partial<OrderDetailsResponse> = {}): OrderDetai
       documentCountry: null,
       birthDate: "1990-01-01",
       gender: "FEMALE",
-      active: true
+      active: true,
+      createdAt: "2026-09-01T09:00:00.000Z",
+      updatedAt: "2026-09-01T09:30:00.000Z"
     },
     priority: "ROUTINE",
     status: "SAMPLE_COLLECTED",

@@ -2,6 +2,7 @@ import type { MedicalTestCatalogItem, PatientListItem } from "@klinika/api-contr
 import { describe, expect, it } from "vitest";
 import {
   buildCreateOrderPayload,
+  buildUpdateOrderPayload,
   createInitialAdditionalData,
   getMissingRequiredAdditionalFields,
   getRequiredMaterials,
@@ -76,6 +77,75 @@ describe("stan formularza zlecenia", () => {
     expect(sanitizeAdditionalData({ note: "   ", fastingConfirmed: true })).toEqual({
       fastingConfirmed: true
     });
+  });
+
+  it("buduje częściowy PATCH tylko ze zmienionym priorytetem", () => {
+    expect(
+      buildUpdateOrderPayload({
+        initial: {
+          patientId: "patient-1",
+          priority: "ROUTINE",
+          selectedTests: { "test-crp": { additionalData: {} } }
+        },
+        current: {
+          patientId: "patient-1",
+          priority: "URGENT",
+          selectedTests: { "test-crp": { additionalData: {} } }
+        },
+        catalog
+      })
+    ).toEqual({ priority: "URGENT" });
+  });
+
+  it("buduje PATCH ze zmianą badań i ignoruje kolejność kluczy additionalData", () => {
+    expect(
+      buildUpdateOrderPayload({
+        initial: {
+          patientId: "patient-1",
+          priority: "ROUTINE",
+          selectedTests: {
+            "test-glu": { additionalData: { note: "opis", fastingConfirmed: false } }
+          }
+        },
+        current: {
+          patientId: "patient-1",
+          priority: "ROUTINE",
+          selectedTests: {
+            "test-glu": { additionalData: { fastingConfirmed: false, note: "opis" } },
+            "test-urine": { additionalData: {} }
+          }
+        },
+        catalog
+      })
+    ).toEqual({
+      tests: [
+        {
+          medicalTestId: "test-urine"
+        },
+        {
+          medicalTestId: "test-glu",
+          additionalData: { fastingConfirmed: false, note: "opis" }
+        }
+      ]
+    });
+  });
+
+  it("zwraca null, gdy edycja nie zawiera realnej zmiany", () => {
+    expect(
+      buildUpdateOrderPayload({
+        initial: {
+          patientId: "patient-1",
+          priority: "ROUTINE",
+          selectedTests: { "test-crp": { additionalData: {} } }
+        },
+        current: {
+          patientId: "patient-1",
+          priority: "ROUTINE",
+          selectedTests: { "test-crp": { additionalData: {} } }
+        },
+        catalog
+      })
+    ).toBeNull();
   });
 
   it("grupuje materiały w stabilnej kolejności domenowej", () => {

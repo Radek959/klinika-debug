@@ -390,9 +390,8 @@ describe("orders create api", () => {
     });
   });
 
-  it("nie pozwala wymusić statusu, workspaceId ani createdByUserId", async () => {
-    const { token, userId, workspaceId, patientId, tests } =
-      await setupDefaultOrderData();
+  it("odrzuca status, workspaceId i createdByUserId w payloadzie", async () => {
+    const { token, patientId, tests } = await setupDefaultOrderData();
 
     const response = await createOrder(token, {
       patientId,
@@ -405,24 +404,15 @@ describe("orders create api", () => {
       tests: [{ medicalTestId: tests.CRP.id }]
     });
 
-    expect(response.statusCode).toBe(201);
-    const body = JSON.parse(response.body);
-    expect(body).toMatchObject({
-      status: "DRAFT",
-      createdByUserId: userId,
-      externalOrderId: null,
-      correlationId: null
-    });
-    expect(body.workspaceId).toBeUndefined();
-
-    const savedOrder = await prisma.order.findUniqueOrThrow({
-      where: { id: body.id }
-    });
-    expect(savedOrder.workspaceId).toBe(workspaceId);
-    expect(savedOrder.createdByUserId).toBe(userId);
-    expect(savedOrder.status).toBe("DRAFT");
-    expect(savedOrder.externalOrderId).toBeNull();
-    expect(savedOrder.correlationId).toBeNull();
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body).error.fieldErrors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "workspaceId", code: "UNKNOWN_FIELD" }),
+        expect.objectContaining({ field: "createdByUserId", code: "UNKNOWN_FIELD" }),
+        expect.objectContaining({ field: "status", code: "UNKNOWN_FIELD" })
+      ])
+    );
+    await expectOrderTablesCount(0, 0, 0);
   });
 
   it("publikuje polskie opisy POST /api/v1/orders w OpenAPI", async () => {

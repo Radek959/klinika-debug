@@ -7,6 +7,8 @@ export type OrderAdditionalData = Record<string, OrderAdditionalDataValue>;
 
 export type OrderValidationCode =
   | "PATIENT_INACTIVE"
+  | "NO_CHANGES"
+  | "ORDER_NOT_EDITABLE"
   | "TESTS_REQUIRED"
   | "DUPLICATE_TEST"
   | "MEDICAL_TEST_NOT_FOUND"

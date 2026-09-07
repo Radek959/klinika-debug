@@ -14,11 +14,17 @@ import {
   determineOrderStatusAfterSampleCollection,
   canSendOrder,
   buildSendIdempotencyKey,
+  calculateRequiredMaterials as calculateRequiredOrderMaterials,
+  canEditDraftOrder,
+  getDraftOrderChangeSet,
+  hasDraftOrderChanges,
+  mergeDraftOrderPatch,
   type NormalizedOrderTestSelection,
   type OrderMedicalTestDefinition,
   type OrderValidationFieldError,
   type OrdersListValidationError,
-  type OrderStatus
+  type OrderStatus,
+  type DraftOrderState
 } from "@klinika/domain";
 import type {
   CreateOrderRequest,
@@ -26,7 +32,8 @@ import type {
   OrdersListResponse,
   OrdersListParams,
   OrderDetailsResponse,
-  RegisterSampleRequest
+  RegisterSampleRequest,
+  UpdateOrderRequest
 } from "@klinika/api-contracts";
 import { ApiErrorException } from "../common/errors/api-error.exception";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -226,6 +233,225 @@ export class OrdersService {
     }
 
     return toOrderDetailsResponse(order);
+  }
+
+  async updateDraft(
+    workspaceId: string,
+    orderId: string,
+    input: UpdateOrderRequest
+  ): Promise<OrderResponse> {
+    if (!this.hasPatchShape(input)) {
+      throw new ApiErrorException(
+        HttpStatus.BAD_REQUEST,
+        "VALIDATION_ERROR",
+        "PATCH musi zawierać co najmniej jedno pole do aktualizacji.",
+        [
+          {
+            field: "body",
+            code: "EMPTY_PATCH",
+            message: "PATCH musi zawierać co najmniej jedno pole do aktualizacji."
+          }
+        ]
+      );
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, workspaceId },
+      include: {
+        tests: {
+          include: {
+            medicalTest: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                materialType: true,
+                requiredFields: {
+                  select: { code: true, valueType: true, required: true }
+                }
+              }
+            }
+          },
+          orderBy: {
+            medicalTest: { code: "asc" }
+          }
+        },
+        samples: {
+          orderBy: {
+            materialType: "asc"
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      throw new ApiErrorException(
+        HttpStatus.NOT_FOUND,
+        "ORDER_NOT_FOUND",
+        "Nie znaleziono zlecenia."
+      );
+    }
+
+    if (!canEditDraftOrder(order.status)) {
+      throw this.orderUpdateError([
+        { field: "status", code: "ORDER_NOT_EDITABLE" }
+      ]);
+    }
+
+    const currentState = this.toDraftOrderState(order);
+    const finalPatientId = input.patientId ?? order.patientId;
+    let validationCatalog: MedicalTestWithRequiredFields[] | undefined;
+    let normalizedPatchTests: NormalizedOrderTestSelection[] | undefined;
+
+    if (input.tests !== undefined) {
+      const validation = await this.validateOrderInput({ tests: input.tests });
+      if (!validation.valid) {
+        throw this.orderUpdateError(validation.errors);
+      }
+      validationCatalog = validation.catalog;
+      normalizedPatchTests = validation.tests;
+    }
+
+    const nextState = mergeDraftOrderPatch(currentState, {
+      patientId: finalPatientId,
+      priority: input.priority,
+      tests: normalizedPatchTests
+    });
+    const changes = getDraftOrderChangeSet(currentState, nextState);
+
+    if (!hasDraftOrderChanges(changes)) {
+      throw this.orderUpdateError([
+        { field: "body", code: "NO_CHANGES" }
+      ]);
+    }
+
+    if (changes.patientChanged) {
+      const patient = await this.prisma.patient.findFirst({
+        where: { id: finalPatientId, workspaceId },
+        select: { id: true, active: true }
+      });
+
+      if (!patient) {
+        throw new ApiErrorException(
+          HttpStatus.NOT_FOUND,
+          "PATIENT_NOT_FOUND",
+          "Nie znaleziono pacjenta."
+        );
+      }
+
+      if (!patient.active) {
+        throw this.orderUpdateError([
+          { field: "patientId", code: "PATIENT_INACTIVE" }
+        ]);
+      }
+    }
+
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      if (changes.patientChanged || changes.priorityChanged) {
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            patientId: changes.patientChanged ? nextState.patientId : undefined,
+            priority: changes.priorityChanged ? nextState.priority : undefined
+          }
+        });
+      }
+
+      if (changes.testsChanged && validationCatalog) {
+        const targetById = new Map(nextState.tests.map((test) => [test.medicalTestId, test]));
+        const currentById = new Map(order.tests.map((test) => [test.medicalTestId, test]));
+        const targetIds = [...targetById.keys()];
+
+        await tx.orderTest.deleteMany({
+          where: {
+            workspaceId,
+            orderId: order.id,
+            medicalTestId: { notIn: targetIds }
+          }
+        });
+
+        const sortedCatalog = [...validationCatalog].sort((a, b) =>
+          a.code.localeCompare(b.code)
+        );
+
+        for (const catalogItem of sortedCatalog) {
+          const normalized = targetById.get(catalogItem.id);
+          if (!normalized) {
+            continue;
+          }
+
+          const data = this.toPrismaJson(normalized.additionalData);
+          const existing = currentById.get(catalogItem.id);
+          if (existing) {
+            await tx.orderTest.update({
+              where: { id: existing.id },
+              data: { additionalData: data }
+            });
+          } else {
+            await tx.orderTest.create({
+              data: {
+                workspaceId,
+                orderId: order.id,
+                medicalTestId: catalogItem.id,
+                additionalData: data
+              }
+            });
+          }
+        }
+
+        const requiredMaterials = calculateRequiredOrderMaterials(validationCatalog);
+        await tx.sample.deleteMany({
+          where: {
+            workspaceId,
+            orderId: order.id,
+            materialType: { notIn: requiredMaterials }
+          }
+        });
+
+        const existingMaterials = new Set(
+          order.samples.map((sample) => sample.materialType)
+        );
+        for (const materialType of requiredMaterials) {
+          if (existingMaterials.has(materialType)) {
+            continue;
+          }
+          await tx.sample.create({
+            data: {
+              workspaceId,
+              orderId: order.id,
+              materialType,
+              status: "REQUIRED",
+              barcode: null,
+              collectedAt: null,
+              collectedByUserId: null,
+              rejectionCode: null,
+              rejectionReason: null
+            }
+          });
+        }
+      }
+
+      return tx.order.findUniqueOrThrow({
+        where: { id: order.id },
+        include: {
+          tests: {
+            include: {
+              medicalTest: { select: { code: true, name: true, materialType: true } }
+            },
+            orderBy: {
+              medicalTest: { code: "asc" }
+            }
+          },
+          samples: {
+            orderBy: {
+              materialType: "asc"
+            }
+          }
+        }
+      });
+    });
+
+    return toOrderResponse(updatedOrder, updatedOrder.tests, updatedOrder.samples);
   }
 
   async registerSample(
@@ -840,7 +1066,7 @@ export class OrdersService {
     return messages[code] ?? "Żądanie zawiera nieprawidłowe dane.";
   }
 
-  private async validateOrderInput(input: CreateOrderRequest): Promise<
+  private async validateOrderInput(input: Pick<CreateOrderRequest, "tests">): Promise<
     | {
         valid: true;
         tests: NormalizedOrderTestSelection[];
@@ -935,6 +1161,9 @@ export class OrdersService {
     const messages: Record<string, string> = {
       PATIENT_INACTIVE:
         "Nie można utworzyć zlecenia dla nieaktywnego pacjenta.",
+      NO_CHANGES: "PATCH nie zawiera rzeczywistej zmiany zlecenia.",
+      ORDER_NOT_EDITABLE:
+        "Zlecenie można edytować wyłącznie w statusie wersji roboczej.",
       TESTS_REQUIRED: "Zlecenie musi zawierać co najmniej jedno badanie.",
       DUPLICATE_TEST: "To samo badanie nie może wystąpić w zleceniu więcej niż raz.",
       MEDICAL_TEST_NOT_FOUND: "Nie znaleziono aktywnego badania w katalogu.",
@@ -948,6 +1177,71 @@ export class OrdersService {
         "Dane dodatkowe zawierają pole niezdefiniowane dla tego badania."
     };
     return messages[code] ?? "Zlecenie zawiera nieprawidłowe dane.";
+  }
+
+  private orderUpdateError(errors: OrderValidationFieldError[]) {
+    return new ApiErrorException(
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "ORDER_UPDATE_ERROR",
+      "Nie udało się zaktualizować zlecenia.",
+      errors.map((error) => ({
+        ...error,
+        message: this.updateFieldErrorMessage(error.code)
+      }))
+    );
+  }
+
+  private updateFieldErrorMessage(code: string): string {
+    const messages: Record<string, string> = {
+      ...Object.fromEntries(
+        Object.entries({
+          PATIENT_INACTIVE:
+            "Nie można przypisać zlecenia do nieaktywnego pacjenta.",
+          NO_CHANGES: "PATCH nie zawiera rzeczywistej zmiany zlecenia.",
+          ORDER_NOT_EDITABLE:
+            "Zlecenie można edytować wyłącznie w statusie wersji roboczej.",
+          TESTS_REQUIRED: "Zlecenie musi zawierać co najmniej jedno badanie.",
+          DUPLICATE_TEST:
+            "To samo badanie nie może wystąpić w zleceniu więcej niż raz.",
+          MEDICAL_TEST_NOT_FOUND: "Nie znaleziono aktywnego badania w katalogu.",
+          MEDICAL_TEST_INACTIVE:
+            "Nieaktywnego badania nie można dodać do zlecenia.",
+          REQUIRED_ADDITIONAL_DATA:
+            "Wymagane dane dodatkowe dla badania nie zostały uzupełnione.",
+          INVALID_ADDITIONAL_DATA_TYPE:
+            "Dane dodatkowe mają nieprawidłowy typ albo pustą wartość.",
+          UNKNOWN_ADDITIONAL_DATA_FIELD:
+            "Dane dodatkowe zawierają pole niezdefiniowane dla tego badania."
+        })
+      )
+    };
+    return messages[code] ?? "Aktualizacja zlecenia zawiera nieprawidłowe dane.";
+  }
+
+  private hasPatchShape(input: UpdateOrderRequest) {
+    return (
+      input.patientId !== undefined ||
+      input.priority !== undefined ||
+      input.tests !== undefined
+    );
+  }
+
+  private toDraftOrderState(order: {
+    patientId: string;
+    priority: "ROUTINE" | "URGENT";
+    tests: Array<{
+      medicalTestId: string;
+      additionalData: Prisma.JsonValue | null;
+    }>;
+  }): DraftOrderState {
+    return {
+      patientId: order.patientId,
+      priority: order.priority,
+      tests: order.tests.map((test) => ({
+        medicalTestId: test.medicalTestId,
+        additionalData: test.additionalData as NormalizedOrderTestSelection["additionalData"]
+      }))
+    };
   }
 
   private toPrismaJson(

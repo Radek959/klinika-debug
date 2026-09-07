@@ -77,9 +77,16 @@ export function OrderDetailsPage({ token }: { token: string }) {
       <PageHeader
         title={`Zlecenie: ${order.patient.firstName} ${order.patient.lastName}`}
         actions={
-          <Link className="secondary-link" to="/orders">
-            Wróć do listy
-          </Link>
+          <>
+            {order.status === "DRAFT" ? (
+              <Link className="button-link" to={`/orders/${order.id}/edit`}>
+                Edytuj zlecenie
+              </Link>
+            ) : null}
+            <Link className="secondary-link" to="/orders">
+              Wróć do listy
+            </Link>
+          </>
         }
       >
         <p>

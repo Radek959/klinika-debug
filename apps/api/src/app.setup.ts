@@ -17,14 +17,9 @@ export function configureApp(app: NestFastifyApplication) {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
+      forbidNonWhitelisted: true,
       transform: true,
-      exceptionFactory: (errors) =>
-        new ApiErrorException(
-          HttpStatus.BAD_REQUEST,
-          "VALIDATION_ERROR",
-          "Żądanie zawiera nieprawidłowe dane.",
-          flattenValidationErrors(errors)
-        )
+      exceptionFactory: validationExceptionFactory
     })
   );
 
@@ -41,6 +36,15 @@ export function configureApp(app: NestFastifyApplication) {
   });
 }
 
+export function validationExceptionFactory(errors: ValidationError[]) {
+  return new ApiErrorException(
+    HttpStatus.BAD_REQUEST,
+    "VALIDATION_ERROR",
+    "Żądanie zawiera nieprawidłowe dane.",
+    flattenValidationErrors(errors)
+  );
+}
+
 function flattenValidationErrors(
   errors: ValidationError[],
   parentPath = ""
@@ -51,7 +55,10 @@ function flattenValidationErrors(
       ([code, message]) => ({
         field,
         code: mapValidationErrorCode(field, code),
-        message
+        message:
+          code === "whitelistValidation"
+            ? "Pole nie jest dozwolone."
+            : message
       })
     );
     return [
@@ -76,6 +83,10 @@ function mapValidationErrorCode(field: string, classValidatorCode: string): stri
     barcode: { isString: "BARCODE_REQUIRED", isNotEmpty: "BARCODE_REQUIRED" },
     collectedAt: { isIso8601: "INVALID_DATE_FORMAT" }
   };
+
+  if (classValidatorCode === "whitelistValidation") {
+    return "UNKNOWN_FIELD";
+  }
 
   return codeMap[field]?.[classValidatorCode] ?? classValidatorCode;
 }

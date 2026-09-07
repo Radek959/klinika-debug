@@ -69,7 +69,9 @@ function toPatientDetails(patient: Patient): OrderPatientDetails {
     documentCountry: patient.documentCountry,
     birthDate: toDateOnlyString(patient.birthDate),
     gender: patient.gender,
-    active: patient.active
+    active: patient.active,
+    createdAt: patient.createdAt.toISOString(),
+    updatedAt: patient.updatedAt.toISOString()
   };
 }
 

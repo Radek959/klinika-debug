@@ -56,6 +56,12 @@ export class OrderDetailsPatientDto {
     description: "Czy pacjent jest aktywny w systemie."
   })
   active!: boolean;
+
+  @ApiProperty({ description: "Data utworzenia pacjenta jako ISO 8601." })
+  createdAt!: string;
+
+  @ApiProperty({ description: "Data ostatniej modyfikacji pacjenta jako ISO 8601." })
+  updatedAt!: string;
 }
 
 export class OrderResultParameterDto {
