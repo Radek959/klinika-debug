@@ -680,10 +680,14 @@ describe("lab results webhook and scheduler", () => {
       const details = historyEvent.details as Record<string, unknown>;
       expect(details).toMatchObject({
         externalOrderId: sentOrder.externalOrderId,
-        materialType: "SERUM",
-        sampleId: sample.id,
-        rejectionCode: "INSUFFICIENT_VOLUME",
-        rejectionReason: "Niewystarczająca objętość próbki",
+        rejectedSamples: [
+          {
+            sampleId: sample.id,
+            materialType: "SERUM",
+            rejectionCode: "INSUFFICIENT_VOLUME",
+            rejectionReason: "Niewystarczająca objętość próbki"
+          }
+        ],
         completedTestCodes: [],
         previousStatus: "SENT_TO_LAB",
         newStatus: "REJECTED"
@@ -765,7 +769,14 @@ describe("lab results webhook and scheduler", () => {
         where: { orderId: order.id, eventType: "LAB_SAMPLE_REJECTED" }
       });
       expect(historyEvent.details).toMatchObject({
-        materialType: "EDTA_BLOOD",
+        rejectedSamples: [
+          {
+            sampleId: rejected[0].id,
+            materialType: "EDTA_BLOOD",
+            rejectionCode: "HEMOLYZED",
+            rejectionReason: "Próbka zhemolizowana"
+          }
+        ],
         completedTestCodes: ["CRP"],
         rejectedTestCodes: ["MORF"],
         newStatus: "REJECTED"
@@ -910,6 +921,346 @@ describe("lab results webhook and scheduler", () => {
         (await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status
       ).toBe("REJECTED");
     }, 15000);
+
+    it("odrzuca wszystkie próbki zlecenia wielomateriałowego i zapisuje ich komplet w historii", async () => {
+      const { token, patientId, tests } = await setupDefaultOrderData();
+      const order = await createOrderAndParse(token, {
+        patientId,
+        priority: "ROUTINE",
+        tests: [{ medicalTestId: tests.MORF.id }, { medicalTestId: tests.CRP.id }]
+      });
+      await registerSample(token, order.id, {
+        materialType: "EDTA_BLOOD",
+        barcode: "SMP-REJ-ALL-1",
+        collectedAt: nowIso()
+      });
+      await registerSample(token, order.id, {
+        materialType: "SERUM",
+        barcode: "SMP-REJ-ALL-2",
+        collectedAt: nowIso()
+      });
+
+      const sendResponse = await sendOrder(token, order.id);
+      const externalOrderId = JSON.parse(sendResponse.body).externalOrderId as string;
+      await prisma.labJob.deleteMany({ where: { orderId: order.id } });
+
+      const samples = await prisma.sample.findMany({ where: { orderId: order.id } });
+      const bloodSample = samples.find((sample) => sample.materialType === "EDTA_BLOOD")!;
+      const serumSample = samples.find((sample) => sample.materialType === "SERUM")!;
+
+      // Kontrakt dopuszcza odrzucenie wszystkich próbek jednym callbackiem,
+      // niezależnie od tego, że symulator odrzuca dokładnie jedną.
+      const response = await webhook({
+        externalOrderId,
+        eventId: "evt-rej-all",
+        status: "REJECTED",
+        results: [],
+        pendingMedicalTestIds: [],
+        rejectedSamples: [
+          {
+            sampleId: serumSample.id,
+            rejectionCode: "INSUFFICIENT_VOLUME",
+            rejectionReason: "Niewystarczająca objętość próbki"
+          },
+          {
+            sampleId: bloodSample.id,
+            rejectionCode: "HEMOLYZED",
+            rejectionReason: "Próbka zhemolizowana"
+          }
+        ]
+      });
+      expect(response.statusCode).toBe(204);
+
+      const persisted = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(persisted.status).toBe("REJECTED");
+
+      const persistedSamples = await prisma.sample.findMany({
+        where: { orderId: order.id }
+      });
+      expect(persistedSamples.every((sample) => sample.status === "REJECTED")).toBe(true);
+
+      const orderTests = await prisma.orderTest.findMany({ where: { orderId: order.id } });
+      expect(orderTests).toHaveLength(2);
+      expect(orderTests.every((orderTest) => orderTest.status === "REJECTED")).toBe(true);
+      expect(await prisma.result.count({ where: { orderId: order.id } })).toBe(0);
+
+      // Jeden callback daje dokładnie jeden wpis historii z kompletem próbek.
+      const historyEvents = await prisma.orderHistory.findMany({
+        where: { orderId: order.id, eventType: "LAB_SAMPLE_REJECTED" }
+      });
+      expect(historyEvents).toHaveLength(1);
+
+      const details = historyEvents[0].details as Record<string, unknown>;
+      const rejectedSamples = details.rejectedSamples as Array<Record<string, string>>;
+      expect(rejectedSamples).toHaveLength(2);
+      // Kolejność jest deterministyczna (sortowanie po sampleId), a nie zależna
+      // od kolejności elementów w payloadzie callbacka.
+      expect(rejectedSamples.map((sample) => sample.sampleId)).toEqual(
+        [bloodSample.id, serumSample.id].sort((left, right) => left.localeCompare(right))
+      );
+      expect(
+        rejectedSamples.map((sample) => sample.materialType).sort()
+      ).toEqual(["EDTA_BLOOD", "SERUM"]);
+      expect(
+        rejectedSamples.map((sample) => sample.rejectionCode).sort()
+      ).toEqual(["HEMOLYZED", "INSUFFICIENT_VOLUME"]);
+      expect(details.completedTestCodes).toEqual([]);
+      expect((details.rejectedTestCodes as string[]).slice().sort()).toEqual(["CRP", "MORF"]);
+
+      const serialized = JSON.stringify(details);
+      expect(serialized).not.toContain("SMP-REJ-ALL-1");
+      expect(serialized).not.toContain("SMP-REJ-ALL-2");
+    }, 15000);
+
+    describe("walidacja spójności odrzucenia próbek i badań", () => {
+      async function prepareMultiMaterialOrder(barcodePrefix: string) {
+        const { token, patientId, tests } = await setupDefaultOrderData();
+        const order = await createOrderAndParse(token, {
+          patientId,
+          priority: "ROUTINE",
+          tests: [{ medicalTestId: tests.MORF.id }, { medicalTestId: tests.CRP.id }]
+        });
+        await registerSample(token, order.id, {
+          materialType: "EDTA_BLOOD",
+          barcode: `${barcodePrefix}-A`,
+          collectedAt: nowIso()
+        });
+        await registerSample(token, order.id, {
+          materialType: "SERUM",
+          barcode: `${barcodePrefix}-B`,
+          collectedAt: nowIso()
+        });
+        const sendResponse = await sendOrder(token, order.id);
+        const externalOrderId = JSON.parse(sendResponse.body).externalOrderId as string;
+        await prisma.labJob.deleteMany({ where: { orderId: order.id } });
+
+        const samples = await prisma.sample.findMany({ where: { orderId: order.id } });
+        return {
+          token,
+          order,
+          externalOrderId,
+          tests,
+          bloodSample: samples.find((sample) => sample.materialType === "EDTA_BLOOD")!,
+          serumSample: samples.find((sample) => sample.materialType === "SERUM")!
+        };
+      }
+
+      /** Niespójny callback nie może zostawić w bazie żadnego śladu. */
+      async function expectNoDatabaseChange(orderId: string) {
+        const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+        expect(order.status).toBe("SENT_TO_LAB");
+
+        const samples = await prisma.sample.findMany({ where: { orderId } });
+        expect(samples.every((sample) => sample.status !== "REJECTED")).toBe(true);
+        expect(samples.every((sample) => sample.status !== "ACCEPTED")).toBe(true);
+        expect(samples.every((sample) => sample.rejectionCode === null)).toBe(true);
+        expect(samples.every((sample) => sample.rejectionReason === null)).toBe(true);
+
+        const orderTests = await prisma.orderTest.findMany({ where: { orderId } });
+        expect(orderTests.every((orderTest) => orderTest.status === "PENDING")).toBe(true);
+
+        expect(await prisma.result.count({ where: { orderId } })).toBe(0);
+        expect(await prisma.processedLabEvent.count({ where: { orderId } })).toBe(0);
+        expect(
+          await prisma.orderHistory.count({
+            where: { orderId, eventType: "LAB_SAMPLE_REJECTED" }
+          })
+        ).toBe(0);
+      }
+
+      function expectValidationError(response: { statusCode: number; body: string }) {
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error.code).toBe("LAB_CALLBACK_VALIDATION_ERROR");
+        expect(body.error.correlationId).toBeTruthy();
+      }
+
+      it("odrzuca wynik badania spoza zlecenia", async () => {
+        const { order, externalOrderId, bloodSample } =
+          await prepareMultiMaterialOrder("SMP-CON-01");
+        const foreignTest = await prisma.medicalTest.findFirstOrThrow({
+          where: { code: "TSH" }
+        });
+
+        const response = await webhook({
+          externalOrderId,
+          eventId: "evt-con-unknown-test",
+          status: "REJECTED",
+          results: [
+            {
+              medicalTestId: foreignTest.id,
+              parameters: [{ code: "TSH", value: "1.20", unit: "mIU/L", flag: "NORMAL" }]
+            }
+          ],
+          pendingMedicalTestIds: [],
+          rejectedSamples: [
+            {
+              sampleId: bloodSample.id,
+              rejectionCode: "HEMOLYZED",
+              rejectionReason: "Próbka zhemolizowana"
+            }
+          ]
+        });
+
+        expectValidationError(response);
+        expect(JSON.parse(response.body).error.fieldErrors[0].code).toBe(
+          "MEDICAL_TEST_NOT_IN_ORDER"
+        );
+        await expectNoDatabaseChange(order.id);
+      });
+
+      it("odrzuca zduplikowane badanie na liście wyników", async () => {
+        const { order, externalOrderId, tests, bloodSample } =
+          await prepareMultiMaterialOrder("SMP-CON-02");
+        const crpResult = {
+          medicalTestId: tests.CRP.id,
+          parameters: [{ code: "CRP", value: "2.10", unit: "mg/L", flag: "NORMAL" }]
+        };
+
+        const response = await webhook({
+          externalOrderId,
+          eventId: "evt-con-duplicate-test",
+          status: "REJECTED",
+          results: [crpResult, { ...crpResult }],
+          pendingMedicalTestIds: [],
+          rejectedSamples: [
+            {
+              sampleId: bloodSample.id,
+              rejectionCode: "HEMOLYZED",
+              rejectionReason: "Próbka zhemolizowana"
+            }
+          ]
+        });
+
+        expectValidationError(response);
+        expect(JSON.parse(response.body).error.fieldErrors[0].code).toBe(
+          "DUPLICATE_MEDICAL_TEST_RESULT"
+        );
+        await expectNoDatabaseChange(order.id);
+      });
+
+      it("odrzuca wynik badania wykonanego z materiału oznaczonego jako odrzucony", async () => {
+        const { order, externalOrderId, tests, bloodSample } =
+          await prepareMultiMaterialOrder("SMP-CON-03");
+
+        // MORF wymaga krwi EDTA, a ta sama próbka jest jednocześnie odrzucona.
+        const response = await webhook({
+          externalOrderId,
+          eventId: "evt-con-result-rejected-material",
+          status: "REJECTED",
+          results: [
+            {
+              medicalTestId: tests.MORF.id,
+              parameters: [{ code: "HGB", value: "13.5", unit: "g/dL", flag: "NORMAL" }]
+            }
+          ],
+          pendingMedicalTestIds: [],
+          rejectedSamples: [
+            {
+              sampleId: bloodSample.id,
+              rejectionCode: "HEMOLYZED",
+              rejectionReason: "Próbka zhemolizowana"
+            }
+          ]
+        });
+
+        expectValidationError(response);
+        expect(JSON.parse(response.body).error.fieldErrors[0].code).toBe(
+          "RESULT_FOR_REJECTED_MATERIAL"
+        );
+        await expectNoDatabaseChange(order.id);
+      });
+
+      it("odrzuca brak wyniku dla badania z nieodrzuconej próbki", async () => {
+        const { order, externalOrderId, bloodSample } =
+          await prepareMultiMaterialOrder("SMP-CON-04");
+
+        // Odrzucona jest tylko krew EDTA, więc CRP z surowicy musi mieć wynik.
+        const response = await webhook({
+          externalOrderId,
+          eventId: "evt-con-missing-result",
+          status: "REJECTED",
+          results: [],
+          pendingMedicalTestIds: [],
+          rejectedSamples: [
+            {
+              sampleId: bloodSample.id,
+              rejectionCode: "HEMOLYZED",
+              rejectionReason: "Próbka zhemolizowana"
+            }
+          ]
+        });
+
+        expectValidationError(response);
+        expect(JSON.parse(response.body).error.fieldErrors[0].code).toBe(
+          "MISSING_RESULT_FOR_ACCEPTED_MATERIAL"
+        );
+        await expectNoDatabaseChange(order.id);
+      });
+
+      it("nie pozwala pośrednio odrzucić badania korzystającego z nieodrzuconego materiału", async () => {
+        const { order, externalOrderId, tests, serumSample } =
+          await prepareMultiMaterialOrder("SMP-CON-05");
+
+        // Odrzucona jest surowica, ale callback nie przekazuje wyniku MORF
+        // z nieodrzuconej krwi EDTA — nie może go pośrednio unieważnić.
+        const response = await webhook({
+          externalOrderId,
+          eventId: "evt-con-indirect-rejection",
+          status: "REJECTED",
+          results: [],
+          pendingMedicalTestIds: [],
+          rejectedSamples: [
+            {
+              sampleId: serumSample.id,
+              rejectionCode: "INSUFFICIENT_VOLUME",
+              rejectionReason: "Niewystarczająca objętość próbki"
+            }
+          ]
+        });
+
+        expectValidationError(response);
+        expect(JSON.parse(response.body).error.fieldErrors[0].code).toBe(
+          "MISSING_RESULT_FOR_ACCEPTED_MATERIAL"
+        );
+        await expectNoDatabaseChange(order.id);
+
+        // Spójny wariant tego samego callbacka musi przejść w całości: MORF ma
+        // wynik z nieodrzuconej krwi, a jego próbka zostaje ACCEPTED.
+        const consistent = await webhook({
+          externalOrderId,
+          eventId: "evt-con-indirect-rejection-fixed",
+          status: "REJECTED",
+          results: [
+            {
+              medicalTestId: tests.MORF.id,
+              parameters: [{ code: "HGB", value: "13.5", unit: "g/dL", flag: "NORMAL" }]
+            }
+          ],
+          pendingMedicalTestIds: [],
+          rejectedSamples: [
+            {
+              sampleId: serumSample.id,
+              rejectionCode: "INSUFFICIENT_VOLUME",
+              rejectionReason: "Niewystarczająca objętość próbki"
+            }
+          ]
+        });
+        expect(consistent.statusCode).toBe(204);
+
+        const samples = await prisma.sample.findMany({ where: { orderId: order.id } });
+        const byMaterial = new Map(
+          samples.map((sample) => [sample.materialType, sample.status])
+        );
+        expect(byMaterial.get("SERUM")).toBe("REJECTED");
+        expect(byMaterial.get("EDTA_BLOOD")).toBe("ACCEPTED");
+
+        const orderTests = await prisma.orderTest.findMany({ where: { orderId: order.id } });
+        const byTestId = new Map(orderTests.map((test) => [test.medicalTestId, test.status]));
+        expect(byTestId.get(tests.MORF.id)).toBe("COMPLETED");
+        expect(byTestId.get(tests.CRP.id)).toBe("REJECTED");
+      }, 15000);
+    });
 
     describe("walidacja kontraktu callbacka REJECTED", () => {
       async function prepareSentOrder(barcodePrefix: string) {
@@ -1424,6 +1775,136 @@ describe("lab results webhook and scheduler", () => {
         await prisma.sample.count({ where: { workspaceId: otherWorkspace.id } })
       ).toBe(0);
     }, 15000);
+  });
+
+  describe("publiczna historia zlecenia nie ujawnia scenariusza symulatora", () => {
+    const ORIGINAL_SCENARIO = process.env.LAB_SIMULATOR_SCENARIO;
+
+    afterEach(() => {
+      if (ORIGINAL_SCENARIO === undefined) {
+        delete process.env.LAB_SIMULATOR_SCENARIO;
+      } else {
+        process.env.LAB_SIMULATOR_SCENARIO = ORIGINAL_SCENARIO;
+      }
+    });
+
+    /**
+     * Nazwy scenariuszy nie mogą wyciekać przez pole `details` publicznej
+     * historii. Test celowo pomija samo `details.eventType`: wartość
+     * `LAB_SAMPLE_REJECTED` legalnie zawiera podciąg `SAMPLE_REJECTED` jako
+     * nazwa typu zdarzenia, a nie jako tryb symulatora.
+     */
+    function expectNoScenarioLeak(body: {
+      items: Array<{ eventType: string; details: Record<string, unknown> }>;
+    }) {
+      expect(body.items.length).toBeGreaterThan(0);
+      for (const item of body.items) {
+        expect(Object.keys(item.details)).not.toContain("scenario");
+
+        const detailsWithoutEventType = Object.fromEntries(
+          Object.entries(item.details).filter(([key]) => key !== "eventType")
+        );
+        const serialized = JSON.stringify(detailsWithoutEventType);
+        expect(serialized).not.toContain("scenario");
+        expect(serialized).not.toContain("SUCCESS");
+        expect(serialized).not.toContain("PARTIAL_SUCCESS");
+        expect(serialized).not.toContain("SAMPLE_REJECTED");
+      }
+    }
+
+    async function runScenarioAndReadHistory(
+      scenario: "SUCCESS" | "PARTIAL_SUCCESS" | "SAMPLE_REJECTED",
+      barcodePrefix: string
+    ) {
+      const { token, patientId, tests } = await setupDefaultOrderData();
+      const order = await createOrderAndParse(token, {
+        patientId,
+        priority: "ROUTINE",
+        tests: [{ medicalTestId: tests.MORF.id }, { medicalTestId: tests.CRP.id }]
+      });
+      await registerSample(token, order.id, {
+        materialType: "EDTA_BLOOD",
+        barcode: `${barcodePrefix}-A`,
+        collectedAt: nowIso()
+      });
+      await registerSample(token, order.id, {
+        materialType: "SERUM",
+        barcode: `${barcodePrefix}-B`,
+        collectedAt: nowIso()
+      });
+
+      process.env.LAB_SIMULATOR_SCENARIO = scenario;
+      expect((await sendOrder(token, order.id)).statusCode).toBe(200);
+      await waitForOrderStatus(
+        order.id,
+        scenario === "SAMPLE_REJECTED" ? "REJECTED" : "COMPLETED",
+        8000
+      );
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/v1/orders/${order.id}/history?pageSize=100`,
+        headers: { authorization: `Bearer ${token}` }
+      });
+      expect(response.statusCode).toBe(200);
+      return { orderId: order.id, token, body: JSON.parse(response.body) };
+    }
+
+    it.each(["SUCCESS", "PARTIAL_SUCCESS", "SAMPLE_REJECTED"] as const)(
+      "nie zwraca nazwy scenariusza %s w historii zlecenia",
+      async (scenario) => {
+        const { body } = await runScenarioAndReadHistory(
+          scenario,
+          `SMP-LEAK-${scenario.slice(0, 3)}`
+        );
+
+        const accepted = body.items.filter(
+          (item: { eventType: string }) => item.eventType === "LAB_ORDER_ACCEPTED"
+        );
+        expect(accepted).toHaveLength(1);
+        expect(Object.keys(accepted[0].details).sort()).toEqual([
+          "estimatedCompletionAt",
+          "eventType",
+          "externalOrderId"
+        ]);
+
+        expectNoScenarioLeak(body);
+      },
+      25000
+    );
+
+    it("usuwa scenario z wpisu historii zapisanego wcześniej w bazie", async () => {
+      // Wpisy `order_history` zapisane starszą wersją kodu mają w kolumnie JSON
+      // pole `scenario`. Mapper whitelistuje pola, więc taki wiersz też nie może
+      // ujawnić trybu symulatora.
+      const { orderId, token, body } = await runScenarioAndReadHistory(
+        "SUCCESS",
+        "SMP-LEAK-OLD"
+      );
+      expect(body.items.length).toBeGreaterThan(0);
+
+      const acceptedRow = await prisma.orderHistory.findFirstOrThrow({
+        where: { orderId, eventType: "LAB_ORDER_ACCEPTED" }
+      });
+      await prisma.orderHistory.update({
+        where: { id: acceptedRow.id },
+        data: {
+          details: {
+            ...(acceptedRow.details as Record<string, unknown>),
+            scenario: "SAMPLE_REJECTED"
+          }
+        }
+      });
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/v1/orders/${orderId}/history?pageSize=100`,
+        headers: { authorization: `Bearer ${token}` }
+      });
+      expect(response.statusCode).toBe(200);
+      const refreshed = JSON.parse(response.body);
+      expectNoScenarioLeak(refreshed);
+    }, 25000);
   });
 
   it("publikuje endpoint webhooka w OpenAPI", async () => {

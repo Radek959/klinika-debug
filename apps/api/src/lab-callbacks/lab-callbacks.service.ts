@@ -184,45 +184,19 @@ export class LabCallbacksService {
     payload: LabResultsWebhookRequest
   ): Promise<void> {
     const rejectedSamples = this.validateRejectedSamples(order, payload);
-    const nextStatus: OrderStatus = "REJECTED";
+    const nextStatus = "REJECTED" as const;
     this.assertOrderStatusTransition(order.status, nextStatus);
 
-    const rejectedSampleIds = new Set(rejectedSamples.map((sample) => sample.sampleId));
+    const { completedTests, rejectedTests, acceptedSampleIds } =
+      this.validateRejectionConsistency(order, payload, rejectedSamples);
 
-    // Badania z wynikami (w tym callbacku albo wcześniej) są wykonane; wszystkie
-    // pozostałe są odrzucone razem z materiałem. Dzięki temu terminalne zlecenie
-    // REJECTED nie zostawia żadnego badania w statusie PENDING.
-    const resultMedicalTestIds = new Set(
-      payload.results.map((result) => result.medicalTestId)
-    );
-    const completedTests = order.tests.filter(
-      (test) => resultMedicalTestIds.has(test.medicalTestId) || test.status === "COMPLETED"
-    );
-    const rejectedTests = order.tests.filter(
-      (test) => !completedTests.some((completed) => completed.id === test.id)
-    );
-
-    const completedMaterialTypes = new Set(
-      completedTests.map((test) => test.medicalTest.materialType)
-    );
-    const acceptedSampleIds = order.samples
-      .filter(
-        (sample) =>
-          !rejectedSampleIds.has(sample.id) &&
-          completedMaterialTypes.has(sample.materialType)
-      )
-      .map((sample) => sample.id);
-
-    // Kontrakt dopuszcza listę odrzuconych próbek, a symulator wysyła dokładnie
-    // jedną. Ograniczenie unikalności historii (workspaceId, integrationEventId,
-    // eventType) pozwala na jeden wpis na zdarzenie, więc oś czasu opisuje
-    // deterministycznie wybraną pierwszą odrzuconą próbkę.
-    const primaryRejection = [...rejectedSamples].sort((left, right) =>
-      left.sampleId.localeCompare(right.sampleId)
-    )[0];
-    const primarySample = order.samples.find(
-      (sample) => sample.id === primaryRejection.sampleId
-    )!;
+    const rejectedSamplesForHistory = rejectedSamples.map((rejection) => ({
+      sampleId: rejection.sampleId,
+      materialType: order.samples.find((sample) => sample.id === rejection.sampleId)!
+        .materialType,
+      rejectionCode: rejection.rejectionCode,
+      rejectionReason: rejection.rejectionReason
+    }));
 
     await this.prisma.$transaction(async (tx) => {
       const createdEvent = await tx.processedLabEvent.createMany({
@@ -323,13 +297,13 @@ export class LabCallbacksService {
         integrationEventId: payload.eventId,
         previousStatus: order.status,
         newStatus: nextStatus,
+        // Jeden callback daje jeden wpis historii z kompletem odrzuconych
+        // próbek — ograniczenie unikalności (workspaceId, integrationEventId,
+        // eventType) pozostaje bez zmian.
         details: buildLabSampleRejectedDetails({
           eventId: payload.eventId,
           externalOrderId: payload.externalOrderId,
-          materialType: primarySample.materialType,
-          sampleId: primaryRejection.sampleId,
-          rejectionCode: primaryRejection.rejectionCode,
-          rejectionReason: primaryRejection.rejectionReason,
+          rejectedSamples: rejectedSamplesForHistory,
           completedTestCodes: completedTests.map((test) => test.medicalTest.code),
           rejectedTestCodes: rejectedTests.map((test) => test.medicalTest.code),
           previousStatus: order.status,
@@ -418,6 +392,113 @@ export class LabCallbacksService {
     }
 
     return rejectedSamples;
+  }
+
+  /**
+   * Sprawdza spójność terminalnego callbacka `REJECTED` przed jakąkolwiek
+   * zmianą w bazie.
+   *
+   * Sam brak wyniku nie może wystarczyć do oznaczenia badania jako `REJECTED` —
+   * inaczej callback odrzucający jedną próbkę mógłby pośrednio unieważnić
+   * badania korzystające z zupełnie innego, nieodrzuconego materiału. Powiązanie
+   * badanie → materiał → próbka jest jednoznaczne, ponieważ zlecenie ma co
+   * najwyżej jedną próbkę danego materiału.
+   *
+   * Zwraca gotową klasyfikację używaną potem w transakcji, żeby reguła oceny i
+   * reguła zapisu nie mogły się rozjechać.
+   */
+  private validateRejectionConsistency(
+    order: RejectionOrderContext,
+    payload: LabResultsWebhookRequest,
+    rejectedSamples: LabRejectedSamplePayload[]
+  ): {
+    completedTests: RejectionOrderContext["tests"];
+    rejectedTests: RejectionOrderContext["tests"];
+    acceptedSampleIds: string[];
+  } {
+    const rejectedSampleIds = new Set(rejectedSamples.map((sample) => sample.sampleId));
+    const rejectedMaterialTypes = new Set(
+      order.samples
+        .filter((sample) => rejectedSampleIds.has(sample.id))
+        .map((sample) => sample.materialType)
+    );
+
+    const testsByMedicalTestId = new Map(
+      order.tests.map((test) => [test.medicalTestId, test])
+    );
+    const resultMedicalTestIds = new Set<string>();
+
+    for (const result of payload.results) {
+      const test = testsByMedicalTestId.get(result.medicalTestId);
+      if (!test) {
+        throw this.rejectionValidationError(
+          "results.medicalTestId",
+          "MEDICAL_TEST_NOT_IN_ORDER",
+          "Wynik dotyczy badania, które nie należy do zlecenia o podanym externalOrderId."
+        );
+      }
+      if (resultMedicalTestIds.has(result.medicalTestId)) {
+        throw this.rejectionValidationError(
+          "results.medicalTestId",
+          "DUPLICATE_MEDICAL_TEST_RESULT",
+          "To samo badanie nie może wystąpić na liście wyników wielokrotnie."
+        );
+      }
+      if (rejectedMaterialTypes.has(test.medicalTest.materialType)) {
+        throw this.rejectionValidationError(
+          "results.medicalTestId",
+          "RESULT_FOR_REJECTED_MATERIAL",
+          "Callback nie może przekazać wyniku badania wykonanego z odrzuconego materiału."
+        );
+      }
+      resultMedicalTestIds.add(result.medicalTestId);
+    }
+
+    const completedTests: RejectionOrderContext["tests"] = [];
+    const rejectedTests: RejectionOrderContext["tests"] = [];
+
+    for (const test of order.tests) {
+      const isCompleted =
+        test.status === "COMPLETED" || resultMedicalTestIds.has(test.medicalTestId);
+      if (isCompleted) {
+        completedTests.push(test);
+        continue;
+      }
+      if (rejectedMaterialTypes.has(test.medicalTest.materialType)) {
+        rejectedTests.push(test);
+        continue;
+      }
+      // Badanie nie jest zakończone, nie ma wyniku w tym callbacku i korzysta z
+      // materiału, którego laboratorium nie odrzuciło. Terminalny callback nie
+      // może go ani zostawić w PENDING, ani pośrednio odrzucić.
+      throw this.rejectionValidationError(
+        "results",
+        "MISSING_RESULT_FOR_ACCEPTED_MATERIAL",
+        "Terminalny callback REJECTED musi przekazać wynik każdego badania, którego materiał nie został odrzucony."
+      );
+    }
+
+    const completedMedicalTestIds = new Set(
+      completedTests.map((test) => test.medicalTestId)
+    );
+    // Nieodrzucona próbka zostaje ACCEPTED tylko wtedy, gdy ma powiązane
+    // badania i wszystkie są zakończone.
+    const acceptedSampleIds = order.samples
+      .filter((sample) => {
+        if (rejectedSampleIds.has(sample.id)) {
+          return false;
+        }
+        const testsForSample = order.tests.filter(
+          (test) => test.medicalTest.materialType === sample.materialType
+        );
+        return (
+          testsForSample.length > 0 &&
+          testsForSample.every((test) => completedMedicalTestIds.has(test.medicalTestId))
+        );
+      })
+      .map((sample) => sample.id);
+
+    return { completedTests, rejectedTests, acceptedSampleIds };
   }
 
   private rejectionValidationError(

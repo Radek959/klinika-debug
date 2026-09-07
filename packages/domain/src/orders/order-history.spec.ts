@@ -138,15 +138,29 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
   it("buduje szczegóły synchronicznego przyjęcia przez laboratorium", () => {
     const details = buildLabOrderAcceptedDetails({
       externalOrderId: "EXT-1",
-      estimatedCompletionAt: "2026-09-07T10:00:00.000Z",
-      scenario: "SUCCESS"
+      estimatedCompletionAt: "2026-09-07T10:00:00.000Z"
     });
 
     expect(details).toEqual({
       externalOrderId: "EXT-1",
-      estimatedCompletionAt: "2026-09-07T10:00:00.000Z",
-      scenario: "SUCCESS"
+      estimatedCompletionAt: "2026-09-07T10:00:00.000Z"
     });
+  });
+
+  it("nie ujawnia aktywnego scenariusza symulatora w szczegółach przyjęcia zlecenia", () => {
+    // Historia zlecenia jest widoczna dla uczestnika warsztatu, więc nie może
+    // zdradzać, w jakim trybie pracuje symulator laboratorium.
+    const details = buildLabOrderAcceptedDetails({
+      externalOrderId: "EXT-1",
+      estimatedCompletionAt: "2026-09-07T10:00:00.000Z",
+      scenario: "SAMPLE_REJECTED"
+    } as unknown as Parameters<typeof buildLabOrderAcceptedDetails>[0]);
+
+    expect(Object.keys(details).sort()).toEqual([
+      "estimatedCompletionAt",
+      "externalOrderId"
+    ]);
+    expect(JSON.stringify(details)).not.toMatch(/scenario|SAMPLE_REJECTED/i);
   });
 
   it("buduje bezpieczne szczegóły callbacku bez pełnego payloadu", () => {
@@ -176,10 +190,14 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
     const input = {
       eventId: "evt-rejected-1",
       externalOrderId: "EXT-1",
-      materialType: "EDTA_BLOOD" as const,
-      sampleId: "sample-1",
-      rejectionCode: "HEMOLYZED",
-      rejectionReason: "Próbka zhemolizowana",
+      rejectedSamples: [
+        {
+          sampleId: "sample-1",
+          materialType: "EDTA_BLOOD" as const,
+          rejectionCode: "HEMOLYZED",
+          rejectionReason: "Próbka zhemolizowana"
+        }
+      ],
       completedTestCodes: ["URINE", "CRP"],
       rejectedTestCodes: ["MORF"],
       previousStatus: "PROCESSING" as const,
@@ -190,10 +208,14 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
       expect(buildLabSampleRejectedDetails(input)).toEqual({
         eventId: "evt-rejected-1",
         externalOrderId: "EXT-1",
-        materialType: "EDTA_BLOOD",
-        sampleId: "sample-1",
-        rejectionCode: "HEMOLYZED",
-        rejectionReason: "Próbka zhemolizowana",
+        rejectedSamples: [
+          {
+            sampleId: "sample-1",
+            materialType: "EDTA_BLOOD",
+            rejectionCode: "HEMOLYZED",
+            rejectionReason: "Próbka zhemolizowana"
+          }
+        ],
         completedTestCodes: ["CRP", "URINE"],
         rejectedTestCodes: ["MORF"],
         previousStatus: "PROCESSING",
@@ -201,13 +223,56 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
       });
     });
 
+    it("zachowuje komplet odrzuconych próbek w stabilnej kolejności", () => {
+      // Kontrakt callbacka dopuszcza odrzucenie wielu próbek naraz, a kolejność
+      // wpisu nie może zależeć od kolejności elementów w payloadzie.
+      const details = buildLabSampleRejectedDetails({
+        ...input,
+        rejectedSamples: [
+          {
+            sampleId: "sample-c",
+            materialType: "URINE",
+            rejectionCode: "INVALID_CONTAINER",
+            rejectionReason: "Nieprawidłowy pojemnik na materiał"
+          },
+          {
+            sampleId: "sample-a",
+            materialType: "EDTA_BLOOD",
+            rejectionCode: "HEMOLYZED",
+            rejectionReason: "Próbka zhemolizowana"
+          },
+          {
+            sampleId: "sample-b",
+            materialType: "SERUM",
+            rejectionCode: "INSUFFICIENT_VOLUME",
+            rejectionReason: "Niewystarczająca objętość próbki"
+          }
+        ]
+      });
+
+      expect(details.rejectedSamples.map((sample) => sample.sampleId)).toEqual([
+        "sample-a",
+        "sample-b",
+        "sample-c"
+      ]);
+      expect(details.rejectedSamples).toHaveLength(3);
+    });
+
     it("nie przepuszcza danych wrażliwych ani pełnego payloadu", () => {
-      // Pola spoza kontraktu nie mogą trafić do historii.
+      // Pola spoza kontraktu nie mogą trafić do historii — ani na poziomie
+      // szczegółów, ani wewnątrz pozycji listy odrzuconych próbek.
       const contaminatedInput = {
         ...input,
         pesel: "44051401458",
         barcode: "SMP-1",
-        payload: { secret: "x" }
+        payload: { secret: "x" },
+        rejectedSamples: [
+          {
+            ...input.rejectedSamples[0],
+            barcode: "SMP-1",
+            patientPesel: "44051401458"
+          }
+        ]
       };
       const details = buildLabSampleRejectedDetails(contaminatedInput);
 
@@ -218,15 +283,18 @@ describe("historia zlecenia — budowanie zdarzeń", () => {
           "completedTestCodes",
           "eventId",
           "externalOrderId",
-          "materialType",
           "newStatus",
           "previousStatus",
-          "rejectedTestCodes",
-          "rejectionCode",
-          "rejectionReason",
-          "sampleId"
+          "rejectedSamples",
+          "rejectedTestCodes"
         ].sort()
       );
+      expect(Object.keys(details.rejectedSamples[0]).sort()).toEqual([
+        "materialType",
+        "rejectionCode",
+        "rejectionReason",
+        "sampleId"
+      ]);
     });
   });
 });

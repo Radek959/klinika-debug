@@ -60,10 +60,14 @@ describe("OrderHistorySection", () => {
             eventType: "LAB_SAMPLE_REJECTED",
             eventId: "evt-rejected-1",
             externalOrderId: "EXT-1",
-            materialType: "EDTA_BLOOD",
-            sampleId: "sample-1",
-            rejectionCode: "HEMOLYZED",
-            rejectionReason: "Próbka zhemolizowana",
+            rejectedSamples: [
+              {
+                sampleId: "sample-1",
+                materialType: "EDTA_BLOOD",
+                rejectionCode: "HEMOLYZED",
+                rejectionReason: "Próbka zhemolizowana"
+              }
+            ],
             completedTestCodes: ["CRP"],
             rejectedTestCodes: ["MORF"],
             previousStatus: "SENT_TO_LAB",
@@ -78,9 +82,10 @@ describe("OrderHistorySection", () => {
     expect(
       await screen.findByText("Laboratorium odrzuciło próbkę")
     ).toBeInTheDocument();
-    expect(screen.getByText(/Odrzucony materiał: Krew \(EDTA\)/)).toBeInTheDocument();
     expect(
-      screen.getByText(/Przyczyna: Próbka zhemolizowana \(HEMOLYZED\)/)
+      screen.getByText(
+        /Odrzucone materiały: Krew \(EDTA\) — Próbka zhemolizowana \(HEMOLYZED\)/
+      )
     ).toBeInTheDocument();
     expect(screen.getByText(/Badania odrzucone: MORF/)).toBeInTheDocument();
     expect(screen.getByText(/Badania wykonane: CRP/)).toBeInTheDocument();
@@ -90,6 +95,57 @@ describe("OrderHistorySection", () => {
     expect(screen.queryByText("LAB_SAMPLE_REJECTED")).not.toBeInTheDocument();
     expect(screen.queryByText(/SAMPLE_REJECTED/)).not.toBeInTheDocument();
     expect(screen.queryByText(/EDTA_BLOOD/)).not.toBeInTheDocument();
+  });
+
+  it("pokazuje wszystkie odrzucone próbki wielomateriałowego zlecenia", async () => {
+    mockHistoryResponse(
+      historyResponse([
+        historyItem({
+          eventType: "LAB_SAMPLE_REJECTED",
+          actorType: "LAB",
+          actorUserId: null,
+          integrationEventId: "evt-rejected-all",
+          previousStatus: "SENT_TO_LAB",
+          newStatus: "REJECTED",
+          details: {
+            eventType: "LAB_SAMPLE_REJECTED",
+            eventId: "evt-rejected-all",
+            externalOrderId: "EXT-2",
+            rejectedSamples: [
+              {
+                sampleId: "sample-a",
+                materialType: "EDTA_BLOOD",
+                rejectionCode: "HEMOLYZED",
+                rejectionReason: "Próbka zhemolizowana"
+              },
+              {
+                sampleId: "sample-b",
+                materialType: "SERUM",
+                rejectionCode: "INSUFFICIENT_VOLUME",
+                rejectionReason: "Niewystarczająca objętość próbki"
+              }
+            ],
+            completedTestCodes: [],
+            rejectedTestCodes: ["CRP", "MORF"],
+            previousStatus: "SENT_TO_LAB",
+            newStatus: "REJECTED"
+          }
+        })
+      ])
+    );
+
+    render(<OrderHistorySection token="token" orderId="order-1" refreshKey={0} />);
+
+    const description = await screen.findByText(/Odrzucone materiały:/);
+    expect(description).toHaveTextContent(
+      "Krew (EDTA) — Próbka zhemolizowana (HEMOLYZED)"
+    );
+    expect(description).toHaveTextContent(
+      "Surowica — Niewystarczająca objętość próbki (INSUFFICIENT_VOLUME)"
+    );
+    expect(screen.getByText(/Badania odrzucone: CRP, MORF/)).toBeInTheDocument();
+    expect(screen.queryByText(/Badania wykonane:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/EDTA_BLOOD|SERUM/)).not.toBeInTheDocument();
   });
 
   it("pokazuje pustą historię", async () => {

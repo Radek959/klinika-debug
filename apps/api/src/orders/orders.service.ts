@@ -838,10 +838,12 @@ export class OrdersService {
           actorType: "LAB",
           occurredAt: sentAt,
           correlationId,
+          // Aktywny scenariusz symulatora (`job.scenario`) zostaje wyłącznie
+          // w technicznej kolejce `lab_jobs`. Historia zlecenia jest widoczna
+          // dla uczestnika warsztatu, więc nie może go ujawniać.
           details: buildLabOrderAcceptedDetails({
             externalOrderId: simulatorResult.externalOrderId,
-            estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString(),
-            scenario: simulatorResult.jobs[0].scenario
+            estimatedCompletionAt: simulatorResult.estimatedCompletionAt.toISOString()
           })
         });
 

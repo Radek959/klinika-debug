@@ -45,10 +45,16 @@ export interface OrderSentToLabHistoryDetails {
   newStatus: OrderStatus;
 }
 
+/**
+ * Szczegóły synchronicznego przyjęcia zlecenia przez laboratorium.
+ *
+ * Kontrakt celowo nie zawiera nazwy aktywnego scenariusza symulatora — jest to
+ * wewnętrzny tryb środowiska warsztatowego, którego uczestnik nie może odczytać
+ * z publicznego API.
+ */
 export interface LabOrderAcceptedHistoryDetails {
   externalOrderId: string;
   estimatedCompletionAt: string;
-  scenario: string;
 }
 
 export interface LabResultReceivedHistoryDetails {
@@ -61,23 +67,29 @@ export interface LabResultReceivedHistoryDetails {
   newStatus: OrderStatus;
 }
 
+/** Pojedyncza próbka odrzucona przez laboratorium w danym callbacku. */
+export interface LabSampleRejectedHistoryItem {
+  sampleId: string;
+  materialType: MaterialType;
+  rejectionCode: string;
+  rejectionReason: string;
+}
+
 /**
- * Szczegóły zdarzenia odrzucenia próbki przez laboratorium.
+ * Szczegóły zdarzenia odrzucenia próbek przez laboratorium.
  *
- * Zakres pól jest celowo zamknięty i nie zawiera danych pacjenta, kodu
+ * Jeden callback daje jeden wpis historii zawierający komplet odrzuconych
+ * próbek. Zakres pól jest celowo zamknięty i nie zawiera danych pacjenta, kodu
  * kreskowego próbki, pełnego payloadu callbacka ani sekretu webhooka.
  */
 export interface LabSampleRejectedHistoryDetails {
   eventId: string;
   externalOrderId: string;
-  materialType: MaterialType;
-  sampleId: string;
-  rejectionCode: string;
-  rejectionReason: string;
+  rejectedSamples: LabSampleRejectedHistoryItem[];
   completedTestCodes: string[];
   rejectedTestCodes: string[];
   previousStatus: OrderStatus;
-  newStatus: OrderStatus;
+  newStatus: "REJECTED";
 }
 
 export interface TechnicalErrorHistoryDetails {
