@@ -6,16 +6,17 @@ Ten katalog opisuje realizację MVP: aktualny etap, zakres kolejnych PR-ów, sta
 
 ## Aktualny etap prac
 
-Aktywny etap: **Etap 3 — zlecenia i próbki**, historia operacji zlecenia oraz brakujące elementy procesu.
+Aktywny etap: **Etap 4 — laboratorium**, pełne scenariusze symulatora i reguły retry.
 
-Rekomendowany następny PR: **Historia operacji zlecenia**.
+Historia operacji zlecenia (Etap 3) jest zaimplementowana w PR `feat/order-history`.
+
+Rekomendowany następny PR: **Scenariusz `PARTIAL_SUCCESS` symulatora laboratorium** (pierwszy brakujący zakres wskazany w [Etapie 4](04-laboratorium.md)).
 
 Zakres następnego PR-a powinien obejmować:
 
-- endpoint historii zlecenia w bieżącym workspace;
-- zapis zdarzeń biznesowych dla utworzenia, edycji, próbek, wysyłki i wyników;
-- widok historii na szczegółach zlecenia;
-- testy API, domenowe i frontendowe dla chronologii oraz izolacji workspace'u.
+- pełny scenariusz częściowego sukcesu w symulatorze laboratorium;
+- zgodność z domenowym statusem `PARTIAL` już obecnym w kodzie;
+- testy API i domenowe dla nowego scenariusza.
 
 Nie implementować tego zakresu w PR-ach organizacyjnych.
 
@@ -25,7 +26,7 @@ Nie implementować tego zakresu w PR-ach organizacyjnych.
 |---|---|---|
 | Etap 1 — fundament | `IMPLEMENTED` | Fundament aplikacji, deploymentu, sesji, workspace'ów, OpenAPI i testów jest obecny w kodzie. |
 | Etap 2 — pacjenci | `IMPLEMENTED` | Podstawowa obsługa pacjentów w API i UI jest obecna w kodzie. |
-| Etap 3 — zlecenia i próbki | `IN_PROGRESS` | Główny pion zleceń, katalogu badań, próbek, przebudowany UX nowego zlecenia i edycja `DRAFT` są zaimplementowane w PR; historia wymaga dalszej pracy. |
+| Etap 3 — zlecenia i próbki | `IMPLEMENTED` | Główny pion zleceń, katalogu badań, próbek, przebudowany UX nowego zlecenia, edycja `DRAFT` i historia operacji zlecenia są zaimplementowane w kodzie. |
 | Etap 4 — laboratorium | `IN_PROGRESS` | Wysyłka, idempotencja, trwała kolejka, scheduler, callback i sukces są zaimplementowane; pełne scenariusze i retry wymagają dalszej pracy. |
 | Etap 5 — dane i obserwowalność | `PLANNED` | Import, eksport, logi aplikacyjne i dokumentacja publikowana z aplikacji nie są ukończone. |
 | Etap 6 — admin i sterowanie | `PLANNED` | Panel `/admin`, reset i globalne sterowanie środowiskiem są zaplanowane. |
@@ -80,10 +81,11 @@ Ostatni przegląd planu: 2026-09-07.
 
 Podstawa oceny:
 
-- struktura repozytorium i aktualny `main` po pobraniu z `origin/main`;
+- struktura repozytorium i aktualny `main` po pobraniu z `origin/main`, w tym merge PR #19 (`b8008d8`, `feat/orders-draft-edit`) z edycją zlecenia `DRAFT`;
 - merge PR #18 (`4bada8a`, `feat/orders-new-ux`) z przebudową UX formularza nowego zlecenia;
-- PR `feat/orders-draft-edit` z endpointem `PATCH /api/v1/orders/{orderId}`, widokiem `/orders/{orderId}/edit`, współdzielonym formularzem zlecenia oraz testami domenowymi, API i UI;
-- pliki z PR #18: `apps/web/src/orders/PatientPicker.tsx`, `TestCatalogSelector.tsx`, `OrderSummary.tsx`, `NewOrderPage.tsx`, `OrdersUi.test.tsx`, `orderFormState.ts`, `orderFormState.test.ts` i `apps/web/src/styles.css`;
+- PR `feat/order-history` z modelem `OrderHistory`, migracją `20260907120000_order_history` z bezpiecznym backfillem `ORDER_CREATED`, endpointem `GET /api/v1/orders/{orderId}/history`, zapisem zdarzeń w transakcjach tworzenia, edycji, rejestracji próbki, wysyłki, synchronicznego przyjęcia przez laboratorium i callbacku wyników, oraz widokiem historii na `/orders/{orderId}`;
+- pliki PR `feat/order-history`: `prisma/schema.prisma`, `prisma/migrations/20260907120000_order_history/migration.sql`, `packages/domain/src/orders/order-history.ts`, `packages/api-contracts/src/order-history.ts`, `apps/api/src/order-history/*`, zmiany w `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/orders.controller.ts`, `apps/api/src/lab-callbacks/lab-callbacks.service.ts`, `apps/web/src/orders/OrderHistorySection.tsx`, `apps/web/src/orders/OrderDetailsPage.tsx`, `apps/web/src/ui/labels.ts`;
 - obecne kontrolery, serwisy, kontrakty, migracje i testy w `apps/`, `packages/` i `prisma/`;
-- brak historii operacji zlecenia, modułów importu/eksportu, powiadomień, `/admin` i kontrolowanych pakietów błędów w kodzie;
+- brak modułów importu/eksportu, powiadomień, `/admin` i kontrolowanych pakietów błędów w kodzie;
+- brak dowodu pozytywnego uruchomienia `npm run test:migration:orders`, `npm run test:migration:order-history` i `npm run test:integration` w tej sesji, ponieważ środowisko nie miało dostępu do MySQL ani do Dockera (ten sam znany brak co w sesji PR #19);
 - brak sprawdzenia działającego środowiska na Hostingerze w tej sesji, więc żaden zakres nie został podniesiony do `DEPLOYED`.

@@ -12,6 +12,7 @@ import {
   resultFlagLabels,
   sampleStatusLabels
 } from "../ui/labels";
+import { OrderHistorySection } from "./OrderHistorySection";
 
 export function OrderDetailsPage({ token }: { token: string }) {
   const { orderId } = useParams();
@@ -22,6 +23,7 @@ export function OrderDetailsPage({ token }: { token: string }) {
   const [success, setSuccess] = useState<string | null>(
     (location.state as { message?: string } | null)?.message ?? null
   );
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const requestId = useRef(0);
 
   const reload = useCallback(() => {
@@ -36,6 +38,7 @@ export function OrderDetailsPage({ token }: { token: string }) {
       .then((response) => {
         if (requestId.current === currentRequest) {
           setOrder(response);
+          setHistoryRefreshKey((current) => current + 1);
         }
       })
       .catch((caught) => {
@@ -212,6 +215,8 @@ export function OrderDetailsPage({ token }: { token: string }) {
           })
         )}
       </section>
+
+      <OrderHistorySection token={token} orderId={order.id} refreshKey={historyRefreshKey} />
     </>
   );
 }

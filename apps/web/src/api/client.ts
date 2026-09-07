@@ -5,6 +5,7 @@ import type {
   MeResponse,
   MedicalTestsListResponse,
   OrderDetailsResponse,
+  OrderHistoryListResponse,
   OrderResponse,
   OrdersListResponse,
   PatientResponse,
@@ -183,6 +184,35 @@ export async function registerSample(
     headers: authHeaders(token),
     body: JSON.stringify(payload)
   });
+}
+
+export interface OrderHistoryParams {
+  page?: number;
+  pageSize?: number;
+}
+
+export async function getOrderHistory(
+  token: string,
+  orderId: string,
+  params: OrderHistoryParams = {},
+  signal?: AbortSignal
+) {
+  const search = new URLSearchParams();
+  if (params.page !== undefined) {
+    search.set("page", String(params.page));
+  }
+  if (params.pageSize !== undefined) {
+    search.set("pageSize", String(params.pageSize));
+  }
+  const queryString = search.toString();
+
+  return request<OrderHistoryListResponse>(
+    `/api/v1/orders/${orderId}/history${queryString ? `?${queryString}` : ""}`,
+    {
+      headers: authHeaders(token),
+      signal
+    }
+  );
 }
 
 export async function sendOrderToLab(token: string, orderId: string) {

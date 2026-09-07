@@ -82,6 +82,22 @@ enum LabJobStatus {
   FAILED
 }
 
+enum OrderHistoryEventType {
+  ORDER_CREATED
+  ORDER_UPDATED
+  SAMPLE_REGISTERED
+  ORDER_SENT_TO_LAB
+  LAB_ORDER_ACCEPTED
+  LAB_RESULT_RECEIVED
+  TECHNICAL_ERROR
+}
+
+enum OrderHistoryActorType {
+  STAFF
+  SYSTEM
+  LAB
+}
+
 model Workspace {
   id        String   @id @default(cuid())
   name      String
@@ -99,6 +115,7 @@ model Workspace {
   results   Result[]
   labJobs   LabJob[]
   processedLabEvents ProcessedLabEvent[]
+  orderHistory OrderHistory[]
 
   @@map("workspaces")
 }
@@ -118,6 +135,7 @@ model User {
   sessions  UserSession[]
   createdOrders Order[]   @relation("OrderCreatedByUser")
   collectedSamples Sample[] @relation("SampleCollectedByUser")
+  orderHistoryEntries OrderHistory[] @relation("OrderHistoryActorUser")
 
   @@unique([workspaceId, id], map: "users_workspace_id_key")
   @@index([workspaceId])
@@ -278,6 +296,7 @@ model Order {
   results       Result[]
   labJobs       LabJob[]
   processedLabEvents ProcessedLabEvent[]
+  history       OrderHistory[]
 
   @@unique([workspaceId, id], map: "orders_workspace_id_key")
   @@index([workspaceId, patientId], map: "orders_workspace_patient_idx")
@@ -407,4 +426,30 @@ model ProcessedLabEvent {
   @@unique([workspaceId, eventId], map: "processed_lab_events_workspace_event_key")
   @@index([workspaceId, orderId], map: "processed_lab_events_workspace_order_idx")
   @@map("processed_lab_events")
+}
+
+model OrderHistory {
+  id                 String                @id @default(cuid())
+  workspaceId        String
+  orderId            String
+  sequence           Int                   @unique(map: "order_history_sequence_key") @default(autoincrement())
+  eventType          OrderHistoryEventType
+  actorType          OrderHistoryActorType
+  actorUserId        String?
+  occurredAt         DateTime
+  correlationId      String?
+  integrationEventId String?
+  previousStatus     OrderStatus?
+  newStatus          OrderStatus?
+  details            Json
+  createdAt          DateTime              @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [workspaceId, orderId], references: [workspaceId, id], onDelete: Cascade)
+  actorUser User?     @relation("OrderHistoryActorUser", fields: [workspaceId, actorUserId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@index([workspaceId, orderId, occurredAt, sequence], map: "order_history_workspace_order_occurred_idx")
+  @@index([workspaceId, actorUserId], map: "order_history_workspace_actor_idx")
+  @@unique([workspaceId, integrationEventId, eventType], map: "order_history_workspace_integration_event_key")
+  @@map("order_history")
 }
