@@ -67,7 +67,9 @@ describe("materiały warsztatowe", () => {
         return json({ user: authenticatedUser });
       }
       if (request.url === `/materials/logs/${material.filename}`) {
-        return new Response(sampleLogContent, { status: 200 });
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(new Response(sampleLogContent, { status: 200 })), 0);
+        });
       }
       return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
     });
