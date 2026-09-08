@@ -4,6 +4,7 @@ import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { CorrelationIdMiddleware } from "./common/correlation/correlation-id.middleware";
 import { PrismaModule } from "./common/prisma/prisma.module";
+import { DashboardModule } from "./dashboard/dashboard.module";
 import { getEnvFilePaths } from "./config/repo-paths";
 import { validateEnvironment } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
@@ -25,6 +26,7 @@ import { WorkshopConfigModule } from "./workshop-config/workshop-config.module";
     PrismaModule,
     HealthModule,
     AuthModule,
+    DashboardModule,
     PatientsModule,
     OrdersModule,
     TestsCatalogModule,
