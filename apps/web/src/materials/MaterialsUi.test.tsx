@@ -62,14 +62,16 @@ describe("materiały warsztatowe", () => {
 
   it("pokazuje stan ładowania, a następnie treść pobranego logu w podglądzie", async () => {
     const material = workshopLogs[0];
+    let resolveLogFetch: (response: Response) => void = () => undefined;
+    const logFetchPromise = new Promise<Response>((resolve) => {
+      resolveLogFetch = resolve;
+    });
     mockFetch((request) => {
       if (request.url === "/api/v1/auth/me") {
         return json({ user: authenticatedUser });
       }
       if (request.url === `/materials/logs/${material.filename}`) {
-        return new Promise((resolve) => {
-          setTimeout(() => resolve(new Response(sampleLogContent, { status: 200 })), 0);
-        });
+        return logFetchPromise;
       }
       return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
     });
@@ -78,6 +80,8 @@ describe("materiały warsztatowe", () => {
     render(<App />);
 
     expect(await screen.findByText("Ładowanie logu...")).toBeInTheDocument();
+
+    resolveLogFetch(new Response(sampleLogContent, { status: 200 }));
 
     await waitFor(() => {
       expect(screen.queryByText("Ładowanie logu...")).not.toBeInTheDocument();
