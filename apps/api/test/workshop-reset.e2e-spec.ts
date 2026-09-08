@@ -103,7 +103,8 @@ describe("workshop reset", () => {
         identifierType: "PESEL",
         pesel: "89112302659",
         birthDate: "1989-11-23",
-        gender: "MALE"
+        gender: "MALE",
+        phone: "+48123123199"
       }
     });
     expect(extraPatientResponse.statusCode).toBe(201);
