@@ -19,6 +19,7 @@ import {
   sampleStatusLabels
 } from "../ui/labels";
 import { OrderHistorySection } from "./OrderHistorySection";
+import { OrderProgressStepper } from "./OrderProgressStepper";
 
 export function OrderDetailsPage({ token }: { token: string }) {
   const { orderId } = useParams();
@@ -84,7 +85,14 @@ export function OrderDetailsPage({ token }: { token: string }) {
   return (
     <>
       <PageHeader
-        title={`Zlecenie: ${order.patient.firstName} ${order.patient.lastName}`}
+        title={
+          <>
+            Zlecenie:{" "}
+            <Link className="page-header-patient-link" to={`/patients/${order.patientId}`}>
+              {order.patient.firstName} {order.patient.lastName}
+            </Link>
+          </>
+        }
         actions={
           <>
             {order.status === "DRAFT" ? (
@@ -103,6 +111,8 @@ export function OrderDetailsPage({ token }: { token: string }) {
           · Priorytet: {orderPriorityLabels[order.priority]}
         </p>
       </PageHeader>
+
+      <OrderProgressStepper status={order.status} />
 
       {success ? (
         <p className="form-success" role="status" aria-live="polite">

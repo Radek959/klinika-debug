@@ -132,6 +132,78 @@ describe("interfejs zleceń", () => {
     expect(await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })).toBeInTheDocument();
   });
 
+  it("odtwarza filtr statusu z query stringa (deep link z dashboardu)", async () => {
+    window.history.pushState({}, "", "/orders?status=COMPLETED");
+    const requestedUrls: string[] = [];
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url.startsWith("/api/v1/orders?")) {
+        requestedUrls.push(url);
+        return json({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Zlecenia" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Status")).toHaveValue("COMPLETED");
+    await waitFor(() => {
+      expect(
+        requestedUrls.some((url) => new URL(url, "http://localhost").searchParams.get("status") === "COMPLETED")
+      ).toBe(true);
+    });
+  });
+
+  it("linkuje imię i nazwisko pacjenta w szczegółach zlecenia do jego profilu", async () => {
+    window.history.pushState({}, "", "/orders/order-1");
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(orderDetails());
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Anna Nowak" })).toHaveAttribute(
+      "href",
+      "/patients/patient-1"
+    );
+  });
+
+  it("pokazuje stepper postępu z opisem stanu, nie tylko kolorem", async () => {
+    window.history.pushState({}, "", "/orders/order-1");
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(orderDetails({ status: "SAMPLE_COLLECTED" }));
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    const stepper = await screen.findByRole("list", { name: "Postęp zlecenia" });
+    const items = within(stepper).getAllByRole("listitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "✓Zlecenie (zakończono)",
+      "✓Próbki (zakończono)",
+      "●Laboratorium (w trakcie)",
+      "○Wynik (oczekuje)"
+    ]);
+  });
+
   it("pokazuje odrzucenie wszystkich próbek po polsku i komunikat o braku wyników", async () => {
     mockFetch(({ url }) => {
       if (url === "/api/v1/auth/me") {
@@ -957,6 +1029,53 @@ describe("interfejs zleceń", () => {
       "href",
       "/orders/order-1"
     );
+  });
+
+  it("preselekcjonuje pacjenta z query param patientId, ale pozwala zmienić wybór", async () => {
+    window.history.pushState({}, "", "/orders/new?patientId=patient-1");
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/patients/patient-1") {
+        return json(orderDetails().patient);
+      }
+      if (url === "/api/v1/tests?pageSize=100") {
+        return json(medicalTestsResponse);
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("region", { name: "Wybrany pacjent" })
+    ).toHaveTextContent("Nowak Anna");
+    expect(
+      screen.getByRole("button", { name: "Wróć do wyszukiwania" })
+    ).toBeInTheDocument();
+  });
+
+  it("nie crashuje dla niepoprawnego patientId i startuje bez wybranego pacjenta", async () => {
+    window.history.pushState({}, "", "/orders/new?patientId=nieznany");
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/patients/nieznany") {
+        return jsonError(404, "PATIENT_NOT_FOUND", "Nie znaleziono pacjenta.");
+      }
+      if (url === "/api/v1/tests?pageSize=100") {
+        return json(medicalTestsResponse);
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Nowe zlecenie" })).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: "Pacjent" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Wybrany pacjent" })).not.toBeInTheDocument();
   });
 
   it("zastępuje ręczne patientId wyszukiwanym pickerem aktywnych pacjentów", async () => {

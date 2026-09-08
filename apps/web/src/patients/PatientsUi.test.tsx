@@ -256,6 +256,26 @@ describe("interfejs pacjentów", () => {
     ).toBeInTheDocument();
   });
 
+  it("pokazuje link Utwórz zlecenie prowadzący do formularza z preselekcją pacjenta", async () => {
+    window.history.pushState({}, "", "/patients/patient-1");
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/patients/patient-1") {
+        return json(patient);
+      }
+      return jsonError(404, "PATIENT_NOT_FOUND", "Nie znaleziono pacjenta.");
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Anna Nowak" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Utwórz zlecenie" })
+    ).toHaveAttribute("href", "/orders/new?patientId=patient-1");
+  });
+
   it("rozróżnia 404, błąd techniczny i błąd połączenia w szczegółach", async () => {
     await expectDetailsLoadError({
       response: jsonError(404, "PATIENT_NOT_FOUND", "Nie znaleziono pacjenta."),

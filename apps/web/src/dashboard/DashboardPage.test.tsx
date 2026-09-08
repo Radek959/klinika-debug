@@ -120,6 +120,45 @@ describe("panel główny", () => {
     ).toHaveAttribute("href", "/orders/new");
   });
 
+  it("linkuje statusy zleceń i aktywność pacjentów do przefiltrowanych list", async () => {
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/dashboard/summary") {
+        return json(summary);
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("4")).toBeInTheDocument();
+
+    const patientsCard = screen
+      .getByRole("heading", { name: "Pacjenci" })
+      .closest("section") as HTMLElement;
+    const ordersCard = screen
+      .getByRole("heading", { name: "Zlecenia" })
+      .closest("section") as HTMLElement;
+
+    expect(
+      within(patientsCard).getByText("Aktywni").closest("a")
+    ).toHaveAttribute("href", "/patients?active=true");
+    expect(
+      within(patientsCard).getByText("Nieaktywni").closest("a")
+    ).toHaveAttribute("href", "/patients?active=false");
+    expect(
+      within(ordersCard).getByText("Zakończone").closest("a")
+    ).toHaveAttribute("href", "/orders?status=COMPLETED");
+    expect(
+      within(ordersCard).getByText("Błąd techniczny").closest("a")
+    ).toHaveAttribute("href", "/orders?status=TECHNICAL_ERROR");
+    expect(
+      within(ordersCard).getByText("W trakcie realizacji").closest("a")
+    ).toHaveAttribute("href", "/orders?status=PROCESSING");
+  });
+
   it("pokazuje błąd, ale nadal wyświetla szybkie akcje, gdy podsumowanie się nie załaduje", async () => {
     mockFetch(({ url }) => {
       if (url === "/api/v1/auth/me") {

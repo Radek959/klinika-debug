@@ -126,7 +126,7 @@ button {
 }
 
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.72;
 }
 
@@ -272,6 +272,82 @@ button:disabled {
 
 .page-header p {
   margin: 8px 0 0;
+  color: #52635b;
+}
+
+.page-header-patient-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: #c8d5cd;
+}
+
+.page-header-patient-link:hover,
+.page-header-patient-link:focus-visible {
+  text-decoration-color: currentColor;
+}
+
+.order-progress-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  margin: 0 0 22px;
+  padding: 0;
+  list-style: none;
+}
+
+.order-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #52635b;
+}
+
+.order-progress-step-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid #c8d5cd;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.order-progress-step-done {
+  color: #175541;
+}
+
+.order-progress-step-done .order-progress-step-symbol {
+  border-color: #256450;
+  background: #e8f0eb;
+  color: #175541;
+}
+
+.order-progress-step-current {
+  color: #17211c;
+  font-weight: 700;
+}
+
+.order-progress-step-current .order-progress-step-symbol {
+  border-color: #256450;
+  background: #256450;
+  color: #ffffff;
+}
+
+.order-progress-step-error {
+  color: #7a1d16;
+  font-weight: 700;
+}
+
+.order-progress-step-error .order-progress-step-symbol {
+  border-color: #a1281f;
+  background: #f6dedb;
+  color: #a1281f;
+}
+
+.order-progress-step-state {
+  font-weight: 400;
   color: #52635b;
 }
 
@@ -779,20 +855,31 @@ th {
   margin: 14px 0 18px;
 }
 
-.dashboard-stat-list div {
+.dashboard-stat-list div,
+.dashboard-stat-list .dashboard-stat-link {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
+.dashboard-stat-link {
+  border-radius: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.dashboard-stat-link:hover,
+.dashboard-stat-link:focus-visible {
+  text-decoration: underline;
+}
+
 .dashboard-stat-list dt {
-  overflow: hidden;
   color: #52635b;
   font-weight: 500;
   font-size: 0.92rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .dashboard-stat-list dd {

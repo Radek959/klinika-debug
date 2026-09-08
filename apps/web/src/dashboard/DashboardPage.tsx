@@ -60,14 +60,14 @@ export function DashboardPage({
           <p className="dashboard-number">{summary?.patients.total ?? "—"}</p>
           <p className="muted">pacjentów</p>
           <dl className="dashboard-stat-list">
-            <div>
+            <Link className="dashboard-stat-link" to="/patients?active=true">
               <dt>Aktywni</dt>
               <dd>{summary?.patients.active ?? "—"}</dd>
-            </div>
-            <div>
+            </Link>
+            <Link className="dashboard-stat-link" to="/patients?active=false">
               <dt>Nieaktywni</dt>
               <dd>{summary?.patients.inactive ?? "—"}</dd>
-            </div>
+            </Link>
           </dl>
           <div className="dashboard-actions">
             <Link className="button-link" to="/patients">
@@ -86,10 +86,10 @@ export function DashboardPage({
           <dl className="dashboard-stat-list">
             {(Object.keys(orderStatusLabels) as Array<keyof typeof orderStatusLabels>).map(
               (status) => (
-                <div key={status}>
+                <Link key={status} className="dashboard-stat-link" to={`/orders?status=${status}`}>
                   <dt>{orderStatusLabels[status]}</dt>
                   <dd>{summary?.orders.byStatus[status] ?? "—"}</dd>
-                </div>
+                </Link>
               )
             )}
           </dl>

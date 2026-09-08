@@ -1,11 +1,41 @@
-import { Link, useNavigate } from "react-router-dom";
-import { createOrder } from "../api/client";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { createOrder, getPatient } from "../api/client";
 import { PageHeader } from "../layout/AppLayout";
-import { OrderForm } from "./OrderForm";
+import { OrderForm, type OrderFormState } from "./OrderForm";
 import { buildCreateOrderPayload } from "./orderFormState";
 
 export function NewOrderPage({ token }: { token: string }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const patientId = searchParams.get("patientId");
+  const [initialState, setInitialState] = useState<OrderFormState | undefined>(undefined);
+  const [isLoadingPatient, setIsLoadingPatient] = useState(Boolean(patientId));
+
+  useEffect(() => {
+    if (!patientId) {
+      setIsLoadingPatient(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setIsLoadingPatient(true);
+    void getPatient(token, patientId, controller.signal)
+      .then((patient) => {
+        setInitialState({ selectedPatient: patient, priority: "ROUTINE", selectedTests: {} });
+      })
+      .catch(() => {
+        // Nieprawidłowy albo niedostępny patientId (np. spoza workspace'u) —
+        // formularz startuje bez wybranego pacjenta zamiast się wywrócić.
+      })
+      .finally(() => setIsLoadingPatient(false));
+
+    return () => controller.abort();
+  }, [patientId, token]);
+
+  if (isLoadingPatient) {
+    return <p className="muted">Ładowanie danych pacjenta...</p>;
+  }
 
   return (
     <>
@@ -23,6 +53,7 @@ export function NewOrderPage({ token }: { token: string }) {
         submitLabel="Utwórz zlecenie"
         submittingLabel="Zapisywanie..."
         cancelTo="/orders"
+        initialState={initialState}
         onSubmit={async (state, catalog) => {
           if (!state.selectedPatient) {
             return;
