@@ -1,29 +1,41 @@
 # Etap 7 — kontrolowane błędy
 
-**Status etapu:** `PLANNED`
+**Status etapu:** `SUPERSEDED` przez Workshop MVP  
+**Status historyczny:** pierwotnie `PLANNED`  
+**Aktualne źródło prawdy:** [`workshop-mvp.md`](workshop-mvp.md)
 
-## Zakres
+## Decyzja
 
-- globalny mechanizm pakietów błędów;
-- domyślny tryb `CLEAN`;
-- maksymalnie jeden aktywny pakiet błędów;
-- jawne strategie lub przełączniki w wyznaczonych warstwach;
-- wewnętrzny katalog błędów;
-- początkowe pakiety: `PATIENT_DATA`, `ORDER_FLOW`, `LAB_INTEGRATION`, `LOGS`, `PERFORMANCE`;
-- testy potwierdzające przywrócenie poprawnego zachowania po wyłączeniu pakietu.
+Pierwotny Etap 7 zakładał ogólny mechanizm pakietów błędów i pięć kategorii defektów. To zbyt szeroki zakres jak na narzędzie do około 6-godzinnego szkolenia.
 
-## Stan na `main`
+Nie budujemy frameworka pakietów błędów.
 
-Nie widać jeszcze mechanizmu globalnych pakietów błędów ani wewnętrznego katalogu defektów. Etap pozostaje zaplanowany.
+## Wymagany zakres Workshop MVP
 
-## Zasady realizacji
+Implementujemy 2–3 deterministyczne defekty szkoleniowe:
 
-- Celowe błędy nie mogą być mieszane z przypadkowymi regresjami.
-- Każdy błąd musi być deterministyczny, opisany i możliwy do wyłączenia.
-- Pakiety błędów nie mogą zależeć od pojedynczego konta lub workspace'u.
-- Tryby symulatora laboratorium są poprawnymi scenariuszami biznesowymi, a nie pakietami defektów.
-- Katalog błędów nie jest dokumentacją produktową i nie jest ujawniany uczestnikom.
+- `PATIENT_GUARDIAN` — reguły pacjenta niepełnoletniego/opiekuna;
+- `ORDER_FLOW` — proces zlecenia, próbek lub statusów;
+- `API_DIAGNOSTICS` — problem wymagający przejścia z UI do DevTools/API i `correlationId`.
 
-## Dowody weryfikacji
+Zasady:
 
-Do uzupełnienia w PR-ach implementacyjnych: testy trybu `CLEAN`, testy aktywacji i dezaktywacji pakietów, wyniki CI.
+- `CLEAN` oznacza poprawne zachowanie zgodne z dokumentacją produktową;
+- aktywny może być maksymalnie jeden defekt;
+- defekty są globalne, nie per konto/workspace;
+- każdy defekt jest deterministyczny;
+- każdy defekt można łatwo wyłączyć;
+- testy potwierdzają zarówno `CLEAN`, jak i celowo zmienione zachowanie;
+- wewnętrzna nazwa defektu nie jest ujawniana uczestnikowi.
+
+## Świadomie odrzucony zakres
+
+Nie implementujemy przed warsztatem:
+
+- ogólnego frameworka pluginów/strategii;
+- pakietów `PATIENT_DATA`, `ORDER_FLOW`, `LAB_INTEGRATION`, `LOGS`, `PERFORMANCE` jako osobnej architektury;
+- wielu jednocześnie aktywnych błędów;
+- konfiguracji defektów per workspace;
+- katalogu defektów dostępnego przez UI uczestnika.
+
+Szczegóły: `docs/specyfikacja-mvp.md`, `docs/architektura-techniczna.md`, `docs/warsztat/przebieg-szkolenia.md`.

@@ -1,26 +1,31 @@
 # Klinika Debug — dokumentacja produktowa
 
-**Wersja dokumentu:** 1.1  
-**Status:** zaakceptowana  
+**Wersja dokumentu:** 2.0  
+**Status:** zaakceptowana dla Workshop MVP  
 **Produkt:** Klinika Debug
 
 ## 1. Cel dokumentu
 
-Dokument opisuje funkcje, procesy i reguły biznesowe systemu Klinika Debug. Jest źródłem wiedzy o oczekiwanym zachowaniu aplikacji oraz integracji z zewnętrznym laboratorium.
+Dokument opisuje zachowanie Kliniki Debug widoczne dla użytkownika oraz reguły biznesowe potrzebne do pracy z aplikacją.
 
-Dokumentacja dotyczy środowiska demonstracyjnego. Wszystkie dane pacjentów, personelu, zleceń i wyników są syntetyczne. System nie jest przeznaczony do przechowywania prawdziwych danych medycznych ani podejmowania decyzji dotyczących zdrowia.
+Jest źródłem prawdy dla uczestnika szkolenia podczas analizy wymagań, projektowania testów, generowania danych, pracy z API i raportowania błędów.
+
+Dokumentacja opisuje wyłącznie oczekiwane, poprawne zachowanie produktu. Nie opisuje wewnętrznych narzędzi prowadzącego ani sposobu przygotowywania scenariuszy szkoleniowych.
+
+Klinika Debug jest środowiskiem demonstracyjnym. Wszystkie dane pacjentów, personelu, zleceń i wyników są syntetyczne. System nie jest przeznaczony do przechowywania prawdziwych danych medycznych ani podejmowania decyzji dotyczących zdrowia.
 
 ## 2. Opis produktu
 
 Klinika Debug jest systemem używanym przez personel fikcyjnej placówki medycznej do:
 
 - rejestrowania i wyszukiwania pacjentów;
-- tworzenia zleceń badań laboratoryjnych;
+- tworzenia i edytowania zleceń badań laboratoryjnych;
 - rejestrowania pobrania materiału;
 - wysyłania zleceń do zewnętrznego laboratorium;
 - śledzenia statusu realizacji zlecenia;
 - odbierania i prezentowania wyników;
-- przeglądania historii operacji wykonanych na zleceniu.
+- przeglądania historii operacji wykonanych na zleceniu;
+- diagnozowania problemów przy pomocy REST API i `correlationId`.
 
 System nie wykonuje badań samodzielnie. Realizacja badania jest obsługiwana przez zewnętrzne laboratorium komunikujące się z Kliniką Debug przez API.
 
@@ -30,350 +35,379 @@ Interfejs Kliniki Debug jest dostępny w języku polskim. Dotyczy to w szczegól
 
 - nawigacji, nazw ekranów, etykiet pól i przycisków;
 - komunikatów walidacyjnych i komunikatów błędów;
-- powiadomień i potwierdzeń operacji;
 - nazw statusów prezentowanych użytkownikowi;
-- dokumentacji produktowej i opisów w dokumentacji OpenAPI.
+- historii operacji;
+- opisów w dokumentacji OpenAPI.
 
-Techniczne nazwy pól API, endpointów, kodów błędów i wartości enum pozostają w języku angielskim. Interfejs prezentuje ich polskie odpowiedniki. Przełączanie języka nie jest dostępne.
+Techniczne nazwy pól API, endpointów, kodów błędów i wartości enum pozostają w języku angielskim. Interfejs prezentuje ich polskie odpowiedniki.
 
-## 3. Zakres systemu
+## 3. Zakres Workshop MVP
 
 ### 3.1. Funkcje objęte zakresem
 
-- logowanie użytkownika;
+- logowanie użytkownika `STAFF`;
+- izolacja danych placówek;
 - obsługa pacjentów;
 - katalog badań;
-- tworzenie i edytowanie zleceń;
+- tworzenie i edytowanie zleceń w `DRAFT`;
 - obsługa wymaganych próbek;
 - integracja z laboratorium;
 - prezentowanie statusów i wyników;
-- historia zmian zlecenia;
-- import pacjentów z pliku CSV;
-- eksport danych do CSV i JSON;
-- interfejs REST API;
+- wyniki częściowe;
+- odrzucenie próbek;
+- błędy walidacji laboratorium;
+- obsługa 429, 503 i timeoutów;
+- automatyczne ponawianie komunikacji;
+- historia operacji zlecenia;
+- `correlationId`;
+- REST API;
 - dokumentacja OpenAPI.
 
 ### 3.2. Funkcje poza zakresem
 
-- umawianie wizyt;
-- rozliczenia z pacjentem lub ubezpieczycielem;
-- wystawianie recept i skierowań;
-- interpretacja medyczna wyników;
-- proponowanie diagnozy lub leczenia;
-- przechowywanie obrazów diagnostycznych;
-- komunikacja z rzeczywistymi systemami medycznymi.
+Workshop MVP nie obejmuje:
+
+- umawiania wizyt;
+- rozliczeń z pacjentem lub ubezpieczycielem;
+- recept i skierowań;
+- interpretacji medycznej wyników;
+- proponowania diagnozy lub leczenia;
+- komunikacji z rzeczywistymi systemami medycznymi;
+- samodzielnej rejestracji kont;
+- resetowania hasła przez e-mail;
+- importu pacjentów z CSV;
+- eksportu danych do CSV lub JSON;
+- systemu powiadomień użytkownika;
+- rozbudowanego dashboardu analitycznego;
+- wbudowanej wyszukiwarki logów;
+- osobnego widoku dokumentacji produktowej w aplikacji.
 
 ## 4. Organizacja danych
 
-Każde konto jest przypisane do jednej placówki. Dane placówek są od siebie odseparowane. Użytkownik może przeglądać i modyfikować wyłącznie pacjentów, zlecenia, próbki, wyniki i historię swojej placówki.
+Każde konto `STAFF` jest przypisane do dokładnie jednej placówki (`workspace`).
+
+Dane placówek są od siebie odseparowane. Użytkownik może przeglądać i modyfikować wyłącznie pacjentów, zlecenia, próbki, wyniki i historię swojej placówki.
 
 Katalog badań jest wspólny dla wszystkich placówek i dostępny tylko do odczytu.
 
+Identyfikatory zasobów z innego workspace'u nie mogą umożliwiać dostępu do cudzych danych.
+
 ## 5. Użytkownicy systemu
 
-W procesie występują dwie odpowiedzialności biznesowe:
+W procesie można wyróżnić dwie odpowiedzialności biznesowe:
 
 | Persona | Typowe czynności |
 |---|---|
-| Lekarz | Wyszukanie pacjenta, wybór badań, utworzenie zlecenia, przegląd wyników |
-| Pielęgniarka | Rejestracja danych pacjenta, potwierdzenie pobrania materiału, wysłanie zlecenia do laboratorium |
+| Lekarz | wyszukanie pacjenta, wybór badań, utworzenie zlecenia, przegląd wyników |
+| Pielęgniarka | rejestracja pacjenta, pobranie materiału, wysłanie zlecenia do laboratorium |
 
-Aktualna wersja systemu posiada jeden profil uprawnień: **personel placówki**. Każde konto z tym profilem może wykonać wszystkie czynności dostępne lekarzowi i pielęgniarce.
+Aktualna wersja systemu posiada jeden profil uprawnień: **personel placówki (`STAFF`)**. Każde konto z tym profilem może wykonać cały główny proces.
 
-System zapisuje identyfikator użytkownika wykonującego każdą operację. Informacja jest widoczna w historii zlecenia.
+System zapisuje użytkownika wykonującego operację, gdy jest to istotne dla historii procesu.
 
 ## 6. Słownik pojęć
 
 | Pojęcie | Znaczenie |
 |---|---|
-| Pacjent | Osoba, dla której tworzone jest zlecenie badania |
-| Zlecenie | Zestaw jednego lub wielu badań zleconych dla jednego pacjenta |
-| Badanie | Pozycja z katalogu określająca analizę wykonywaną przez laboratorium |
-| Parametr | Pojedyncza wartość zwracana w wyniku badania |
-| Materiał | Rodzaj materiału wymagany do wykonania badania, np. krew EDTA, surowica lub mocz |
-| Próbka | Konkretna porcja materiału pobrana od pacjenta i przypisana do zlecenia |
-| Laboratorium | Zewnętrzny system przyjmujący zlecenia i zwracający rezultaty przez API |
-| Wynik częściowy | Rezultat zawierający odpowiedź tylko dla części badań ze zlecenia |
-| Correlation ID | Identyfikator łączący operację w aplikacji, komunikację API i wpisy w logach |
-| Workspace | Odseparowany obszar danych jednej placówki |
+| Pacjent | osoba, dla której tworzone jest zlecenie |
+| Zlecenie | zestaw jednego lub wielu badań dla jednego pacjenta |
+| Badanie | pozycja katalogu określająca analizę wykonywaną przez laboratorium |
+| Parametr | pojedyncza wartość zwracana w wyniku badania |
+| Materiał | rodzaj materiału wymagany do wykonania badania, np. krew EDTA, surowica lub mocz |
+| Próbka | konkretna porcja materiału pobrana od pacjenta i przypisana do zlecenia |
+| Laboratorium | zewnętrzny system przyjmujący zlecenia i zwracający rezultaty |
+| Wynik częściowy | wynik dotyczący tylko części badań ze zlecenia |
+| `correlationId` | identyfikator pozwalający powiązać operację, odpowiedź API, historię i logi |
+| Workspace | odseparowany obszar danych jednej placówki |
 
-## 7. Model domenowy
+## 7. Pacjent
 
-### 7.1. Pacjent
+Pacjent zawiera m.in.:
 
-Pacjent zawiera: `patientId`, imię, nazwisko, typ identyfikatora, PESEL albo numer dokumentu, datę urodzenia, płeć, obywatelstwo, telefon, e-mail, adres zamieszkania, opcjonalne dane opiekuna oraz daty utworzenia i modyfikacji.
+- imię i nazwisko;
+- PESEL albo dane innego dokumentu;
+- datę urodzenia;
+- płeć;
+- obywatelstwo;
+- telefon i/lub e-mail;
+- adres;
+- opcjonalne dane opiekuna;
+- status aktywności.
 
-### 7.2. Zlecenie
+### 7.1. Identyfikacja pacjenta
 
-Zlecenie zawiera: `orderId`, identyfikator pacjenta, listę badań, priorytet, dane dodatkowe wymagane przez badania, listę próbek, status, identyfikator zewnętrzny, `correlationId`, daty procesu i historię zmian.
+Dostępne są dwa typy identyfikatora:
 
-### 7.3. Próbka
+- `PESEL`;
+- `OTHER_DOCUMENT`.
 
-Próbka zawiera: `sampleId`, kod kreskowy, rodzaj materiału, czas pobrania, identyfikator użytkownika rejestrującego pobranie, status oraz opcjonalną przyczynę odrzucenia.
-
-### 7.4. Wynik
-
-Wynik zawiera: kod badania, kod parametru, wartość liczbową albo tekstową, jednostkę, opcjonalny zakres referencyjny, oznaczenie `LOW`, `NORMAL`, `HIGH` albo `NOT_APPLICABLE`, czas wykonania i status.
-
-Zakres referencyjny pochodzi z odpowiedzi laboratorium. Klinika Debug nie oblicza go samodzielnie.
-
-## 8. Dane pacjenta i walidacja
-
-### 8.1. Identyfikacja pacjenta
-
-Dostępne typy identyfikatora:
-
-- `PESEL` — dla pacjenta posiadającego numer PESEL;
-- `OTHER_DOCUMENT` — dla pacjenta bez numeru PESEL.
-
-### 8.2. Reguły dla numeru PESEL
+### 7.2. Reguły PESEL
 
 - PESEL składa się z dokładnie 11 cyfr.
-- Suma kontrolna i zakodowana data urodzenia muszą być prawidłowe.
-- Data urodzenia i płeć w formularzu muszą być zgodne z numerem PESEL.
-- PESEL jest unikalny w obrębie placówki.
+- Suma kontrolna musi być prawidłowa.
+- Data urodzenia zakodowana w PESEL-u musi być prawidłowa.
+- Data urodzenia formularza musi być zgodna z PESEL-em.
+- Płeć formularza musi być zgodna z PESEL-em.
+- PESEL jest unikalny w obrębie workspace'u.
 
-### 8.3. Pacjent bez numeru PESEL
+### 7.3. Pacjent bez PESEL-u
 
-Wymagane są: rodzaj dokumentu, numer dokumentu, kraj wydania, data urodzenia i płeć. Połączenie rodzaju dokumentu, numeru i kraju wydania musi być unikalne w obrębie placówki.
+Dla `OTHER_DOCUMENT` wymagane są:
 
-### 8.4. Pozostałe reguły
+- rodzaj dokumentu;
+- numer dokumentu;
+- kraj wydania;
+- data urodzenia;
+- płeć.
 
-- Imię i nazwisko są wymagane i mogą zawierać od 2 do 60 znaków.
+Połączenie rodzaju dokumentu, numeru i kraju wydania musi być unikalne w obrębie workspace'u.
+
+### 7.4. Pozostałe reguły
+
+- Imię i nazwisko są wymagane i mają od 2 do 60 znaków.
 - Dozwolone są polskie znaki, spacje, apostrof i łącznik.
-- Wymagany jest przynajmniej jeden sposób kontaktu: telefon albo e-mail.
-- Polski telefon może zostać podany jako dziewięć cyfr albo z prefiksem `+48`.
-- Dla pacjenta poniżej 18 lat wymagane są imię, nazwisko i sposób kontaktu do opiekuna.
-- Pacjenta posiadającego zlecenia nie można usunąć; można oznaczyć go jako nieaktywnego.
+- Wymagany jest co najmniej jeden sposób kontaktu: telefon albo e-mail.
+- Polski numer telefonu może zostać zapisany jako dziewięć cyfr albo z prefiksem `+48`.
+- Dla pacjenta poniżej 18 lat wymagane są dane opiekuna i co najmniej jeden sposób kontaktu z opiekunem.
+- Pacjenta posiadającego zlecenia nie usuwa się fizycznie; można oznaczyć go jako nieaktywnego.
+- Nowego zlecenia nie można utworzyć dla nieaktywnego pacjenta.
 
-## 9. Katalog badań
+## 8. Katalog badań
 
-Każde badanie posiada kod, nazwę, opis, wymagany materiał, listę parametrów, wymagane potwierdzenia, przewidywany czas realizacji i status aktywności.
+Workshop MVP zawiera pięć badań:
 
-| Kod | Badanie | Materiał | Dodatkowy warunek | Czas realizacji |
-|---|---|---|---|---|
-| `MORF` | Morfologia krwi | Krew EDTA | Brak | 5 minut |
-| `CRP` | CRP | Surowica | Brak | 5 minut |
-| `TSH` | TSH | Surowica | Brak | 5 minut |
-| `GLU` | Glukoza | Surowica | Potwierdzenie przygotowania pacjenta | 5 minut |
-| `URINE` | Badanie ogólne moczu | Mocz | Brak | 5 minut |
+| Kod | Badanie | Materiał | Dodatkowy warunek |
+|---|---|---|---|
+| `MORF` | Morfologia krwi | Krew EDTA | brak |
+| `CRP` | CRP | Surowica | brak |
+| `TSH` | TSH | Surowica | brak |
+| `GLU` | Glukoza | Surowica | potwierdzenie przygotowania pacjenta |
+| `URINE` | Badanie ogólne moczu | Mocz | brak |
 
-Wszystkie wyniki i zakresy w środowisku demonstracyjnym są syntetyczne i nie służą do interpretacji medycznej.
+Katalog badań jest wspólny dla wszystkich workspace'ów i tylko do odczytu dla użytkownika `STAFF`.
 
-Badania nieaktywnego nie można dodać do nowego zlecenia. Dezaktywacja nie zmienia istniejących zleceń.
+Badania nieaktywnego nie można dodać do nowego zlecenia. Dezaktywacja badania nie zmienia wcześniej utworzonych zleceń.
 
-## 10. Tworzenie zlecenia
+Wszystkie wyniki i zakresy referencyjne są syntetyczne.
 
-- Zlecenie dotyczy dokładnie jednego aktywnego pacjenta.
-- Musi zawierać co najmniej jedno aktywne badanie.
-- Tego samego badania nie można dodać więcej niż raz.
-- Dostępne priorytety to `ROUTINE` oraz `URGENT`.
-- Pola dodatkowe wymagane przez wybrane badania muszą zostać uzupełnione.
-- Badania wymagające tego samego materiału są grupowane w jednej próbce.
-- Różne materiały powodują utworzenie osobnych próbek.
-- Zmiana badań w statusie `DRAFT` ponownie wylicza wymagane próbki.
-- Zlecenie można edytować wyłącznie w statusie `DRAFT`.
-- Zarejestrowanie pierwszej z wymaganych próbek zmienia status zlecenia na `SAMPLE_COLLECTION_IN_PROGRESS` i blokuje zmianę pacjenta oraz badań.
+## 9. Tworzenie i edycja zlecenia
 
-Przykład: `CRP`, `TSH` i `URINE` wymagają dwóch próbek — surowicy oraz moczu.
+Zlecenie:
 
-## 11. Obsługa próbek
+- dotyczy dokładnie jednego aktywnego pacjenta;
+- musi zawierać co najmniej jedno aktywne badanie;
+- nie może zawierać tego samego badania więcej niż raz;
+- ma priorytet `ROUTINE` albo `URGENT`;
+- wymaga uzupełnienia pól dodatkowych wymaganych przez wybrane badania;
+- automatycznie wylicza wymagane rodzaje próbek.
 
-| Status | Znaczenie |
-|---|---|
-| `REQUIRED` | System ustalił, że próbka jest potrzebna |
-| `COLLECTED` | Zarejestrowano pobranie i kod kreskowy |
-| `SENT` | Próbka została wysłana do laboratorium |
-| `ACCEPTED` | Laboratorium zaakceptowało próbkę |
-| `REJECTED` | Laboratorium odrzuciło próbkę |
+Badania wymagające tego samego materiału są grupowane w jednej próbce.
+
+Przykład: `CRP`, `TSH` i `URINE` wymagają dwóch próbek: surowicy i moczu.
+
+Zlecenie można edytować wyłącznie w statusie `DRAFT`.
+
+Zmiana badań w `DRAFT` powoduje ponowne wyliczenie wymaganych próbek.
+
+Po zarejestrowaniu pierwszej próbki nie można zmienić pacjenta ani listy badań.
+
+## 10. Rejestracja próbek
+
+Dla każdej wymaganej próbki użytkownik podaje:
+
+- rodzaj materiału;
+- kod kreskowy;
+- datę i czas pobrania.
 
 Reguły:
 
-- Kod kreskowy jest wymagany i unikalny w obrębie placówki.
-- Data pobrania nie może być w przyszłości ani przed utworzeniem zlecenia.
-- Zlecenie można wysłać dopiero po zarejestrowaniu wszystkich wymaganych próbek.
-- Odrzucenie próbki zawiera kod i opis przyczyny.
+- kod kreskowy jest wymagany i unikalny w workspace'ie;
+- czas pobrania nie może być w przyszłości;
+- czas pobrania nie może być wcześniejszy niż utworzenie zlecenia;
+- pierwsza z kilku próbek zmienia status zlecenia na `SAMPLE_COLLECTION_IN_PROGRESS`;
+- zarejestrowanie wszystkich wymaganych próbek ustawia `SAMPLE_COLLECTED`;
+- zlecenie można wysłać do laboratorium dopiero po zarejestrowaniu wszystkich wymaganych próbek.
 
-## 12. Cykl życia zlecenia
+Statusy próbki:
 
-| Status | Znaczenie | Dozwolone kolejne statusy |
-|---|---|---|
-| `DRAFT` | Zlecenie jest przygotowywane | `SAMPLE_COLLECTION_IN_PROGRESS`, `SAMPLE_COLLECTED` |
-| `SAMPLE_COLLECTION_IN_PROGRESS` | Zarejestrowano część wymaganych próbek | `SAMPLE_COLLECTED` |
-| `SAMPLE_COLLECTED` | Wszystkie próbki zostały zarejestrowane | `SENT_TO_LAB`, `TECHNICAL_ERROR` |
-| `SENT_TO_LAB` | Laboratorium przyjęło zlecenie | `PROCESSING`, `TECHNICAL_ERROR` |
-| `PROCESSING` | Trwa realizacja badań | `PARTIAL`, `COMPLETED`, `REJECTED`, `TECHNICAL_ERROR` |
-| `PARTIAL` | Odebrano część wyników | `PARTIAL`, `COMPLETED`, `REJECTED`, `TECHNICAL_ERROR` |
-| `COMPLETED` | Odebrano komplet wyników | Status końcowy |
-| `REJECTED` | Odrzucono wszystkie pozostałe badania | Status końcowy |
-| `TECHNICAL_ERROR` | Nie zakończono komunikacji z laboratorium | Ponowienie wysłania albo odbioru |
+| Status | Znaczenie |
+|---|---|
+| `REQUIRED` | próbka jest wymagana |
+| `COLLECTED` | zarejestrowano pobranie |
+| `SENT` | próbka została wysłana |
+| `ACCEPTED` | laboratorium zaakceptowało próbkę |
+| `REJECTED` | laboratorium odrzuciło próbkę |
 
-`SAMPLE_COLLECTION_IN_PROGRESS` jest ustawiany po zarejestrowaniu pierwszej próbki, jeżeli zlecenie wymaga kolejnych. `SAMPLE_COLLECTED` jest ustawiany automatycznie po zarejestrowaniu wszystkich wymaganych próbek.
+## 11. Cykl życia zlecenia
 
-## 13. Wysłanie zlecenia do laboratorium
+| Status | Znaczenie |
+|---|---|
+| `DRAFT` | przygotowanie zlecenia |
+| `SAMPLE_COLLECTION_IN_PROGRESS` | zarejestrowano część wymaganych próbek |
+| `SAMPLE_COLLECTED` | wszystkie wymagane próbki są gotowe |
+| `SENT_TO_LAB` | laboratorium przyjęło zlecenie |
+| `PROCESSING` | trwa realizacja |
+| `PARTIAL` | odebrano część wyników |
+| `COMPLETED` | odebrano komplet wyników |
+| `REJECTED` | zlecenie zakończyło się odrzuceniem wymaganych próbek/badań |
+| `TECHNICAL_ERROR` | komunikacja z laboratorium nie zakończyła się poprawnie po wymaganych ponowieniach |
 
-Zlecenie można wysłać, gdy ma status `SAMPLE_COLLECTED`, pacjent jest aktywny, wymagane dane są kompletne, a wszystkie próbki mają unikalne kody.
+Nie każde przejście pomiędzy statusami jest dozwolone. Status jest zmieniany przez operacje biznesowe, a nie przez ręczną edycję użytkownika.
 
-Laboratorium przyjmuje zlecenie asynchronicznie. Poprawne żądanie zwraca HTTP `202 Accepted`, `externalOrderId`, status `ACCEPTED`, `estimatedCompletionAt` i `correlationId`. Odpowiedź `202` nie oznacza wykonania badań.
+## 12. Wysłanie zlecenia do laboratorium
 
-### 13.1. Idempotencja
+Zlecenie można wysłać, gdy:
 
-- Wysłanie zawiera nagłówek `Idempotency-Key`.
-- Ponowienie identycznego żądania z tym samym kluczem wskazuje wcześniej utworzone zlecenie.
+- ma status `SAMPLE_COLLECTED`;
+- pacjent jest aktywny;
+- wszystkie wymagane dane są kompletne;
+- wszystkie próbki są zarejestrowane.
+
+Akcja `POST /api/v1/orders/{orderId}/send` jest idempotentna.
+
+### 12.1. Idempotencja
+
+- Wysłanie wykorzystuje `Idempotency-Key`.
+- Ponowienie tego samego żądania z tym samym kluczem nie tworzy drugiej wysyłki.
 - Ten sam klucz z inną treścią zwraca `409 Conflict`.
 
-### 13.2. Ponawianie komunikacji
+### 12.2. Poprawna wysyłka
 
-- Odpowiedzi `400`, `401`, `403`, `409` i `422` nie są automatycznie ponawiane.
-- Timeout, `429` oraz `5xx` mogą zostać ponowione maksymalnie trzy razy: po 15, 30 i 60 sekundach.
-- Po wyczerpaniu prób zlecenie otrzymuje `TECHNICAL_ERROR`.
-- Dla błędu przed przyjęciem przez laboratorium przejście techniczne następuje bezpośrednio z `SAMPLE_COLLECTED` do `TECHNICAL_ERROR`.
+Aktualny kontrakt API zwraca HTTP `200 OK` po poprawnym przyjęciu operacji wysłania przez Klinikę Debug.
 
-## 14. Odbieranie wyników
+Odpowiedź zawiera stan zlecenia i dane integracyjne potrzebne do dalszego śledzenia procesu.
 
-Laboratorium przekazuje wyniki przez webhook. Wywołanie zawiera `externalOrderId`, `eventId`, `correlationId`, status, zakończone badania, parametry wyników, badania oczekujące oraz informacje o odrzuceniu.
+Przyjęcie wysyłki nie oznacza, że wszystkie badania są już wykonane.
 
-- Co najmniej jeden wynik przy niezakończonych pozostałych badaniach ustawia `PARTIAL`.
-- Kolejne callbacki mogą uzupełniać wynik częściowy.
-- Wcześniej odebrane wyniki pozostają dostępne.
-- Ponowne odebranie tego samego `eventId` nie tworzy duplikatów.
-- Wyniki są grupowane według badania i pokazują wartość, jednostkę, zakres oraz oznaczenie.
-- Brak zakresu jest prezentowany jako „Nie podano”.
-- Klinika Debug nie generuje interpretacji ani zaleceń medycznych.
+### 12.3. Odrzucenie walidacyjne laboratorium
 
-## 15. Historia zlecenia
+Laboratorium może odrzucić wysyłkę z powodu walidacji. Wtedy API zwraca `422`, zlecenie pozostaje w stanie umożliwiającym ponowną próbę, a odpowiedź może zawierać błędy pól.
 
-Historia pokazuje chronologicznie: utworzenie i edycję zlecenia, rejestrację próbek, wysłanie do laboratorium, automatyczne ponowienia, zmiany statusu oraz odebranie wyniku lub błędu.
+### 12.4. Rate limit
 
-Każdy wpis zawiera czas, typ zdarzenia, użytkownika albo nazwę systemu i — dla komunikacji integracyjnej — `correlationId`.
+Laboratorium może zwrócić `429 Too Many Requests`.
 
-## 16. Widoki aplikacji
+Klinika Debug:
 
-- **Logowanie** — login, hasło i komunikaty błędów.
-- **Panel główny** — liczba zleceń według statusu, ostatnie zmiany, zlecenia oczekujące i błędy techniczne.
-- **Pacjenci** — wyszukiwanie, filtrowanie, sortowanie i paginacja.
-- **Szczegóły pacjenta** — dane, aktywność, zlecenia i edycja.
-- **Nowe zlecenie** — pacjent, badania, materiały, priorytet i wymagane potwierdzenia.
-- **Szczegóły zlecenia** — badania, próbki, status, wyniki, historia i dostępne akcje.
+- zwraca `Retry-After`;
+- zapisuje stan oczekiwania na automatyczne ponowienie;
+- nie oznacza przejściowego 429 jako `TECHNICAL_ERROR`;
+- automatycznie ponawia wysyłkę.
 
-## 17. Import i eksport
+### 12.5. Błąd serwera i timeout
 
-### 17.1. Import pacjentów z CSV
+Komunikacja może zakończyć się:
 
-- Kodowanie UTF-8 i nagłówek w pierwszym wierszu są wymagane.
-- Limit jednego pliku wynosi 1000 rekordów.
-- Każdy wiersz podlega tym samym regułom co formularz.
-- Import jest atomowy: błąd w dowolnym wierszu odrzuca cały plik.
-- Raport wskazuje numer wiersza, pole, kod i opis błędu.
+- `503 Service Unavailable`;
+- `504 Gateway Timeout`.
 
-### 17.2. Eksport
+Dla błędów przejściowych aplikacja korzysta z automatycznych ponowień.
 
-Listy pacjentów i zleceń można eksportować do CSV lub JSON zgodnie z aktywnymi filtrami. Eksport obejmuje wyłącznie dane bieżącej placówki.
+### 12.6. Harmonogram retry
 
-## 18. REST API
+Dla retryowalnych błędów wysyłka może być ponowiona maksymalnie trzy razy, z opóźnieniami:
 
-- Bazowy adres: `/api/v1`.
-- Format: JSON w UTF-8.
-- Autoryzacja: token Bearer.
-- Daty: ISO 8601 w UTC.
-- OpenAPI: `/api/docs`.
-- Domyślna strona listy: 20 rekordów; maksymalna: 100.
+1. 15 sekund;
+2. 30 sekund;
+3. 60 sekund.
 
-| Metoda | Endpoint | Zastosowanie |
-|---|---|---|
-| `POST` | `/patients` | Utworzenie pacjenta |
-| `GET` | `/patients` | Lista i wyszukiwanie pacjentów |
-| `GET` | `/patients/{patientId}` | Szczegóły pacjenta |
-| `PATCH` | `/patients/{patientId}` | Aktualizacja pacjenta |
-| `POST` | `/patients/import` | Import CSV |
-| `GET` | `/tests` | Katalog badań |
-| `POST` | `/orders` | Utworzenie zlecenia |
-| `GET` | `/orders` | Lista zleceń |
-| `GET` | `/orders/{orderId}` | Szczegóły zlecenia |
-| `PATCH` | `/orders/{orderId}` | Edycja wersji roboczej |
-| `POST` | `/orders/{orderId}/samples` | Rejestracja próbek |
-| `POST` | `/orders/{orderId}/send` | Wysłanie do laboratorium |
-| `POST` | `/integrations/lab/results` | Webhook laboratorium |
-| `GET` | `/orders/{orderId}/history` | Historia zlecenia |
-| `GET` | `/exports/patients` | Eksport pacjentów |
-| `GET` | `/exports/orders` | Eksport zleceń |
+Po wyczerpaniu prób zlecenie otrzymuje `TECHNICAL_ERROR`.
 
-## 19. Format błędów API
+Ponowienia muszą być odporne na duplikację i restart procesu.
 
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Request validation failed",
-    "details": [
-      {
-        "field": "pesel",
-        "code": "INVALID_CHECKSUM",
-        "message": "PESEL checksum is invalid"
-      }
-    ],
-    "correlationId": "c5f35d0d-6c50-44ee-86e0-9aa6a2446c3d"
-  }
-}
-```
+## 13. Wyniki laboratorium
 
-| HTTP | Zastosowanie |
-|---|---|
-| `200` | Poprawny odczyt lub aktualizacja |
-| `201` | Utworzenie zasobu |
-| `202` | Przyjęcie operacji asynchronicznej |
-| `400` | Niepoprawna składnia |
-| `401` | Brak uwierzytelnienia |
-| `404` | Brak zasobu albo zasób innej placówki |
-| `409` | Konflikt lub duplikat |
-| `422` | Naruszenie reguły biznesowej |
-| `429` | Przekroczony limit |
-| `500` | Nieoczekiwany błąd systemu |
-| `503` | Niedostępność integracji |
+Laboratorium przekazuje wyniki asynchronicznie.
 
-## 20. Logi i identyfikacja operacji
+Możliwe są m.in.:
 
-- Każdy request otrzymuje `correlationId`.
-- Poprawny `X-Correlation-ID` klienta jest zachowywany; w innym przypadku system generuje identyfikator.
-- `correlationId` wraca w nagłówku odpowiedzi i treści błędu.
-- Logi integracyjne zawierają identyfikatory zlecenia, próbki i zdarzenia.
-- Logi nie zawierają pełnego PESEL-u, dokumentu, adresu, kontaktu ani wartości wyników.
-- PESEL jest maskowany do formatu `******12345`.
+- komplet wyników;
+- wynik częściowy, a następnie komplet;
+- odrzucenie jednej lub wielu próbek.
 
-## 21. Wymagania niefunkcjonalne
+Wynik zawiera kod badania, parametry, wartości, jednostki, opcjonalne zakresy referencyjne i oznaczenia typu `LOW`, `NORMAL`, `HIGH` albo `NOT_APPLICABLE`.
 
-- 95% odczytów powinno trwać krócej niż 800 ms.
-- 95% zapisów powinno trwać krócej niż 1200 ms, bez czasu laboratorium.
-- System obsługuje co najmniej 50 aktywnych użytkowników.
-- Limit standardowy wynosi 120 requestów na minutę na konto.
-- Po przekroczeniu limitu API zwraca `429` i `Retry-After`.
-- Zapisy oraz importy są transakcyjne.
-- Ponowione żądania integracyjne nie tworzą duplikatów.
-- Interfejs przelicza czas z UTC na strefę przeglądarki.
+Klinika Debug nie interpretuje medycznie wyników.
 
-## 22. Bezpieczeństwo danych
+### 13.1. Wynik częściowy
 
-- Workspace wynika z tokenu i nie jest przyjmowany jako parametr requestu.
-- Próba odczytania zasobu innej placówki zwraca `404`.
-- Eksport obejmuje wyłącznie bieżący workspace.
-- Hasła nie są zwracane przez API ani zapisywane w logach.
-- Sesja wygasa po 60 minutach bezczynności.
+Jeżeli laboratorium zwróci wyniki tylko dla części badań:
 
-## 23. Powiadomienia i odświeżanie
+- ukończone wyniki są widoczne;
+- pozostałe badania pozostają oczekujące;
+- zlecenie otrzymuje `PARTIAL`;
+- późniejsza odpowiedź może zakończyć zlecenie jako `COMPLETED`.
 
-- Interfejs odświeża zlecenia w `SENT_TO_LAB`, `PROCESSING` i `PARTIAL` co 10 sekund.
-- Dostępne jest ręczne odświeżenie.
-- Wynik kompletny, częściowy, odrzucenie i błąd techniczny tworzą powiadomienie.
-- Powiadomienie zawiera identyfikator zlecenia, typ i czas, ale nie zawiera wartości medycznych.
+### 13.2. Odrzucenie próbki
 
-## 24. Przykładowy proces
+Odrzucenie zawiera kod i syntetyczny opis przyczyny.
 
-1. Użytkownik wyszukuje pacjenta po PESEL-u i w razie potrzeby tworzy rekord.
-2. Dodaje `CRP`, `TSH` i `URINE`.
-3. System wymaga próbki surowicy i moczu.
-4. Użytkownik rejestruje obie próbki; zlecenie przechodzi do `SAMPLE_COLLECTED`.
-5. Laboratorium odpowiada `202 Accepted`; zlecenie przechodzi do `SENT_TO_LAB`.
-6. Po rozpoczęciu realizacji status zmienia się na `PROCESSING`.
-7. Wyniki `CRP` i `TSH` ustawiają `PARTIAL`.
-8. Wynik `URINE` kończy zlecenie statusem `COMPLETED`.
-9. Pełna historia pozostaje dostępna w szczegółach zlecenia.
+Badania zależne od odrzuconego materiału mogą otrzymać status `REJECTED`, natomiast poprawnie wykonane wcześniej wyniki pozostają widoczne.
+
+## 14. Historia operacji
+
+Szczegóły zlecenia zawierają historię najważniejszych zdarzeń biznesowych, m.in.:
+
+- utworzenie i edycję zlecenia;
+- rejestrację próbek;
+- wysłanie do laboratorium;
+- przyjęcie przez laboratorium;
+- wyniki częściowe i końcowe;
+- odrzucenie;
+- rate limit;
+- timeout;
+- automatyczne retry;
+- błąd techniczny.
+
+Historia pokazuje polskie opisy i nie ujawnia technicznej konfiguracji środowiska.
+
+## 15. Correlation ID
+
+Operacje związane z integracją wykorzystują `correlationId`.
+
+Identyfikator może występować w:
+
+- odpowiedzi API;
+- nagłówku odpowiedzi;
+- historii zlecenia;
+- materiałach logowych.
+
+`correlationId` służy do łączenia zdarzeń dotyczących tej samej operacji i może być używany podczas diagnostyki.
+
+Nie należy traktować samego `correlationId` jako przyczyny błędu ani informacji biznesowej.
+
+## 16. REST API i OpenAPI
+
+Główne operacje aplikacji są dostępne przez REST API pod `/api/v1`.
+
+Dokumentacja OpenAPI jest dostępna pod `/api/docs`.
+
+Uwierzytelnione endpointy korzystają z tokenu konta `STAFF`.
+
+API używa spójnego formatu błędu z kodem technicznym, komunikatem i `correlationId`, jeśli dotyczy.
+
+Dokumentacja OpenAPI jest częścią źródła prawdy technicznej podczas pracy z API.
+
+## 17. Dane demonstracyjne
+
+Wszystkie dane używane w aplikacji, testach i materiałach szkoleniowych są syntetyczne.
+
+Nie należy wprowadzać:
+
+- prawdziwych danych pacjentów;
+- produkcyjnych danych kontaktowych;
+- rzeczywistych sekretów;
+- prawdziwych danych uwierzytelniających innych systemów.
+
+Wartości wyników mają charakter demonstracyjny i nie mogą być wykorzystywane do interpretacji medycznej.
+
+## 18. Zasada źródła prawdy
+
+W przypadku pracy uczestnika:
+
+1. dokumentacja produktowa opisuje oczekiwane zachowanie biznesowe;
+2. OpenAPI opisuje kontrakt techniczny API;
+3. rzeczywiste zachowanie aplikacji jest obserwacją wymagającą porównania z dokumentacją;
+4. odpowiedź modelu AI nie zastępuje dokumentacji ani dowodów z aplikacji.
+
+Jeżeli dokumentacja nie zawiera odpowiedzi, należy wskazać brak informacji zamiast dopowiadać nieistniejącą regułę.

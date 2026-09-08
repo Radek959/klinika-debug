@@ -1,29 +1,39 @@
 # Etap 6 — admin i sterowanie
 
-**Status etapu:** `PLANNED`
+**Status etapu:** `SUPERSEDED` przez Workshop MVP  
+**Status historyczny:** pierwotnie `PLANNED`  
+**Aktualne źródło prawdy:** [`workshop-mvp.md`](workshop-mvp.md)
 
-## Zakres
+## Decyzja
 
-- osobne uwierzytelnienie techniczne dla `/admin`;
-- panel niewidoczny w nawigacji użytkownika;
-- globalny wybór trybu symulatora laboratorium;
-- globalny wybór opóźnienia;
-- reset danych wszystkich workspace'ów;
-- przywracanie trybu `CLEAN`;
-- monitoring stanu aplikacji, bazy i symulatora;
-- audyt operacji technicznych.
+Pierwotny Etap 6 zakładał pełny panel administracyjny. Na potrzeby szkolenia jest to nadmiarowy zakres.
 
-## Stan na `main`
+Nie implementujemy rozbudowanego systemu admina. Zastępuje go minimalny **Trainer Panel** pod `/admin`.
 
-Nie widać jeszcze modułu `/admin`, endpointów wewnętrznych panelu technicznego ani globalnego modelu sterowania środowiskiem. Etap pozostaje zaplanowany.
+## Wymagany zakres Workshop MVP
 
-## Zasady realizacji
+Panel prowadzącego ma pozwalać na:
 
-- `/admin` nie korzysta z kont `STAFF` ani uprawnień aplikacyjnych użytkowników.
-- Sekrety panelu nie trafiają do repozytorium, logów ani dokumentacji dla uczestników.
-- Reset musi być transakcyjny tam, gdzie pozwala na to MySQL, i nie może uruchamiać się automatycznie przy zwykłym deployu.
-- Zmiany globalne powinny być audytowane.
+- odczyt i zmianę globalnego scenariusza laboratorium;
+- odczyt i zmianę `CLEAN` / jednego kontrolowanego defektu;
+- reset danych warsztatowych do znanego stanu;
+- proste potwierdzenie aktualnej konfiguracji.
 
-## Dowody weryfikacji
+Dostęp jest oddzielony od kont `STAFF`, a panel nie jest widoczny w nawigacji uczestnika.
 
-Do uzupełnienia w PR-ach implementacyjnych: testy autoryzacji, testy resetu, wyniki CI i smoke testy środowiska.
+## Świadomie poza Workshop MVP
+
+Nie implementujemy przed szkoleniem:
+
+- dashboardu stanu aplikacji i bazy;
+- rozbudowanego RBAC;
+- CRUD kont uczestników;
+- rozbudowanego audytu zmian;
+- historii konfiguracji;
+- monitoringu infrastruktury;
+- konfiguracji per workspace;
+- zaawansowanego UX panelu.
+
+Provisioning uczestników odbywa się skryptem/seedem, nie przez UI.
+
+Szczegóły techniczne: `docs/architektura-techniczna.md` i `docs/specyfikacja-mvp.md`.
