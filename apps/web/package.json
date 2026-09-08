@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "copy:workshop-logs": "node ../../scripts/copy-workshop-logs-web.cjs",
+    "predev": "npm run copy:workshop-logs",
+    "prebuild": "npm run copy:workshop-logs",
     "build": "tsc -p tsconfig.build.json && vite build",
     "dev": "vite",
     "preview": "vite preview",

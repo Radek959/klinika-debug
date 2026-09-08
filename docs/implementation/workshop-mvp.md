@@ -316,6 +316,9 @@ Fixture'y muszą być spójne z rzeczywistymi endpointami, statusami, kodami bł
 - Runtime'owe logowanie zdarzeń NIE zostało dodane do aplikacji — to
   świadomie statyczne fixture'y, a nie nowy podsystem observability, zgodnie
   z zakresem Workshop MVP.
+- Uczestnik otrzymuje te fixture'y w aplikacji webowej (**Materiały**,
+  `/materials`), a nie przez repozytorium/VS Code — patrz
+  `docs/implementation/README.md`, wiersz „Workshop MVP — log browser (UI)”.
 
 ### 4. Workshop readiness
 
