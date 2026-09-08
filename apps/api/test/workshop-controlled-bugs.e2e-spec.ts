@@ -7,6 +7,7 @@ import {
   configureTestEnvironment,
   createStaffUser,
   resetTestDatabase,
+  setWorkshopConfig,
   TEST_ADMIN_PASSWORD
 } from "./database";
 
@@ -34,7 +35,12 @@ describe("workshop controlled bugs", () => {
   beforeEach(async () => {
     await resetTestDatabase(prisma);
     await seedDatabase(prisma);
-    await prisma.workshopConfig.deleteMany();
+    // resetTestDatabase() usuwa wiersz `workshop_config`, ale nie czyści cache'a
+    // w pamięci WorkshopConfigService (żyje na instancji aplikacji utworzonej
+    // raz w beforeAll) — bez tego kontrolowany błąd ustawiony w jednym teście
+    // (przez `setControlledBug`, realny endpoint `/admin/api/config`) przeciekałby
+    // do kolejnego testu w tym samym pliku, mimo usuniętego wiersza w bazie.
+    await setWorkshopConfig(app, { labScenario: "SUCCESS" });
   });
 
   afterAll(async () => {
@@ -46,7 +52,7 @@ describe("workshop controlled bugs", () => {
       firstName: "Maja",
       lastName: "Syntetyczna",
       identifierType: "PESEL" as const,
-      pesel: "18210112349",
+      pesel: "18210199982",
       birthDate: "2018-01-01",
       gender: "FEMALE" as const,
       phone: "123456789"
@@ -305,7 +311,7 @@ describe("workshop controlled bugs", () => {
         firstName: "Maja",
         lastName: "Syntetyczna",
         identifierType: "PESEL",
-        pesel: "18210112349",
+        pesel: "18210199982",
         birthDate: "2018-01-01",
         gender: "FEMALE",
         phone: "123456789"
@@ -345,7 +351,7 @@ describe("workshop controlled bugs", () => {
         firstName: "Maja",
         lastName: "Syntetyczna",
         identifierType: "PESEL",
-        pesel: "18210112349",
+        pesel: "18210199982",
         birthDate: "2018-01-01",
         gender: "FEMALE",
         phone: "123456789"
@@ -373,7 +379,7 @@ describe("workshop controlled bugs", () => {
         firstName: "Ola",
         lastName: "WorkspaceA",
         identifierType: "PESEL",
-        pesel: "18210112349",
+        pesel: "18210199982",
         birthDate: "2018-01-01",
         gender: "FEMALE",
         phone: "123456789"

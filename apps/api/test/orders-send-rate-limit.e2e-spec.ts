@@ -11,7 +11,8 @@ import { closeTestApp, createTestApp } from "./test-app";
 import {
   configureTestEnvironment,
   createStaffUser,
-  resetTestDatabase
+  resetTestDatabase,
+  setWorkshopConfig
 } from "./database";
 
 /**
@@ -29,12 +30,10 @@ describe("orders send api — scenariusz RATE_LIMIT", () => {
   let app: NestFastifyApplication;
   let prisma: PrismaClient;
   let labSendRetry: LabSendRetryService;
-  let originalScenario: string | undefined;
 
   beforeAll(async () => {
     configureTestEnvironment();
     process.env.SEED_STAFF_PASSWORD = "SeedTestowe123!";
-    originalScenario = process.env.LAB_SIMULATOR_SCENARIO;
     app = await createTestApp();
     prisma = app.get(PrismaService);
     labSendRetry = app.get(LabSendRetryService);
@@ -52,16 +51,11 @@ describe("orders send api — scenariusz RATE_LIMIT", () => {
   beforeEach(async () => {
     await resetTestDatabase(prisma);
     await seedDatabase(prisma);
-    process.env.LAB_SIMULATOR_SCENARIO = "RATE_LIMIT";
+    await setWorkshopConfig(app, { labScenario: "RATE_LIMIT" });
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
-    if (originalScenario === undefined) {
-      delete process.env.LAB_SIMULATOR_SCENARIO;
-    } else {
-      process.env.LAB_SIMULATOR_SCENARIO = originalScenario;
-    }
   });
 
   afterAll(async () => {
@@ -857,7 +851,7 @@ describe("orders send api — scenariusz RATE_LIMIT", () => {
 
   describe("brak regresji pozostałych scenariuszy", () => {
     it("SUCCESS nadal przyjmuje zlecenie bez zadania ponowienia", async () => {
-      process.env.LAB_SIMULATOR_SCENARIO = "SUCCESS";
+      await setWorkshopConfig(app, { labScenario: "SUCCESS" });
       const { token, orderId } = await createSendableOrder("SMP-RL-0028");
 
       const response = await sendOrder(token, orderId);
@@ -869,7 +863,7 @@ describe("orders send api — scenariusz RATE_LIMIT", () => {
     });
 
     it("VALIDATION_ERROR nadal zwraca 422 i NIE jest automatycznie ponawiany", async () => {
-      process.env.LAB_SIMULATOR_SCENARIO = "VALIDATION_ERROR";
+      await setWorkshopConfig(app, { labScenario: "VALIDATION_ERROR" });
       const { token, orderId } = await createSendableOrder("SMP-RL-0029");
 
       const response = await sendOrder(token, orderId);
@@ -883,12 +877,12 @@ describe("orders send api — scenariusz RATE_LIMIT", () => {
     });
 
     it("PARTIAL_SUCCESS i SAMPLE_REJECTED nadal działają bez kolejki ponowień", async () => {
-      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      await setWorkshopConfig(app, { labScenario: "PARTIAL_SUCCESS" });
       const partial = await createSendableOrder("SMP-RL-0030", ["MORF", "CRP"]);
       expect((await sendOrder(partial.token, partial.orderId)).statusCode).toBe(200);
       expect(await prisma.labJob.count({ where: { orderId: partial.orderId } })).toBe(2);
 
-      process.env.LAB_SIMULATOR_SCENARIO = "SAMPLE_REJECTED";
+      await setWorkshopConfig(app, { labScenario: "SAMPLE_REJECTED" });
       const rejected = await createSendableOrder("SMP-RL-0031");
       expect((await sendOrder(rejected.token, rejected.orderId)).statusCode).toBe(200);
       expect(await prisma.labJob.count({ where: { orderId: rejected.orderId } })).toBe(1);

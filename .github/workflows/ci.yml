@@ -32,7 +32,10 @@ jobs:
       DATABASE_URL: mysql://klinika:klinika_local_password@127.0.0.1:3307/klinika_debug_test
       TEST_DATABASE_URL: mysql://klinika:klinika_local_password@127.0.0.1:3307/klinika_debug_test
       SESSION_TOKEN_PEPPER: ci-session-token-pepper
-      ADMIN_PASSWORD_HASH: ci-admin-password-hash-placeholder
+      # Musi być zgodny z TEST_ADMIN_PASSWORD_HASH / TEST_ADMIN_PASSWORD w
+      # apps/api/test/database.ts — testy e2e panelu /admin logują się
+      # prawdziwym hasłem testowym i oczekują, że ten hash je zweryfikuje.
+      ADMIN_PASSWORD_HASH: "$argon2id$v=19$m=65536,t=3,p=4$rNHkJ6aCMcggJAoD+xaEZw$dk4Brk7dzp6r1Ch7dPeNfpCp1Fa28TCCSBhEPUoqHFQ"
       ADMIN_SESSION_SECRET: ci-admin-session-secret-placeholder
 
     steps:

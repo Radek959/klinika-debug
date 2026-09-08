@@ -7,26 +7,27 @@ import { closeTestApp, createTestApp } from "./test-app";
 import {
   configureTestEnvironment,
   createStaffUser,
-  resetTestDatabase
+  resetTestDatabase,
+  setWorkshopConfig
 } from "./database";
 
 /**
  * Scenariusz symulatora VALIDATION_ERROR: synchroniczne odrzucenie zlecenia przez
  * laboratorium przy `POST /api/v1/orders/{orderId}/send`.
  *
- * Scenariusz jest sterowany globalnie zmienną `LAB_SIMULATOR_SCENARIO`, którą
- * symulator odczytuje przy każdym wywołaniu, więc testy przełączają ją w locie
- * i przywracają po każdym przypadku.
+ * Scenariusz jest sterowany globalnie przez `WorkshopConfigService` (jeden
+ * wiersz `workshop_config` + cache w pamięci procesu). Testy przełączają go
+ * jawnie przez `setWorkshopConfig()`, które atomowo aktualizuje bazę i cache —
+ * bezpośrednie przypisanie do `process.env.LAB_SIMULATOR_SCENARIO` po
+ * pierwszym odczycie konfiguracji w tym pliku byłoby cicho ignorowane.
  */
 describe("orders send api — scenariusz VALIDATION_ERROR", () => {
   let app: NestFastifyApplication;
   let prisma: PrismaClient;
-  let originalScenario: string | undefined;
 
   beforeAll(async () => {
     configureTestEnvironment();
     process.env.SEED_STAFF_PASSWORD = "SeedTestowe123!";
-    originalScenario = process.env.LAB_SIMULATOR_SCENARIO;
     app = await createTestApp();
     prisma = app.get(PrismaService);
   });
@@ -34,16 +35,11 @@ describe("orders send api — scenariusz VALIDATION_ERROR", () => {
   beforeEach(async () => {
     await resetTestDatabase(prisma);
     await seedDatabase(prisma);
-    process.env.LAB_SIMULATOR_SCENARIO = "VALIDATION_ERROR";
+    await setWorkshopConfig(app, { labScenario: "VALIDATION_ERROR" });
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
-    if (originalScenario === undefined) {
-      delete process.env.LAB_SIMULATOR_SCENARIO;
-    } else {
-      process.env.LAB_SIMULATOR_SCENARIO = originalScenario;
-    }
   });
 
   afterAll(async () => {
@@ -282,7 +278,7 @@ describe("orders send api — scenariusz VALIDATION_ERROR", () => {
 
     expect((await sendOrder(token, orderId)).statusCode).toBe(422);
 
-    process.env.LAB_SIMULATOR_SCENARIO = "SUCCESS";
+    await setWorkshopConfig(app, { labScenario: "SUCCESS" });
     const response = await sendOrder(token, orderId);
 
     expect(response.statusCode).toBe(200);
