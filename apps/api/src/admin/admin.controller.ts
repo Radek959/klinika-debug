@@ -18,6 +18,7 @@ import { resetWorkshopWorkspaces } from "../common/prisma/reset-workshop";
 import { PasswordService } from "../auth/password.service";
 import { LAB_SIMULATOR_SCENARIOS } from "../lab-simulator/lab-simulator-scenario";
 import { CONTROLLED_BUGS } from "../workshop-config/controlled-bug";
+import { LAB_DELAY_PRESETS_MS } from "../workshop-config/lab-delay";
 import {
   WorkshopConfigService,
   type WorkshopConfigState
@@ -90,7 +91,8 @@ export class AdminController {
   async updateConfig(@Body() dto: AdminConfigUpdateDto) {
     const config = await this.workshopConfig.setConfig({
       labScenario: dto.labScenario as WorkshopConfigState["labScenario"],
-      controlledBug: dto.controlledBug as WorkshopConfigState["controlledBug"]
+      controlledBug: dto.controlledBug as WorkshopConfigState["controlledBug"],
+      labDelayMs: dto.labDelayMs
     });
     return this.toConfigResponse(config);
   }
@@ -151,9 +153,11 @@ export class AdminController {
     return {
       labScenario: config.labScenario,
       controlledBug: config.controlledBug,
+      labDelayMs: config.labDelayMs,
       updatedAt: config.updatedAt.toISOString(),
       availableLabScenarios: LAB_SIMULATOR_SCENARIOS,
-      availableControlledBugs: CONTROLLED_BUGS
+      availableControlledBugs: CONTROLLED_BUGS,
+      availableLabDelaysMs: LAB_DELAY_PRESETS_MS
     };
   }
 }

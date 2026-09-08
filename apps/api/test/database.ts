@@ -74,18 +74,27 @@ export async function resetTestDatabase(prisma: PrismaClient) {
  * środowiskowej w trakcie działania pliku testowego jest więc cicho
  * ignorowana po pierwszym odczycie. Ta funkcja jest jedynym poprawnym
  * sposobem zmiany scenariusza (lub kontrolowanego błędu) w trakcie testu.
+ *
+ * Gdy `labDelayMs` nie jest podane, zachowujemy AKTUALNIE skonfigurowaną
+ * wartość (zwykle zbootstrapowaną z `LAB_SIMULATOR_DELAY_MS` — furtka
+ * testowa przyspieszająca e2e) zamiast cichego resetu do produkcyjnego
+ * 300000 ms, co przy każdej zmianie samego scenariusza spowalniałoby
+ * wszystkie testy czekające na zakończenie zlecenia.
  */
 export async function setWorkshopConfig(
   app: NestFastifyApplication,
   input: {
     labScenario: LabSimulatorScenario;
     controlledBug?: ControlledBug;
+    labDelayMs?: number;
   }
 ) {
   const workshopConfigService = app.get(WorkshopConfigService);
+  const current = await workshopConfigService.getConfig();
   return workshopConfigService.setConfig({
     labScenario: input.labScenario,
-    controlledBug: input.controlledBug ?? DEFAULT_CONTROLLED_BUG
+    controlledBug: input.controlledBug ?? DEFAULT_CONTROLLED_BUG,
+    labDelayMs: input.labDelayMs ?? current.labDelayMs
   });
 }
 

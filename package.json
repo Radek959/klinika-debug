@@ -34,6 +34,7 @@
     "test:migration:lab-validation-error": "node scripts/test-lab-order-rejected-migration.cjs",
     "test:migration:lab-rate-limit": "node scripts/test-lab-send-retry-migration.cjs",
     "test:migration:workshop-config": "node scripts/test-workshop-config-migration.cjs",
+    "test:migration:workshop-lab-delay": "node scripts/test-workshop-lab-delay-migration.cjs",
     "test:production-start": "node scripts/smoke-production-start.cjs",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",

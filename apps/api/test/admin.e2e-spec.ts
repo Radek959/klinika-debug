@@ -13,10 +13,16 @@ describe("panel /admin", () => {
   let app: NestFastifyApplication;
   let prisma: PrismaClient;
   const originalWorkshopPassword = process.env.WORKSHOP_STAFF_PASSWORD;
+  const originalLabDelayMs = process.env.LAB_SIMULATOR_DELAY_MS;
 
   beforeAll(async () => {
     configureTestEnvironment();
     process.env.WORKSHOP_STAFF_PASSWORD = "WarsztatTestowe123!";
+    // Ten plik sprawdza wprost bootstrapowaną wartość domyślną labDelayMs
+    // (300000 ms) — bez usunięcia zmiennej odziedziczonej po
+    // `configureTestEnvironment()` (używanej gdzie indziej do przyspieszenia
+    // e2e) bootstrap tego pliku zależałby od kolejności uruchomienia testów.
+    delete process.env.LAB_SIMULATOR_DELAY_MS;
     app = await createTestApp();
     prisma = app.get(PrismaService);
   });
@@ -31,6 +37,11 @@ describe("panel /admin", () => {
       delete process.env.WORKSHOP_STAFF_PASSWORD;
     } else {
       process.env.WORKSHOP_STAFF_PASSWORD = originalWorkshopPassword;
+    }
+    if (originalLabDelayMs === undefined) {
+      delete process.env.LAB_SIMULATOR_DELAY_MS;
+    } else {
+      process.env.LAB_SIMULATOR_DELAY_MS = originalLabDelayMs;
     }
     await closeTestApp(app);
   });
@@ -124,6 +135,7 @@ describe("panel /admin", () => {
     const body = JSON.parse(response.body);
     expect(body.labScenario).toBe("SUCCESS");
     expect(body.controlledBug).toBe("CLEAN");
+    expect(body.labDelayMs).toBe(300000);
     expect(body.availableLabScenarios).toEqual([
       "SUCCESS",
       "PARTIAL_SUCCESS",
@@ -139,6 +151,86 @@ describe("panel /admin", () => {
       "ORDER_FLOW",
       "API_DIAGNOSTICS"
     ]);
+    expect(body.availableLabDelaysMs).toEqual([5000, 15000, 30000, 60000, 300000]);
+  });
+
+  it("zapisuje wybrany preset labDelayMs i odrzuca dowolną (arbitrary) wartość", async () => {
+    const cookie = await loginAsAdmin();
+
+    for (const preset of [5000, 15000, 30000, 60000, 300000]) {
+      const updateOk = await app.inject({
+        method: "PUT",
+        url: "/admin/api/config",
+        headers: { cookie },
+        payload: { labScenario: "SUCCESS", controlledBug: "CLEAN", labDelayMs: preset }
+      });
+      expect(updateOk.statusCode).toBe(200);
+      expect(JSON.parse(updateOk.body).labDelayMs).toBe(preset);
+    }
+
+    const updateBadDelay = await app.inject({
+      method: "PUT",
+      url: "/admin/api/config",
+      headers: { cookie },
+      payload: { labScenario: "SUCCESS", controlledBug: "CLEAN", labDelayMs: 12345 }
+    });
+    expect(updateBadDelay.statusCode).toBe(400);
+  });
+
+  it("nowa wysyłka używa nowego labDelayMs, ale już zaplanowany lab_job.executeAt się nie przesuwa", async () => {
+    const cookie = await loginAsAdmin();
+    await app.inject({
+      method: "PUT",
+      url: "/admin/api/config",
+      headers: { cookie },
+      payload: { labScenario: "SUCCESS", controlledBug: "CLEAN", labDelayMs: 5000 }
+    });
+
+    const first = await bootstrapOrderReadyToSend(app, prisma);
+    const beforeFirstSend = Date.now();
+    const firstSend = await app.inject({
+      method: "POST",
+      url: `/api/v1/orders/${first.order.id}/send`,
+      headers: { authorization: `Bearer ${first.token}` }
+    });
+    expect(firstSend.statusCode).toBe(200);
+
+    const jobBefore = await prisma.labJob.findFirstOrThrow({ where: { orderId: first.order.id } });
+    const orderBefore = await prisma.order.findUniqueOrThrow({ where: { id: first.order.id } });
+    const firstOffsetMs = orderBefore.estimatedCompletionAt!.getTime() - beforeFirstSend;
+    expect(firstOffsetMs).toBeGreaterThanOrEqual(4000);
+    expect(firstOffsetMs).toBeLessThan(100000);
+
+    // Runtime switch bez restartu aplikacji.
+    await app.inject({
+      method: "PUT",
+      url: "/admin/api/config",
+      headers: { cookie },
+      payload: { labScenario: "SUCCESS", controlledBug: "CLEAN", labDelayMs: 300000 }
+    });
+
+    // Zadanie zaplanowane PRZED zmianą konfiguracji nie przesuwa się.
+    const jobAfter = await prisma.labJob.findFirstOrThrow({ where: { id: jobBefore.id } });
+    const orderAfter = await prisma.order.findUniqueOrThrow({ where: { id: first.order.id } });
+    expect(jobAfter.executeAt.getTime()).toBe(jobBefore.executeAt.getTime());
+    expect(orderAfter.estimatedCompletionAt!.getTime()).toBe(
+      orderBefore.estimatedCompletionAt!.getTime()
+    );
+
+    // NOWA wysyłka (innego zlecenia) już używa nowo skonfigurowanego delay.
+    const second = await bootstrapOrderReadyToSend(app, prisma);
+    const beforeSecondSend = Date.now();
+    const secondSend = await app.inject({
+      method: "POST",
+      url: `/api/v1/orders/${second.order.id}/send`,
+      headers: { authorization: `Bearer ${second.token}` }
+    });
+    expect(secondSend.statusCode).toBe(200);
+
+    const secondOrder = await prisma.order.findUniqueOrThrow({ where: { id: second.order.id } });
+    const secondOffsetMs = secondOrder.estimatedCompletionAt!.getTime() - beforeSecondSend;
+    expect(secondOffsetMs).toBeGreaterThanOrEqual(290000);
+    expect(secondOffsetMs).toBeLessThanOrEqual(310000);
   });
 
   it("zapisuje nowy scenariusz laboratorium i akceptuje dozwolony kontrolowany błąd", async () => {
@@ -148,7 +240,7 @@ describe("panel /admin", () => {
       method: "PUT",
       url: "/admin/api/config",
       headers: { cookie },
-      payload: { labScenario: "SERVER_ERROR", controlledBug: "CLEAN" }
+      payload: { labScenario: "SERVER_ERROR", controlledBug: "CLEAN", labDelayMs: 300000 }
     });
     expect(updateOk.statusCode).toBe(200);
     expect(JSON.parse(updateOk.body).labScenario).toBe("SERVER_ERROR");
@@ -157,7 +249,7 @@ describe("panel /admin", () => {
       method: "PUT",
       url: "/admin/api/config",
       headers: { cookie },
-      payload: { labScenario: "SUCCESS", controlledBug: "PATIENT_GUARDIAN" }
+      payload: { labScenario: "SUCCESS", controlledBug: "PATIENT_GUARDIAN", labDelayMs: 300000 }
     });
     expect(updateAllowedBug.statusCode).toBe(200);
     expect(JSON.parse(updateAllowedBug.body).controlledBug).toBe("PATIENT_GUARDIAN");
@@ -166,7 +258,7 @@ describe("panel /admin", () => {
       method: "PUT",
       url: "/admin/api/config",
       headers: { cookie },
-      payload: { labScenario: "SUCCESS", controlledBug: "NOT_A_CONTROLLED_BUG" }
+      payload: { labScenario: "SUCCESS", controlledBug: "NOT_A_CONTROLLED_BUG", labDelayMs: 300000 }
     });
     expect(updateBadBug.statusCode).toBe(400);
 
@@ -174,7 +266,7 @@ describe("panel /admin", () => {
       method: "PUT",
       url: "/admin/api/config",
       headers: { cookie },
-      payload: { labScenario: "NOT_A_SCENARIO", controlledBug: "CLEAN" }
+      payload: { labScenario: "NOT_A_SCENARIO", controlledBug: "CLEAN", labDelayMs: 300000 }
     });
     expect(updateBadScenario.statusCode).toBe(400);
   });
@@ -189,7 +281,7 @@ describe("panel /admin", () => {
       method: "PUT",
       url: "/admin/api/config",
       headers: { cookie },
-      payload: { labScenario: "RATE_LIMIT", controlledBug: "CLEAN" }
+      payload: { labScenario: "RATE_LIMIT", controlledBug: "CLEAN", labDelayMs: 300000 }
     });
 
     const sendResponse = await app.inject({
@@ -210,7 +302,7 @@ describe("panel /admin", () => {
       method: "PUT",
       url: "/admin/api/config",
       headers: { cookie },
-      payload: { labScenario: "SUCCESS", controlledBug: "CLEAN" }
+      payload: { labScenario: "SUCCESS", controlledBug: "CLEAN", labDelayMs: 300000 }
     });
 
     const retryJobAfter = await prisma.labSendRetryJob.findUniqueOrThrow({
@@ -219,7 +311,7 @@ describe("panel /admin", () => {
     expect(retryJobAfter.scenario).toBe("RATE_LIMIT");
   });
 
-  it("reset wymaga confirm=true, resetuje workspace'y i przywraca SUCCESS + CLEAN", async () => {
+  it("reset wymaga confirm=true, resetuje workspace'y i przywraca SUCCESS + CLEAN + 300000 ms", async () => {
     const cookie = await loginAsAdmin();
     await provisionWorkshopWorkspaces(prisma, 1);
 
@@ -235,7 +327,7 @@ describe("panel /admin", () => {
       method: "PUT",
       url: "/admin/api/config",
       headers: { cookie },
-      payload: { labScenario: "TIMEOUT", controlledBug: "CLEAN" }
+      payload: { labScenario: "TIMEOUT", controlledBug: "CLEAN", labDelayMs: 5000 }
     });
 
     const response = await app.inject({
@@ -250,6 +342,7 @@ describe("panel /admin", () => {
     expect(body.resetWorkspaceSlugs).toEqual(["warsztat-01"]);
     expect(body.config.labScenario).toBe("SUCCESS");
     expect(body.config.controlledBug).toBe("CLEAN");
+    expect(body.config.labDelayMs).toBe(300000);
   });
 
   it("reset nigdy nie dotyka klinika-pokazowa ani innych workspace'ów spoza wzorca warsztatowego", async () => {
@@ -318,14 +411,18 @@ async function bootstrapOrderReadyToSend(
   app: NestFastifyApplication,
   prisma: PrismaClient
 ) {
+  // Sufiks unikalny per wywołanie — pozwala wywołać helper wielokrotnie w
+  // jednym teście (np. porównanie delay starej i nowej wysyłki) bez kolizji
+  // na unikalnym slug/login.
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const workspace = await prisma.workspace.create({
-    data: { slug: "admin-scenario-test", name: "Admin Scenario Test" }
+    data: { slug: `admin-scenario-test-${suffix}`, name: "Admin Scenario Test" }
   });
   const argon2 = await import("argon2");
   const user = await prisma.user.create({
     data: {
       workspaceId: workspace.id,
-      login: "admin-scenario-staff",
+      login: `admin-scenario-staff-${suffix}`,
       displayName: "Personel testowy",
       role: "STAFF",
       passwordHash: await argon2.hash("HasloTestowe123!", { type: argon2.argon2id })

@@ -457,6 +457,13 @@ model LabSendRetryJob {
   correlationId  String
   /** Techniczny scenariusz symulatora utrwalony w chwili zaplanowania zadania. */
   scenario       String
+  /**
+   * Czas generowania wyników (ms) skonfigurowany w `/admin` w chwili
+   * zaplanowania zadania — utrwalony tak samo jak `scenario`, żeby późniejsza
+   * zmiana `labDelayMs` z panelu prowadzącego nie mogła przesunąć terminu
+   * już zaplanowanego ponowienia ani pierwotnego chaina wysyłki.
+   */
+  labDelayMs     Int                   @default(300000)
   idempotencyKey String
   requestHash    String
   /** Liczba faktycznie rozpoczętych wykonań zadania przez scheduler. */
@@ -512,6 +519,14 @@ model WorkshopConfig {
   id            String   @id
   labScenario   String
   controlledBug String
+  /**
+   * Konfigurowalny czas generowania wyników (ms) używany przez NOWE wysyłki.
+   * Dozwolone wartości (5000/15000/30000/60000/300000) waliduje warstwa
+   * aplikacyjna (`WorkshopConfigService`), tak samo jak `labScenario` i
+   * `controlledBug`. Domyślne 300000 ms zachowuje dotychczasowe zachowanie
+   * produkcji bez jawnej konfiguracji z `/admin`.
+   */
+  labDelayMs    Int      @default(300000)
   updatedAt     DateTime @updatedAt
 
   @@map("workshop_config")

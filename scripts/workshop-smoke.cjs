@@ -501,8 +501,12 @@ async function runApiDiagnosticsDefect(client, adminClient, testerOne, report) {
   report.pass("API_DIAGNOSTICS");
 }
 
-async function setWorkshopConfig(adminClient, labScenario, controlledBug) {
-  const response = await adminClient.put("/admin/api/config", { labScenario, controlledBug });
+async function setWorkshopConfig(adminClient, labScenario, controlledBug, labDelayMs = 300000) {
+  const response = await adminClient.put("/admin/api/config", {
+    labScenario,
+    controlledBug,
+    labDelayMs
+  });
   if (response.status !== 200) {
     throw fail(
       "Reset",

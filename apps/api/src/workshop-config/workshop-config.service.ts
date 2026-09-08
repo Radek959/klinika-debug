@@ -9,18 +9,39 @@ import {
   DEFAULT_CONTROLLED_BUG,
   type ControlledBug
 } from "./controlled-bug";
+import {
+  assertFiniteNonNegativeLabDelayMs,
+  DEFAULT_LAB_DELAY_MS,
+  resolveLabDelayMsBootstrap
+} from "./lab-delay";
 
 const CONFIG_ROW_ID = "singleton";
 
 export interface WorkshopConfigState {
   labScenario: LabSimulatorScenario;
   controlledBug: ControlledBug;
+  /**
+   * Czas generowania wyników (ms). Wartość zapisana przez panel `/admin`
+   * (`setConfig`) jest zawsze jednym z presetów `LAB_DELAY_PRESETS_MS`, ale
+   * odczyt dopuszcza `number` — wartość startowa (bootstrap) może pochodzić z
+   * `LAB_SIMULATOR_DELAY_MS` (furtka testowa), tak jak `labScenario` z
+   * `LAB_SIMULATOR_SCENARIO`.
+   */
+  labDelayMs: number;
   updatedAt: Date;
 }
 
 export interface WorkshopConfigInput {
   labScenario: LabSimulatorScenario;
   controlledBug: ControlledBug;
+  /**
+   * "Tylko presety" jest wymogiem panelu `/admin`, egzekwowanym przez
+   * `AdminConfigUpdateDto` (`@IsIn(LAB_DELAY_PRESETS_MS)`) — ten serwis robi
+   * tylko luźny sanity check (`assertFiniteNonNegativeLabDelayMs`), żeby móc
+   * też przyjąć wartość odziedziczoną z bootstrapu `LAB_SIMULATOR_DELAY_MS`
+   * (furtka testowa), gdy wywołujący zmienia tylko scenariusz/defekt.
+   */
+  labDelayMs: number;
 }
 
 /**
@@ -76,25 +97,40 @@ export class WorkshopConfigService {
     return config.controlledBug;
   }
 
+  /**
+   * Czas generowania wyników (ms) dla NOWEJ wysyłki zlecenia.
+   *
+   * Tak jak `getLabScenario`, wywołujący musi przekazać ten wynik jawnie do
+   * zadania ponowienia w momencie jego utworzenia — automatyczne ponowienie
+   * używa delay zapisanego w zadaniu, więc zmiana `labDelayMs` z `/admin` nie
+   * przesuwa już zaplanowanego `lab_job.executeAt` ani `estimatedCompletionAt`.
+   */
+  async getLabDelayMs(): Promise<number> {
+    const config = await this.getConfig();
+    return config.labDelayMs;
+  }
+
   async setConfig(input: WorkshopConfigInput): Promise<WorkshopConfigState> {
     const labScenario = resolveLabSimulatorScenario(input.labScenario);
     const controlledBug = assertControlledBug(input.controlledBug);
+    const labDelayMs = assertFiniteNonNegativeLabDelayMs(input.labDelayMs);
 
     const row = await this.prisma.workshopConfig.upsert({
       where: { id: CONFIG_ROW_ID },
-      create: { id: CONFIG_ROW_ID, labScenario, controlledBug },
-      update: { labScenario, controlledBug }
+      create: { id: CONFIG_ROW_ID, labScenario, controlledBug, labDelayMs },
+      update: { labScenario, controlledBug, labDelayMs }
     });
 
     this.cached = this.toState(row);
     return this.cached;
   }
 
-  /** Przywraca konfigurację do stanu domyślnego: `SUCCESS` + `CLEAN`. */
+  /** Przywraca konfigurację do stanu domyślnego: `SUCCESS` + `CLEAN` + `300000`. */
   async resetToDefaults(): Promise<WorkshopConfigState> {
     return this.setConfig({
       labScenario: resolveLabSimulatorScenario(undefined),
-      controlledBug: DEFAULT_CONTROLLED_BUG
+      controlledBug: DEFAULT_CONTROLLED_BUG,
+      labDelayMs: DEFAULT_LAB_DELAY_MS
     });
   }
 
@@ -107,16 +143,18 @@ export class WorkshopConfigService {
     }
 
     // Wiersz jeszcze nie istnieje (świeżo zmigrowana baza) — jedyny moment,
-    // w którym `LAB_SIMULATOR_SCENARIO` jest odczytywana jako wartość
-    // startowa. Upsert chroni przed wyścigiem dwóch równoległych pierwszych
-    // odczytów tuż po starcie procesu.
+    // w którym `LAB_SIMULATOR_SCENARIO` i `LAB_SIMULATOR_DELAY_MS` są
+    // odczytywane jako wartości startowe. Upsert chroni przed wyścigiem dwóch
+    // równoległych pierwszych odczytów tuż po starcie procesu.
     const bootstrapScenario = resolveLabSimulatorScenario();
+    const bootstrapLabDelayMs = resolveLabDelayMsBootstrap();
     return this.prisma.workshopConfig.upsert({
       where: { id: CONFIG_ROW_ID },
       create: {
         id: CONFIG_ROW_ID,
         labScenario: bootstrapScenario,
-        controlledBug: DEFAULT_CONTROLLED_BUG
+        controlledBug: DEFAULT_CONTROLLED_BUG,
+        labDelayMs: bootstrapLabDelayMs
       },
       update: {}
     });
@@ -125,11 +163,13 @@ export class WorkshopConfigService {
   private toState(row: {
     labScenario: string;
     controlledBug: string;
+    labDelayMs: number;
     updatedAt: Date;
   }): WorkshopConfigState {
     return {
       labScenario: resolveLabSimulatorScenario(row.labScenario),
       controlledBug: assertControlledBug(row.controlledBug),
+      labDelayMs: row.labDelayMs,
       updatedAt: row.updatedAt
     };
   }

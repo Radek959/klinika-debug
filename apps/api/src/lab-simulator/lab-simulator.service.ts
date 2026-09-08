@@ -74,6 +74,13 @@ export interface LabSimulatorOrderInput {
    * zamienić trwającej operacji w inny scenariusz.
    */
   scenario?: LabSimulatorScenario;
+  /**
+   * Czas generowania wyników (ms) skonfigurowany w `/admin` w chwili
+   * wywołania (nowa wysyłka) albo utrwalony w zadaniu ponowienia (retry) —
+   * tak samo jak `scenario`. Brak wartości oznacza dotychczasowy fallback:
+   * `LAB_SIMULATOR_DELAY_MS` albo domyślne 300000 ms.
+   */
+  delayMs?: number;
 }
 
 export interface LabSimulatorScheduledJob {
@@ -210,7 +217,7 @@ export class LabSimulatorService {
     }
 
     const externalOrderId = `EXT-${randomUUID()}`;
-    const delayMs = this.getDelayMs();
+    const delayMs = input.delayMs ?? this.getDelayMs();
 
     if (scenario === "PARTIAL_SUCCESS" && input.tests.length >= 2) {
       return this.buildPartialSuccessResult(input, externalOrderId, delayMs);

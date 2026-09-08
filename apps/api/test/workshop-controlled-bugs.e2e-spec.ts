@@ -428,7 +428,7 @@ describe("workshop controlled bugs", () => {
       method: "PUT",
       url: "/admin/api/config",
       headers: { cookie },
-      payload: { labScenario: "SUCCESS", controlledBug }
+      payload: { labScenario: "SUCCESS", controlledBug, labDelayMs: 300000 }
     });
     expect(response.statusCode).toBe(200);
   }
