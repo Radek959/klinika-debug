@@ -45,7 +45,7 @@ export function PageHeader({
   actions,
   children
 }: {
-  title: string;
+  title: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
 }) {

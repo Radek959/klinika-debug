@@ -114,8 +114,11 @@ export function PatientDetailsPage({ token }: { token: string }) {
             <Link className="secondary-link" to="/patients">
               Wróć do listy
             </Link>
-            <Link className="button-link" to={`/patients/${patient.id}/edit`}>
+            <Link className="secondary-link" to={`/patients/${patient.id}/edit`}>
               Edytuj dane
+            </Link>
+            <Link className="button-link" to={`/orders/new?patientId=${patient.id}`}>
+              Utwórz zlecenie
             </Link>
           </>
         }
