@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../layout/AppLayout";
+import { CopyButton } from "../ui/CopyButton";
 import { findWorkshopLogById } from "./workshopLogs";
 
 export function MaterialLogViewerPage() {
@@ -32,6 +33,7 @@ function LoadedMaterialLogViewer({
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState("");
   const requestId = useRef(0);
 
   useEffect(() => {
@@ -68,7 +70,19 @@ function LoadedMaterialLogViewer({
     return () => controller.abort();
   }, [filename]);
 
-  const entryCount = content ? content.split("\n").filter((line) => line.trim() !== "").length : null;
+  const lines = useMemo(
+    () => (content ? content.split("\n").filter((line) => line.trim() !== "") : []),
+    [content]
+  );
+  const trimmedSearch = search.trim();
+  const filteredLines = useMemo(() => {
+    if (!trimmedSearch) {
+      return lines;
+    }
+    const needle = trimmedSearch.toLowerCase();
+    return lines.filter((line) => line.toLowerCase().includes(needle));
+  }, [lines, trimmedSearch]);
+  const visibleContent = filteredLines.join("\n");
 
   return (
     <>
@@ -93,13 +107,46 @@ function LoadedMaterialLogViewer({
           <div className="log-viewer-toolbar">
             <div>
               <p className="log-viewer-filename">{filename}</p>
-              <p className="muted">{entryCount} wpisów</p>
+              <p className="muted">
+                {filteredLines.length} z {lines.length} wpisów
+              </p>
             </div>
-            <a className="secondary-link" href={`/materials/logs/${filename}`} download>
-              Pobierz .log
-            </a>
+            <div className="log-viewer-toolbar-actions">
+              <CopyButton value={content} label="Kopiuj cały log" />
+              {trimmedSearch ? (
+                <CopyButton value={visibleContent} label="Kopiuj wynik" />
+              ) : null}
+              <a className="secondary-link" href={`/materials/logs/${filename}`} download>
+                Pobierz .log
+              </a>
+            </div>
           </div>
-          <pre className="log-viewer">{content}</pre>
+
+          <div className="log-viewer-search">
+            <label htmlFor="log-search">Szukaj w logu</label>
+            <input
+              id="log-search"
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Fragment tekstu, np. correlationId"
+            />
+            {search ? (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setSearch("")}
+              >
+                Wyczyść
+              </button>
+            ) : null}
+          </div>
+
+          {trimmedSearch && filteredLines.length === 0 ? (
+            <p className="muted">Brak wpisów pasujących do wyszukiwania.</p>
+          ) : (
+            <pre className="log-viewer">{visibleContent}</pre>
+          )}
         </>
       ) : null}
     </>

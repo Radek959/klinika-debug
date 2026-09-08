@@ -145,6 +145,13 @@ button:disabled {
   background: #a1281f;
 }
 
+.copy-button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .button-link,
 .secondary-link {
   display: inline-flex;
@@ -1084,6 +1091,30 @@ th {
   font-weight: 700;
 }
 
+.log-viewer-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.log-viewer-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.log-viewer-search label {
+  font-weight: 600;
+}
+
+.log-viewer-search input {
+  flex: 1 1 260px;
+  width: auto;
+}
+
 .log-viewer {
   max-height: 65vh;
   margin: 0;
@@ -1097,6 +1128,20 @@ th {
   font-size: 0.88rem;
   line-height: 1.5;
   white-space: pre;
+}
+
+.product-docs-preview {
+  margin: 0;
+  border: 1px solid #d8e2db;
+  border-radius: 8px;
+  padding: 20px;
+  background: #ffffff;
+  color: #17211c;
+  font-family: inherit;
+  font-size: 0.94rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (max-width: 520px) {

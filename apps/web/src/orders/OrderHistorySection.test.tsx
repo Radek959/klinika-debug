@@ -45,6 +45,37 @@ describe("OrderHistorySection", () => {
     expect(screen.queryByText("ORDER_SENT_TO_LAB")).not.toBeInTheDocument();
   });
 
+  it("pozwala skopiować Correlation ID przyciskiem Kopiuj", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    mockHistoryResponse(
+      historyResponse([
+        historyItem({
+          eventType: "ORDER_SENT_TO_LAB",
+          correlationId: "corr-copy-1",
+          previousStatus: "SAMPLE_COLLECTED",
+          newStatus: "SENT_TO_LAB",
+          details: {
+            eventType: "ORDER_SENT_TO_LAB",
+            idempotencyKey: "send-order-1",
+            correlationId: "corr-copy-1",
+            previousStatus: "SAMPLE_COLLECTED",
+            newStatus: "SENT_TO_LAB"
+          }
+        })
+      ])
+    );
+
+    render(<OrderHistorySection token="token" orderId="order-1" refreshKey={0} />);
+
+    expect(await screen.findByText("corr-copy-1")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Kopiuj" }));
+
+    expect(writeText).toHaveBeenCalledWith("corr-copy-1");
+    expect(await screen.findByRole("button", { name: "Skopiowano" })).toBeInTheDocument();
+  });
+
   it("pokazuje odrzucenie próbki po polsku, bez surowych enumów", async () => {
     mockHistoryResponse(
       historyResponse([

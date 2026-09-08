@@ -1,4 +1,5 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { workshopLogs } from "./workshopLogs";
@@ -88,12 +89,119 @@ describe("materiały warsztatowe", () => {
     });
 
     expect(screen.getByText(material.filename)).toBeInTheDocument();
-    expect(screen.getByText("3 wpisów")).toBeInTheDocument();
+    expect(screen.getByText("3 z 3 wpisów")).toBeInTheDocument();
     expect(screen.getByText(/"event":"a"/)).toBeInTheDocument();
 
     const downloadLink = screen.getByRole("link", { name: "Pobierz .log" });
     expect(downloadLink).toHaveAttribute("href", `/materials/logs/${material.filename}`);
     expect(downloadLink).toHaveAttribute("download");
+  });
+
+  it("filtruje log po tekście, pokazuje licznik i pozwala kopiować całość oraz wynik", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    const material = workshopLogs[0];
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === `/materials/logs/${material.filename}`) {
+        return new Response(sampleLogContent, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", `/materials/logs/${material.id}`);
+    render(<App />);
+
+    expect(await screen.findByText("3 z 3 wpisów")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Kopiuj wynik" })).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Szukaj w logu"), "event\":\"b");
+
+    expect(await screen.findByText("1 z 3 wpisów")).toBeInTheDocument();
+    expect(screen.queryByText(/"event":"a"/)).not.toBeInTheDocument();
+    expect(screen.getByText(/"event":"b"/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Kopiuj wynik" }));
+    expect(writeText).toHaveBeenCalledWith('{"event":"b"}');
+
+    await userEvent.click(screen.getByRole("button", { name: "Kopiuj cały log" }));
+    expect(writeText).toHaveBeenCalledWith(sampleLogContent);
+
+    await userEvent.click(screen.getByRole("button", { name: "Wyczyść" }));
+    expect(await screen.findByText("3 z 3 wpisów")).toBeInTheDocument();
+  });
+
+  it("pokazuje komunikat o braku wyników wyszukiwania w logu", async () => {
+    const material = workshopLogs[0];
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === `/materials/logs/${material.filename}`) {
+        return new Response(sampleLogContent, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", `/materials/logs/${material.id}`);
+    render(<App />);
+
+    await userEvent.type(
+      await screen.findByLabelText("Szukaj w logu"),
+      "nieistniejący fragment"
+    );
+
+    expect(
+      await screen.findByText("Brak wpisów pasujących do wyszukiwania.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("0 z 3 wpisów")).toBeInTheDocument();
+  });
+
+  it("pokazuje sekcję Dokumentacja z podglądem, pobraniem i linkiem do OpenAPI", async () => {
+    mockFetch(defaultHandler);
+    window.history.pushState({}, "", "/materials");
+    render(<App />);
+
+    const heading = await screen.findByRole("heading", { name: "Dokumentacja produktowa" });
+    const card = heading.closest("article") as HTMLElement;
+    expect(
+      within(card).getByRole("link", { name: "Podgląd" })
+    ).toHaveAttribute("href", "/materials/product-docs");
+    const downloadLink = within(card).getByRole("link", { name: "Pobierz .md" });
+    expect(downloadLink).toHaveAttribute("href", "/materials/docs/dokumentacja-produktowa.md");
+    expect(downloadLink).toHaveAttribute("download");
+
+    const apiHeading = screen.getByRole("heading", { name: "Dokumentacja API" });
+    const apiCard = apiHeading.closest("article") as HTMLElement;
+    const openApiLink = within(apiCard).getByRole("link", { name: "Otwórz OpenAPI" });
+    expect(openApiLink).toHaveAttribute("href", "/api/docs");
+    expect(openApiLink).toHaveAttribute("target", "_blank");
+  });
+
+  it("pokazuje podgląd dokumentacji produktowej pobranej z /materials/docs", async () => {
+    const docsContent = "# Dokumentacja produktowa\n\nTreść testowa.\n";
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === "/materials/docs/dokumentacja-produktowa.md") {
+        return new Response(docsContent, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/materials/product-docs");
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Dokumentacja produktowa" })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Treść testowa\./)).toBeInTheDocument();
+    const downloadLink = screen.getByRole("link", { name: "Pobierz .md" });
+    expect(downloadLink).toHaveAttribute("href", "/materials/docs/dokumentacja-produktowa.md");
   });
 
   it("pokazuje bezpieczny ekran, gdy logId nie jest na whiteliście, bez próby pobrania pliku", async () => {

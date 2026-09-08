@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "copy:workshop-logs": "node ../../scripts/copy-workshop-logs-web.cjs",
-    "predev": "npm run copy:workshop-logs",
-    "prebuild": "npm run copy:workshop-logs",
+    "copy:workshop-docs": "node ../../scripts/copy-workshop-docs-web.cjs",
+    "predev": "npm run copy:workshop-logs && npm run copy:workshop-docs",
+    "prebuild": "npm run copy:workshop-logs && npm run copy:workshop-docs",
     "build": "tsc -p tsconfig.build.json && vite build",
     "dev": "vite",
     "preview": "vite preview",
