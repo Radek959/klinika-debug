@@ -82,6 +82,53 @@ npm run build:hostinger
 
 `build:hostinger` wykonuje `prisma generate`, build aplikacji i `prisma migrate deploy`. `build:hostinger:seed` dodatkowo uruchamia seed i jest przeznaczony wyłącznie do pierwszego wdrożenia. Przy seedowaniu produkcyjnym wymagane jest ustawienie `SEED_STAFF_PASSWORD`.
 
+`build:hostinger` NIE przygotowuje środowiska warsztatowego (uczestników `warsztat-NN` / `testerNN`) i nie robi tego automatycznie przy żadnym deployu w trakcie trwania szkolenia — to świadomy wybór, żeby zwykły deploy nigdy nie modyfikował danych uczestników.
+
+## Przygotowanie środowiska warsztatowego
+
+Przygotowanie środowiska przed szkoleniem jest osobną, jawną operacją — nie częścią standardowego deploymentu.
+
+```powershell
+npm run build:hostinger:workshop
+```
+
+wykonuje kolejno: `build:hostinger` (build + `prisma migrate deploy`), a następnie `npm run workshop:prepare`.
+
+`workshop:prepare` można też uruchomić samodzielnie (np. po zwykłym `build:hostinger`):
+
+```powershell
+npm run workshop:prepare
+```
+
+Skrypt:
+
+- czyta liczbę uczestników z `WORKSHOP_PARTICIPANTS` (domyślnie 15);
+- sprawdza wymaganą konfigurację (`ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET`, `DATABASE_URL`, a w produkcji także `WORKSHOP_STAFF_PASSWORD`);
+- korzysta z istniejącego, jedynego mechanizmu provisioningu (`provisionWorkshopWorkspaces`) — tego samego, co `npm run workshop:seed`;
+- jest idempotentny i **nigdy nie resetuje** istniejących danych uczestników;
+- nie wypisuje żadnych haseł, hashy, tokenów ani sekretów.
+
+Wymagane zmienne środowiskowe (patrz `.env.example`):
+
+```text
+WORKSHOP_PARTICIPANTS=15
+WORKSHOP_STAFF_PASSWORD=...
+ADMIN_PASSWORD_HASH=...
+ADMIN_SESSION_SECRET=...
+```
+
+### Proces przed szkoleniem
+
+```text
+1. deploy aplikacji (build:hostinger albo build:hostinger:workshop)
+2. npm run workshop:prepare  (jeśli nie użyto build:hostinger:workshop)
+3. preflight/smoke wdrożonego środowiska
+4. sprawdź /admin
+5. zresetuj środowisko (npm run workshop:reset albo reset w /admin) tuż przed wejściem uczestników
+```
+
+Krok 3 (automatyczny smoke przeciwko wdrożonemu środowisku) opisuje osobny dokument techniczny warsztatu.
+
 ## Testy i build
 
 Podstawowe bramki:
