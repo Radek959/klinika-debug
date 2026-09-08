@@ -1,28 +1,40 @@
 # Etap 5 — dane i obserwowalność
 
-**Status etapu:** `PLANNED`
+**Status etapu:** `OUT_OF_SCOPE` dla Workshop MVP  
+**Status historyczny:** pierwotnie `PLANNED`  
+**Aktualne źródło prawdy:** [`workshop-mvp.md`](workshop-mvp.md)
 
-## Zakres
+## Decyzja
+
+Pierwotny Etap 5 był zaprojektowany szerzej niż wymaga tego około 6-godzinne szkolenie „Tester z AI”. Nie realizujemy go jako osobnego etapu przed warsztatem.
+
+Pierwotny zakres obejmował:
 
 - presety danych `STANDARD` i `LARGE`;
 - import pacjentów z CSV;
-- eksport pacjentów i zleceń do CSV oraz JSON;
-- ustrukturyzowane logi z `correlationId`;
-- maskowanie danych pacjenta w logach;
-- dokumentacja produktowa dostępna w aplikacji pod `/docs`;
-- kompletna dokumentacja OpenAPI pod `/api/docs`.
+- eksport pacjentów i zleceń do CSV/JSON;
+- pełne ustrukturyzowane logi runtime;
+- wyszukiwanie/obserwowalność;
+- publikację dokumentacji produktowej pod `/docs`.
 
-## Stan na `main`
+## Co pozostaje potrzebne
 
-W kodzie istnieją podstawowe dane seed i dokumentacja OpenAPI dla obecnych endpointów, ale etap nie jest rozpoczęty jako spójny zakres produktowy. Nie widać jeszcze endpointów importu, eksportu, modułu logów technicznych ani publikowanego widoku `/docs`.
+Workshop MVP zachowuje wyłącznie elementy mające bezpośrednią wartość dydaktyczną:
 
-## Zasady realizacji
+- działające REST API i `/api/docs`;
+- `correlationId` w rzeczywistym procesie aplikacji;
+- syntetyczne, realistyczne log fixture'y zgodne z aplikacją;
+- minimalne dane startowe przygotowane przez provisioning workspace'ów.
 
-- Import i eksport muszą działać wyłącznie w bieżącym workspace.
-- Import ma być atomowy i oparty na tych samych regułach walidacji co formularz pacjenta.
-- Logi nie mogą zawierać pełnego PESEL-u, dokumentu, adresu, kontaktu ani wartości wyników.
-- Materiały widoczne dla uczestników nie ujawniają panelu `/admin` ani wewnętrznego katalogu kontrolowanych błędów.
+Log fixture'y nie wymagają budowania subsystemu observability. Szczegóły: `docs/specyfikacja-mvp.md` i `docs/warsztat/przebieg-szkolenia.md`.
 
-## Dowody weryfikacji
+## Świadomie poza Workshop MVP
 
-Do uzupełnienia w PR-ach implementacyjnych: komendy testowe, wyniki CI, linki do PR i ewentualne smoke testy.
+- import CSV;
+- eksport CSV/JSON;
+- preset `LARGE`;
+- przechowywanie logów technicznych w bazie;
+- wyszukiwarka logów w aplikacji;
+- osobny `/docs`.
+
+Zakres może wrócić po warsztacie tylko na podstawie osobnej decyzji produktowej/dydaktycznej.
