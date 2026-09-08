@@ -161,6 +161,25 @@ Testy samego runnera (bez sieci, mock HTTP server): `npm run test:workshop-smoke
 
 Pełny techniczny runbook przygotowania warsztatu (audit zgodności ze szkoleniem, checklisty, recovery, emergency clean state): [`docs/warsztat/workshop-readiness.md`](docs/warsztat/workshop-readiness.md).
 
+## Browser journeys wdrożonego środowiska (Playwright)
+
+`npm run test:workshop-browser` uruchamia mały, ręczny (nie jest bramką CI) suite Playwright przeciwko RZECZYWIŚCIE WDROŻONEJ Klinice Debug — chroni flow, które właściciel testuje manualnie przed warsztatem (logowanie, dashboard, pacjent → zlecenie, próbki → laboratorium → wynik, Materiały/dokumentacja/log, investigation z `correlationId`).
+
+Konfiguracja — te same trzy zmienne co `workshop:smoke`, plus jawne potwierdzenie (suite zawsze tworzy dane i resetuje środowisko):
+
+```text
+WORKSHOP_BASE_URL=https://klinikadebug.rwasik.pl
+WORKSHOP_STAFF_PASSWORD=...
+WORKSHOP_ADMIN_PASSWORD=...
+WORKSHOP_E2E_CONFIRM=RUN
+```
+
+```powershell
+WORKSHOP_E2E_CONFIRM=RUN npm run test:workshop-browser
+```
+
+Suite jest serial (globalny config `/admin` nie nadaje się do równoległych testów). Przed testami ustawia `SUCCESS` + `CLEAN` + `labDelay=5s` i resetuje środowisko; po testach przywraca `SUCCESS` + `CLEAN` + `labDelay=5min` i resetuje ponownie — jeśli sprzątanie się nie powiedzie, suite jasno kończy się komunikatem „Środowisko wymaga ręcznego resetu.”. Przy niepowodzeniu zapisuje zrzut ekranu i trace (`retain-on-failure`); artefakty nie są commitowane.
+
 ## Testy i build
 
 Podstawowe bramki:

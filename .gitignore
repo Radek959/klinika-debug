@@ -12,3 +12,8 @@ coverage/
 # Dokumentacja produktowa skopiowana przez build do apps/web/public — jedyne
 # źródło prawdy pozostaje docs/dokumentacja-produktowa.md.
 apps/web/public/materials/docs/
+# Artefakty npm run test:workshop-browser (Playwright): raporty i trace'y,
+# nigdy nie commitowane.
+test-results/
+playwright-report/
+blob-report/
