@@ -69,7 +69,12 @@ jobs:
       - run: npm run check
 
       - run: npm run test:integration
-        timeout-minutes: 5
+        # 23 e2e spec files run --runInBand against real MySQL; the suite has
+        # grown past the previous 5-minute budget (observed ~5 min for the
+        # first 7 of 23 files on 2026-09-08) and was hitting the step
+        # timeout, not a real failure or hang. 25 minutes leaves headroom
+        # for further growth without masking an actual hang.
+        timeout-minutes: 25
 
       - name: Hide frontend test-only packages before production build
         run: |
