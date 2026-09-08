@@ -6,7 +6,15 @@ Ten katalog opisuje realizację **Workshop MVP**: minimalnego, stabilnego zakres
 
 Dokumentacja produktowa opisuje wymagania i zachowanie aplikacji. Katalog `docs/implementation` opisuje, co jest potrzebne do warsztatu, co zostało zaimplementowane oraz co świadomie pozostaje poza zakresem.
 
-Źródłem prawdy dla dalszego developmentu jest teraz [`workshop-mvp.md`](workshop-mvp.md).
+### Hierarchia źródeł prawdy dla dalszego developmentu
+
+1. [`docs/warsztat/przebieg-szkolenia.md`](../warsztat/przebieg-szkolenia.md) — czego rzeczywiście potrzebuje szkolenie;
+2. [`workshop-mvp.md`](workshop-mvp.md) — zakres pozostałej implementacji;
+3. [`../dokumentacja-produktowa.md`](../dokumentacja-produktowa.md) — poprawne zachowanie widoczne dla uczestnika;
+4. [`../specyfikacja-mvp.md`](../specyfikacja-mvp.md) — wymagania Workshop MVP;
+5. [`../architektura-techniczna.md`](../architektura-techniczna.md) — kierunek techniczny.
+
+Starsze plany etapów są dokumentacją historyczną i nie mogą samodzielnie rozszerzać zakresu Workshop MVP.
 
 ## Aktualny etap prac
 
@@ -22,7 +30,7 @@ Etapy 1–4 tworzą gotowy rdzeń warsztatowy:
 
 Nie rozwijamy dalej Etapów 1–4 bez konkretnej potrzeby warsztatowej.
 
-Rekomendowany następny zakres: **Workshop MVP — izolowane workspace'y uczestników, minimalne sterowanie prowadzącego, 2–3 kontrolowane błędy, syntetyczne logi i workshop readiness**.
+Rekomendowany następny zakres: **Workshop MVP — izolowane workspace'y uczestników, minimalne sterowanie prowadzącego, 2–3 kontrolowane błędy, realistyczne syntetyczne logi i workshop readiness**.
 
 ## Granice narzędzi warsztatowych
 
@@ -51,7 +59,7 @@ Osobne konta w tym samym workspace nie zapewniają niezależnych danych — pacj
 | Workshop MVP — uczestnicy | `PLANNED` | Wiele izolowanych workspace'ów i kont warsztatowych + reset do znanego stanu. |
 | Workshop MVP — trainer controls | `PLANNED` | Minimalny `/admin`: lab scenario, kontrolowany bug, reset. |
 | Workshop MVP — controlled bugs | `PLANNED` | 2–3 deterministyczne defekty potrzebne do ćwiczeń. |
-| Workshop MVP — log fixtures | `PLANNED` | Syntetyczne logi zamiast pełnego subsystemu observability. |
+| Workshop MVP — log fixtures | `PLANNED` | Realistyczne syntetyczne logi zamiast pełnego subsystemu observability. |
 | Workshop MVP — readiness | `PLANNED` | Smoke test całego przebiegu warsztatowego i stabilizacja. |
 | Import / eksport | `OUT_OF_SCOPE` | Nie jest potrzebny do obecnej agendy warsztatu. |
 | Rozbudowany observability | `OUT_OF_SCOPE` | Do ćwiczeń wystarczą kontrolowane fixture'y logów. |
@@ -62,11 +70,12 @@ Osobne konta w tym samym workspace nie zapewniają niezależnych danych — pacj
 ## Plany
 
 - [Workshop MVP](workshop-mvp.md)
+- [Przebieg szkolenia](../warsztat/przebieg-szkolenia.md)
 - [Etap 3 — zlecenia i próbki](03-zlecenia-i-probki.md)
 - [Etap 4 — laboratorium](04-laboratorium.md)
-- [Etap 5 — dane i obserwowalność](05-dane-i-obserwowalnosc.md) — zakres historyczny, większość obecnie `OUT_OF_SCOPE`
-- [Etap 6 — admin i sterowanie](06-admin-i-sterowanie.md) — zakres historyczny, zastąpiony minimalnym trainer panelem
-- [Etap 7 — kontrolowane błędy](07-kontrolowane-bledy.md) — zakres historyczny, zastąpiony 2–3 kontrolowanymi defektami
+- [Etap 5 — dane i obserwowalność](05-dane-i-obserwowalnosc.md) — zakres historyczny, obecnie `OUT_OF_SCOPE`
+- [Etap 6 — admin i sterowanie](06-admin-i-sterowanie.md) — zastąpiony minimalnym trainer panelem
+- [Etap 7 — kontrolowane błędy](07-kontrolowane-bledy.md) — zastąpiony 2–3 kontrolowanymi defektami
 
 ## Definicje statusów
 
@@ -77,31 +86,19 @@ Osobne konta w tym samym workspace nie zapewniają niezależnych danych — pacj
 | `IMPLEMENTED` | Kod i testy znajdują się w PR/main |
 | `VERIFIED` | Wymagane testy, CI i review zakończyły się powodzeniem |
 | `DEPLOYED` | Zmiana została wdrożona i sprawdzona na Hostingerze |
+| `SUPERSEDED` | Starszy plan zastąpiony przez aktualny Workshop MVP |
 | `OUT_OF_SCOPE` | Obszar świadomie wyłączony z Workshop MVP |
 
 ## Definition of Done dla Workshop MVP
 
 Workshop MVP jest gotowe, gdy:
 
-- uczestnicy mają niezależne dane i nie wpływają na workspace'y innych osób;
+- minimum 15 uczestników może pracować na niezależnych workspace'ach bez wpływania na dane innych osób;
 - prowadzący może szybko zmienić scenariusz laboratorium, kontrolowany błąd i zresetować środowisko;
 - dostępne są 2–3 deterministyczne błędy używane w konkretnych ćwiczeniach;
-- dostępne są syntetyczne logi do analizy;
+- dostępne są realistyczne syntetyczne logi do analizy;
 - działają główne ścieżki pacjent → zlecenie → próbka → laboratorium → wynik;
-- API/OpenAPI i correlationId wystarczają do ćwiczeń diagnostycznych;
-- wykonano smoke test całego scenariusza warsztatowego po deployu;
-- dalszy development jest zatrzymany, chyba że konkretne ćwiczenie wymaga dodatkowej funkcji.
-
-## Zasada przeciwdziałania rozszerzaniu zakresu
-
-Każda nowa funkcja musi odpowiadać na pytanie:
-
-> W którym konkretnym ćwiczeniu warsztatu ta funkcja jest potrzebna i co uczestnik dzięki niej zrozumie lub przećwiczy?
-
-Jeżeli nie ma jednoznacznej odpowiedzi, funkcja nie wchodzi do Workshop MVP.
-
-## Dowody przeglądu aktualnego stanu
-
-Ostatni przegląd planu: 2026-09-08.
-
-Decyzja: po implementacji Etapu 4 zakres został świadomie zmniejszony do Workshop MVP. Dotychczas zaplanowane rozbudowane etapy danych/observability, admina oraz pakietów błędów nie są realizowane w pełnym zakresie przed warsztatem.
+- REST API i OpenAPI wspierają ćwiczenia;
+- wykonano workshop readiness smoke test zgodny z `docs/warsztat/przebieg-szkolenia.md`;
+- wszystkie wymagane bramki jakości są zielone;
+- brak funkcji ze starego szerszego MVP blokujących finalizację.
