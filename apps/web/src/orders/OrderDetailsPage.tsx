@@ -9,6 +9,7 @@ import type {
 import type { ApiFieldError } from "../api/client";
 import { ApiClientError, getOrder, registerSample, sendOrderToLab } from "../api/client";
 import { PageHeader } from "../layout/AppLayout";
+import { CopyButton } from "../ui/CopyButton";
 import { formatDateTime } from "../ui/dates";
 import {
   materialTypeLabels,
@@ -26,7 +27,7 @@ export function OrderDetailsPage({ token }: { token: string }) {
   const location = useLocation();
   const [order, setOrder] = useState<OrderDetailsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<ApiErrorInfo | null>(null);
   const [success, setSuccess] = useState<string | null>(
     (location.state as { message?: string } | null)?.message ?? null
   );
@@ -50,7 +51,7 @@ export function OrderDetailsPage({ token }: { token: string }) {
       })
       .catch((caught) => {
         if (requestId.current === currentRequest) {
-          setLoadError(toApiMessage(caught, "Nie udało się pobrać danych zlecenia."));
+          setLoadError(toApiErrorInfo(caught, "Nie udało się pobrać danych zlecenia."));
         }
       })
       .finally(() => {
@@ -72,7 +73,14 @@ export function OrderDetailsPage({ token }: { token: string }) {
     return (
       <section className="empty-state" role="alert">
         <h1>Nie udało się wczytać zlecenia</h1>
-        <p>{loadError}</p>
+        <p>{loadError.message}</p>
+        {loadError.correlationId ? (
+          <p className="muted">
+            Identyfikator błędu:{" "}
+            <span className="history-id">{loadError.correlationId}</span>{" "}
+            <CopyButton value={loadError.correlationId} />
+          </p>
+        ) : null}
         <Link to="/orders">Wróć do listy</Link>
       </section>
     );
@@ -187,7 +195,9 @@ export function OrderDetailsPage({ token }: { token: string }) {
           <dl className="data-list">
             <div className="data-row">
               <dt>Identyfikator zewnętrzny</dt>
-              <dd>{order.externalOrderId}</dd>
+              <dd>
+                {order.externalOrderId} <CopyButton value={order.externalOrderId} />
+              </dd>
             </div>
             <div className="data-row">
               <dt>Wysłano</dt>
@@ -385,7 +395,7 @@ function SendToLabAction({
   onHistoryRecorded: () => void;
 }) {
   const [isSending, setIsSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ApiErrorInfo | null>(null);
   const [retryNotice, setRetryNotice] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
 
@@ -404,7 +414,7 @@ function SendToLabAction({
       // szczegóły pól, ale nigdy technicznego kodu błędu ani nazwy aktywnego
       // trybu symulatora. Przycisk wysyłki zostaje aktywny — żaden z tych
       // przypadków nie blokuje zlecenia.
-      setError(toApiMessage(caught, "Nie udało się wysłać zlecenia do laboratorium."));
+      setError(toApiErrorInfo(caught, "Nie udało się wysłać zlecenia do laboratorium."));
       setFieldErrors(caught instanceof ApiClientError ? caught.fieldErrors : []);
       setRetryNotice(describeAutomaticRetry(caught));
 
@@ -425,7 +435,13 @@ function SendToLabAction({
       </button>
       {error ? (
         <p className="form-error" role="alert">
-          {error}
+          {error.message}
+        </p>
+      ) : null}
+      {error?.correlationId ? (
+        <p className="muted">
+          Identyfikator błędu: <span className="history-id">{error.correlationId}</span>{" "}
+          <CopyButton value={error.correlationId} />
         </p>
       ) : null}
       {retryNotice ? (
@@ -511,9 +527,14 @@ function toLocalDateTimeInputValue(date: Date) {
   )}:${pad(date.getMinutes())}`;
 }
 
-function toApiMessage(caught: unknown, fallback: string) {
+interface ApiErrorInfo {
+  message: string;
+  correlationId?: string;
+}
+
+function toApiErrorInfo(caught: unknown, fallback: string): ApiErrorInfo {
   if (caught instanceof ApiClientError) {
-    return caught.message;
+    return { message: caught.message, correlationId: caught.correlationId };
   }
-  return fallback;
+  return { message: fallback };
 }

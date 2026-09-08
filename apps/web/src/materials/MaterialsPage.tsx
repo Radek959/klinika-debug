@@ -38,6 +38,37 @@ export function MaterialsPage() {
           ))}
         </div>
       </section>
+
+      <section>
+        <h2>Dokumentacja</h2>
+
+        <article className="material-card">
+          <h3>Dokumentacja produktowa</h3>
+          <p>Reguły biznesowe i oczekiwane zachowanie aplikacji.</p>
+          <div className="material-card-actions">
+            <Link className="button-link" to="/materials/product-docs">
+              Podgląd
+            </Link>
+            <a
+              className="secondary-link"
+              href="/materials/docs/dokumentacja-produktowa.md"
+              download
+            >
+              Pobierz .md
+            </a>
+          </div>
+        </article>
+
+        <article className="material-card">
+          <h3>Dokumentacja API</h3>
+          <p>Kompletny opis endpointów REST dostępnych dla konta uczestnika.</p>
+          <div className="material-card-actions">
+            <a className="button-link" href="/api/docs" target="_blank" rel="noreferrer">
+              Otwórz OpenAPI
+            </a>
+          </div>
+        </article>
+      </section>
     </>
   );
 }

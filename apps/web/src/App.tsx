@@ -22,6 +22,7 @@ import { OrderDetailsPage } from "./orders/OrderDetailsPage";
 import { OrderListPage } from "./orders/OrderListPage";
 import { MaterialsPage } from "./materials/MaterialsPage";
 import { MaterialLogViewerPage } from "./materials/MaterialLogViewerPage";
+import { ProductDocsPage } from "./materials/ProductDocsPage";
 
 export function App() {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
@@ -105,6 +106,7 @@ export function App() {
             element={<OrderDetailsPage token={token ?? ""} />}
           />
           <Route path="materials" element={<MaterialsPage />} />
+          <Route path="materials/product-docs" element={<ProductDocsPage />} />
           <Route path="materials/logs/:logId" element={<MaterialLogViewerPage />} />
         </Route>
         <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />

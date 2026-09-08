@@ -844,6 +844,46 @@ describe("interfejs zleceń", () => {
     expect(screen.queryByText(/Kolejna próba za około/)).not.toBeInTheDocument();
   });
 
+  it("pokazuje correlationId błędu wysyłki z przyciskiem Kopiuj", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    window.history.pushState({}, "", "/orders/order-1");
+    const collectedOrder = sendableOrderDetails();
+
+    mockFetch(({ url, init }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1/send" && init?.method === "POST") {
+        return jsonError(
+          422,
+          "LAB_ORDER_VALIDATION_ERROR",
+          "Laboratorium odrzuciło zlecenie z powodu błędów walidacji.",
+          "corr-copy-send"
+        );
+      }
+      if (url.startsWith("/api/v1/orders/order-1/history")) {
+        return json(historyListResponse([]));
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(collectedOrder);
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Wyślij do laboratorium" })
+    );
+
+    expect(await screen.findByText("corr-copy-send")).toBeInTheDocument();
+    const copyButtons = screen.getAllByRole("button", { name: "Kopiuj" });
+    await userEvent.click(copyButtons[0]);
+    expect(writeText).toHaveBeenCalledWith("corr-copy-send");
+  });
+
   it("pokazuje przycisk edycji tylko dla zlecenia DRAFT", async () => {
     window.history.pushState({}, "", "/orders/order-1");
     mockFetch(({ url }) => {

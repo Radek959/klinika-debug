@@ -5,6 +5,7 @@ import type {
   OrderHistoryItem
 } from "@klinika/api-contracts";
 import { ApiClientError, getOrderHistory } from "../api/client";
+import { CopyButton } from "../ui/CopyButton";
 import { formatDateTime } from "../ui/dates";
 import {
   materialTypeLabels,
@@ -185,7 +186,8 @@ function HistoryEntryCard({ item }: { item: OrderHistoryItem }) {
       ) : null}
       {item.correlationId ? (
         <p className="history-entry-meta">
-          Correlation ID: <span className="history-id">{item.correlationId}</span>
+          Correlation ID: <span className="history-id">{item.correlationId}</span>{" "}
+          <CopyButton value={item.correlationId} />
         </p>
       ) : null}
       {item.integrationEventId ? (
