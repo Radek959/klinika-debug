@@ -849,6 +849,32 @@ describe("orders send api — scenariusz RATE_LIMIT", () => {
     });
   });
 
+  describe("labDelayMs zapisany w zadaniu ponowienia", () => {
+    it("retry używa delay zapisanego w chwili pierwszej próby, nie bieżącej konfiguracji", async () => {
+      await setWorkshopConfig(app, { labScenario: "RATE_LIMIT", labDelayMs: 5000 });
+      const { token, orderId } = await createSendableOrder("SMP-RL-DELAY-1");
+      expect((await sendOrder(token, orderId)).statusCode).toBe(429);
+
+      const jobBefore = await prisma.labSendRetryJob.findFirstOrThrow({ where: { orderId } });
+      expect(jobBefore.labDelayMs).toBe(5000);
+
+      // Zmiana konfiguracji PO utworzeniu zadania nie może zmienić delay już
+      // zaplanowanego ponowienia — retry musi zachować 5000 ms z chwili
+      // pierwotnej wysyłki, nie nowe 300000 ms.
+      await setWorkshopConfig(app, { labScenario: "SUCCESS", labDelayMs: 300000 });
+
+      const before = Date.now();
+      await makeRetryJobDue(orderId);
+      await labSendRetry.processDueJobs(new Date());
+
+      const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+      expect(order.status).toBe("SENT_TO_LAB");
+      const offsetMs = order.estimatedCompletionAt!.getTime() - before;
+      expect(offsetMs).toBeGreaterThanOrEqual(4000);
+      expect(offsetMs).toBeLessThan(100000);
+    });
+  });
+
   describe("brak regresji pozostałych scenariuszy", () => {
     it("SUCCESS nadal przyjmuje zlecenie bez zadania ponowienia", async () => {
       await setWorkshopConfig(app, { labScenario: "SUCCESS" });

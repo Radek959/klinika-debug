@@ -64,6 +64,8 @@ jobs:
 
       - run: npm run test:migration:workshop-config
 
+      - run: npm run test:migration:workshop-lab-delay
+
       - run: npm run db:migrate:test
 
       - run: npm run check

@@ -820,10 +820,12 @@ export class OrdersService {
 
     // Nowa wysyłka zawsze czyta BIEŻĄCĄ, globalną konfigurację panelu
     // `/admin` (WorkshopConfigService, trwałą w bazie). W odróżnieniu od tego
-    // automatyczne ponowienie (executeSendRetry) czyta scenariusz zapisany w
-    // zadaniu w chwili jego utworzenia — zmiana konfiguracji po fakcie nie
-    // może zamienić już zaplanowanego ponowienia w inny scenariusz.
+    // automatyczne ponowienie (executeSendRetry) czyta scenariusz i
+    // labDelayMs zapisane w zadaniu w chwili jego utworzenia — zmiana
+    // konfiguracji po fakcie nie może zamienić już zaplanowanego ponowienia
+    // w inny scenariusz ani przesunąć jego delay.
     const scenario = await this.workshopConfig.getLabScenario();
+    const labDelayMs = await this.workshopConfig.getLabDelayMs();
     const simulatorResult = this.labSimulator.acceptOrder({
       workspaceId,
       orderId,
@@ -832,6 +834,7 @@ export class OrdersService {
       // procesu — kolejne próby czytają swój numer z trwałego zadania ponowienia.
       attemptNumber: FIRST_LAB_SEND_ATTEMPT_NUMBER,
       scenario,
+      delayMs: labDelayMs,
       tests: order.tests.map((test) => ({
         medicalTestId: test.medicalTestId,
         code: test.medicalTest.code,
@@ -856,6 +859,7 @@ export class OrdersService {
         orderId,
         correlationId,
         scenario,
+        labDelayMs,
         idempotencyKey,
         requestHash,
         rateLimit: simulatorResult
@@ -868,6 +872,7 @@ export class OrdersService {
         orderId,
         correlationId,
         scenario,
+        labDelayMs,
         idempotencyKey,
         requestHash,
         serverError: simulatorResult
@@ -880,6 +885,7 @@ export class OrdersService {
         orderId,
         correlationId,
         scenario,
+        labDelayMs,
         idempotencyKey,
         requestHash,
         timeout: simulatorResult
@@ -1120,6 +1126,7 @@ export class OrdersService {
     orderId: string;
     correlationId: string;
     scenario: string;
+    labDelayMs: number;
     idempotencyKey: string;
     requestHash: string;
     rateLimit: LabSimulatorOrderRateLimited;
@@ -1155,10 +1162,12 @@ export class OrdersService {
             // Ten sam correlationId co pierwotna wysyłka — cała ścieżka
             // 429 → ponowienie → przyjęcie jest spięta jednym identyfikatorem.
             correlationId: input.correlationId,
-            // Scenariusz utrwalony w chwili powstania zadania. Wykonanie NIE
-            // czyta ponownie globalnej konfiguracji, więc jej późniejsza zmiana
-            // nie zamieni tego zadania w inny scenariusz.
+            // Scenariusz i labDelayMs utrwalone w chwili powstania zadania.
+            // Wykonanie NIE czyta ponownie globalnej konfiguracji, więc jej
+            // późniejsza zmiana nie zamieni tego zadania w inny scenariusz
+            // ani nie przesunie jego delay.
             scenario: input.scenario,
+            labDelayMs: input.labDelayMs,
             idempotencyKey: input.idempotencyKey,
             requestHash: input.requestHash
           }
@@ -1199,6 +1208,7 @@ export class OrdersService {
     orderId: string;
     correlationId: string;
     scenario: string;
+    labDelayMs: number;
     idempotencyKey: string;
     requestHash: string;
     serverError: LabSimulatorOrderServerError;
@@ -1238,6 +1248,7 @@ export class OrdersService {
             status: "PENDING",
             correlationId: input.correlationId,
             scenario: input.scenario,
+            labDelayMs: input.labDelayMs,
             idempotencyKey: input.idempotencyKey,
             requestHash: input.requestHash
           }
@@ -1275,6 +1286,7 @@ export class OrdersService {
     orderId: string;
     correlationId: string;
     scenario: string;
+    labDelayMs: number;
     idempotencyKey: string;
     requestHash: string;
     timeout: LabSimulatorOrderTimeout;
@@ -1329,6 +1341,7 @@ export class OrdersService {
             status: "PENDING",
             correlationId: input.correlationId,
             scenario: input.scenario,
+            labDelayMs: input.labDelayMs,
             idempotencyKey: input.idempotencyKey,
             requestHash: input.requestHash
           }
@@ -1541,8 +1554,10 @@ export class OrdersService {
       orderId: job.orderId,
       correlationId: job.correlationId,
       attemptNumber: job.attemptNumber,
-      // Scenariusz pochodzi z danych zadania, a nie z bieżącej konfiguracji.
+      // Scenariusz i labDelayMs pochodzą z danych zadania, a nie z bieżącej
+      // konfiguracji — retry zachowuje delay właściwy dla pierwotnego chaina.
       scenario: resolveLabSimulatorScenario(job.scenario),
+      delayMs: job.labDelayMs,
       tests: order.tests.map((test) => ({
         medicalTestId: test.medicalTestId,
         code: test.medicalTest.code,

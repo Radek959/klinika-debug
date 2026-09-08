@@ -83,6 +83,9 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
     <label for="controlledBug">Kontrolowany błąd</label>
     <select id="controlledBug"></select>
 
+    <label for="labDelayMs">Czas generowania wyników</label>
+    <select id="labDelayMs"></select>
+
     <div class="row">
       <button class="primary" id="saveButton" type="button">Zapisz</button>
       <button class="danger" id="resetButton" type="button">Resetuj środowisko</button>
@@ -103,6 +106,7 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
   var dashboard = document.getElementById("dashboard");
   var labScenarioSelect = document.getElementById("labScenario");
   var controlledBugSelect = document.getElementById("controlledBug");
+  var labDelayMsSelect = document.getElementById("labDelayMs");
   var saveButton = document.getElementById("saveButton");
   var resetButton = document.getElementById("resetButton");
   var logoutButton = document.getElementById("logoutButton");
@@ -123,6 +127,13 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
     PATIENT_GUARDIAN: "PATIENT_GUARDIAN — pacjent/opiekun",
     ORDER_FLOW: "ORDER_FLOW — proces zlecenia",
     API_DIAGNOSTICS: "API_DIAGNOSTICS — diagnostyka API"
+  };
+  var LAB_DELAY_LABELS = {
+    5000: "5 sekund",
+    15000: "15 sekund",
+    30000: "30 sekund",
+    60000: "1 minuta",
+    300000: "5 minut"
   };
 
   function showStatus(el, message, isError) {
@@ -168,8 +179,10 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
   function applyConfig(config) {
     populateSelect(labScenarioSelect, config.availableLabScenarios, SCENARIO_LABELS);
     populateSelect(controlledBugSelect, config.availableControlledBugs, BUG_LABELS);
+    populateSelect(labDelayMsSelect, config.availableLabDelaysMs, LAB_DELAY_LABELS);
     labScenarioSelect.value = config.labScenario;
     controlledBugSelect.value = config.controlledBug;
+    labDelayMsSelect.value = config.labDelayMs;
     updatedAtLabel.textContent = "Ostatnia zmiana: " + new Date(config.updatedAt).toLocaleString("pl-PL");
   }
 
@@ -201,7 +214,8 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         labScenario: labScenarioSelect.value,
-        controlledBug: controlledBugSelect.value
+        controlledBug: controlledBugSelect.value,
+        labDelayMs: Number(labDelayMsSelect.value)
       })
     })
       .then(function (config) {

@@ -3,6 +3,7 @@ import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import * as argon2 from "argon2";
 import { WorkshopConfigService } from "../src/workshop-config/workshop-config.service";
 import { DEFAULT_CONTROLLED_BUG, type ControlledBug } from "../src/workshop-config/controlled-bug";
+import { DEFAULT_LAB_DELAY_MS, type LabDelayMs } from "../src/workshop-config/lab-delay";
 import type { LabSimulatorScenario } from "../src/lab-simulator/lab-simulator-scenario";
 
 /**
@@ -80,12 +81,14 @@ export async function setWorkshopConfig(
   input: {
     labScenario: LabSimulatorScenario;
     controlledBug?: ControlledBug;
+    labDelayMs?: LabDelayMs;
   }
 ) {
   const workshopConfigService = app.get(WorkshopConfigService);
   return workshopConfigService.setConfig({
     labScenario: input.labScenario,
-    controlledBug: input.controlledBug ?? DEFAULT_CONTROLLED_BUG
+    controlledBug: input.controlledBug ?? DEFAULT_CONTROLLED_BUG,
+    labDelayMs: input.labDelayMs ?? DEFAULT_LAB_DELAY_MS
   });
 }
 

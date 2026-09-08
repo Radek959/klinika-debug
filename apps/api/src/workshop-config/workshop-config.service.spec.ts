@@ -11,8 +11,15 @@ interface WorkshopConfigRow {
   id: string;
   labScenario: string;
   controlledBug: string;
+  labDelayMs: number;
   updatedAt: Date;
 }
+
+// Prisma w prawdziwej bazie ma DEFAULT 300000 na kolumnie labDelayMs
+// (migracja `20260908130000_workshop_lab_delay`) — atrapa odtwarza to samo
+// zachowanie, żeby bootstrap bez jawnego labDelayMs (tak jak w
+// `ensureWorkshopConfigExists`) zachowywał się identycznie jak na realnej bazie.
+const DB_DEFAULT_LAB_DELAY_MS = 300000;
 
 function createPrismaStub() {
   let row: WorkshopConfigRow | null = null;
@@ -24,12 +31,16 @@ function createPrismaStub() {
       upsert: jest.fn(
         async (args: {
           where: { id: string };
-          create: WorkshopConfigRow;
+          create: Partial<WorkshopConfigRow> & Pick<WorkshopConfigRow, "id" | "labScenario" | "controlledBug">;
           update: Partial<WorkshopConfigRow>;
         }) => {
           upsertCalls += 1;
           if (!row) {
-            row = { ...args.create, updatedAt: new Date() };
+            row = {
+              labDelayMs: DB_DEFAULT_LAB_DELAY_MS,
+              ...args.create,
+              updatedAt: new Date()
+            };
           } else if (Object.keys(args.update).length > 0) {
             row = { ...row, ...args.update, updatedAt: new Date() };
           }
@@ -57,7 +68,7 @@ describe("WorkshopConfigService", () => {
     }
   });
 
-  it("bootstrapuje domyślną konfigurację SUCCESS + CLEAN na pustej bazie", async () => {
+  it("bootstrapuje domyślną konfigurację SUCCESS + CLEAN + 300000 ms na pustej bazie", async () => {
     delete process.env.LAB_SIMULATOR_SCENARIO;
     const { prisma } = createPrismaStub();
     const service = new WorkshopConfigService(prisma);
@@ -66,6 +77,8 @@ describe("WorkshopConfigService", () => {
 
     expect(config.labScenario).toBe("SUCCESS");
     expect(config.controlledBug).toBe("CLEAN");
+    expect(config.labDelayMs).toBe(300000);
+    expect(await service.getLabDelayMs()).toBe(300000);
   });
 
   it("używa LAB_SIMULATOR_SCENARIO jako wartości startowej TYLKO przy pierwszym bootstrapie", async () => {
@@ -85,17 +98,20 @@ describe("WorkshopConfigService", () => {
 
     const updated = await service.setConfig({
       labScenario: "PARTIAL_SUCCESS",
-      controlledBug: "CLEAN"
+      controlledBug: "CLEAN",
+      labDelayMs: 15000
     });
 
     expect(updated.labScenario).toBe("PARTIAL_SUCCESS");
     expect(await service.getLabScenario()).toBe("PARTIAL_SUCCESS");
+    expect(updated.labDelayMs).toBe(15000);
+    expect(await service.getLabDelayMs()).toBe(15000);
   });
 
   it("konfiguracja przeżywa ponowną instancję serwisu (symulacja restartu procesu)", async () => {
     const { prisma } = createPrismaStub();
     const first = new WorkshopConfigService(prisma);
-    await first.setConfig({ labScenario: "RATE_LIMIT", controlledBug: "CLEAN" });
+    await first.setConfig({ labScenario: "RATE_LIMIT", controlledBug: "CLEAN", labDelayMs: 300000 });
 
     // Nowa instancja serwisu = nowy, pusty cache w procesie. Musi odczytać
     // bieżący stan z (atrapy) bazy, a nie cicho wrócić do domyślnych wartości.
@@ -113,7 +129,8 @@ describe("WorkshopConfigService", () => {
       service.setConfig({
         // @ts-expect-error - celowo nieprawidłowa wartość na potrzeby testu
         labScenario: "NOT_A_SCENARIO",
-        controlledBug: "CLEAN"
+        controlledBug: "CLEAN",
+        labDelayMs: 300000
       })
     ).rejects.toThrow(/LAB_SIMULATOR_SCENARIO|NOT_A_SCENARIO/);
   });
@@ -126,20 +143,52 @@ describe("WorkshopConfigService", () => {
       service.setConfig({
         labScenario: "SUCCESS",
         // @ts-expect-error - celowo nieprawidłowa wartość na potrzeby testu
-        controlledBug: "NOT_A_BUG"
+        controlledBug: "NOT_A_BUG",
+        labDelayMs: 300000
       })
     ).rejects.toThrow(/Nieprawidłowy kontrolowany błąd/);
   });
 
-  it("resetToDefaults przywraca SUCCESS + CLEAN niezależnie od bieżącej konfiguracji", async () => {
+  it.each([5000, 15000, 30000, 60000, 300000])(
+    "akceptuje preset labDelayMs = %i ms",
+    async (preset) => {
+      const { prisma } = createPrismaStub();
+      const service = new WorkshopConfigService(prisma);
+
+      const updated = await service.setConfig({
+        labScenario: "SUCCESS",
+        controlledBug: "CLEAN",
+        labDelayMs: preset as 5000 | 15000 | 30000 | 60000 | 300000
+      });
+
+      expect(updated.labDelayMs).toBe(preset);
+    }
+  );
+
+  it("odrzuca dowolną (arbitrary) wartość labDelayMs spoza presetów", async () => {
     const { prisma } = createPrismaStub();
     const service = new WorkshopConfigService(prisma);
-    await service.setConfig({ labScenario: "TIMEOUT", controlledBug: "CLEAN" });
+
+    await expect(
+      service.setConfig({
+        labScenario: "SUCCESS",
+        controlledBug: "CLEAN",
+        // @ts-expect-error - celowo nieprawidłowa wartość na potrzeby testu
+        labDelayMs: 12345
+      })
+    ).rejects.toThrow(/Nieprawidłowy czas generowania wyników/);
+  });
+
+  it("resetToDefaults przywraca SUCCESS + CLEAN + 300000 ms niezależnie od bieżącej konfiguracji", async () => {
+    const { prisma } = createPrismaStub();
+    const service = new WorkshopConfigService(prisma);
+    await service.setConfig({ labScenario: "TIMEOUT", controlledBug: "CLEAN", labDelayMs: 5000 });
 
     const reset = await service.resetToDefaults();
 
     expect(reset.labScenario).toBe("SUCCESS");
     expect(reset.controlledBug).toBe("CLEAN");
+    expect(reset.labDelayMs).toBe(300000);
   });
 
   it("dwa równoległe pierwsze odczyty nie tworzą dwóch różnych bootstrapów", async () => {

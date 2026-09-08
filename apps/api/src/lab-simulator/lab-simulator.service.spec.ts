@@ -167,6 +167,28 @@ describe("LabSimulatorService", () => {
       expect(result.jobs[0].payload.correlationId).not.toBeNull();
       expect(result.jobs[0].payload.correlationId).toBe(TEST_CORRELATION_ID);
     });
+
+    it("używa jawnie przekazanego delayMs zamiast LAB_SIMULATOR_DELAY_MS ani domyślnych 300000 ms", () => {
+      process.env.LAB_SIMULATOR_DELAY_MS = "999000";
+      const before = Date.now();
+
+      const result = acceptAccepted(service, { ...buildInput(1), delayMs: 5000 });
+
+      const offsetMs = result.estimatedCompletionAt.getTime() - before;
+      expect(offsetMs).toBeGreaterThanOrEqual(5000);
+      expect(offsetMs).toBeLessThan(999000);
+    });
+
+    it("bez jawnego delayMs korzysta z dotychczasowego fallbacku (LAB_SIMULATOR_DELAY_MS albo 300000 ms)", () => {
+      process.env.LAB_SIMULATOR_DELAY_MS = "1234";
+      const before = Date.now();
+
+      const result = acceptAccepted(service, buildInput(1));
+
+      const offsetMs = result.estimatedCompletionAt.getTime() - before;
+      expect(offsetMs).toBeGreaterThanOrEqual(1234);
+      expect(offsetMs).toBeLessThan(5000);
+    });
   });
 
   describe("scenariusz PARTIAL_SUCCESS", () => {

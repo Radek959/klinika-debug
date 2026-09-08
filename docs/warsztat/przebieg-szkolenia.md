@@ -228,6 +228,7 @@ Workshop MVP wymaga tylko:
 
 - wyboru globalnego scenariusza laboratorium;
 - wyboru `CLEAN` albo jednego kontrolowanego defektu;
+- wyboru czasu generowania wyników (preset: 5 s / 15 s / 30 s / 60 s / 5 min, domyślnie 5 min) — pozwala prowadzącemu skrócić oczekiwanie na wynik podczas ćwiczeń bez redeploya;
 - resetu danych wszystkich workspace'ów warsztatowych;
 - prostego potwierdzenia aktualnej konfiguracji.
 
