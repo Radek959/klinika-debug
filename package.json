@@ -9,7 +9,7 @@
   "scripts": {
     "build": "npm run build --workspace=@klinika/api-contracts && npm run build --workspace=@klinika/domain && npm run build --workspace=@klinika/web && npm run build --workspace=@klinika/api",
     "build:hostinger": "npm run db:generate && npm run build && npm run db:migrate",
-    "build:hostinger:seed": "npm run build:hostinger && npm run db:seed",
+    "build:hostinger:seed": "npm run build:hostinger && npm run db:seed && npm run workshop:prepare",
     "build:hostinger:workshop": "npm run build:hostinger && npm run workshop:prepare",
     "start": "npm run start:prod --workspace=@klinika/api",
     "dev:api": "npm run dev --workspace=@klinika/api",

@@ -80,9 +80,11 @@ Build command dla kolejnych wdrożeń:
 npm run build:hostinger
 ```
 
-`build:hostinger` wykonuje `prisma generate`, build aplikacji i `prisma migrate deploy`. `build:hostinger:seed` dodatkowo uruchamia seed i jest przeznaczony wyłącznie do pierwszego wdrożenia. Przy seedowaniu produkcyjnym wymagane jest ustawienie `SEED_STAFF_PASSWORD`.
+`build:hostinger` wykonuje `prisma generate`, build aplikacji i `prisma migrate deploy` — nigdy nie tworzy ani nie resetuje żadnych kont czy danych.
 
-`build:hostinger` NIE przygotowuje środowiska warsztatowego (uczestników `warsztat-NN` / `testerNN`) i nie robi tego automatycznie przy żadnym deployu w trakcie trwania szkolenia — to świadomy wybór, żeby zwykły deploy nigdy nie modyfikował danych uczestników.
+`build:hostinger:seed` dodatkowo uruchamia `db:seed` (konto demo `staff.demo` / workspace `klinika-pokazowa`) i `workshop:prepare` (konta `testerNN` / workspace'y `warsztat-NN`). Oba kroki są w pełni idempotentne (`upsert`, bez nadpisywania danych uczestników przy powtórnym uruchomieniu) — bezpiecznie jest ustawić `build:hostinger:seed` jako **stały** Build command, jeśli panel hostingowy nie pozwala na wpisanie własnej komendy (np. Hostinger hPanel udostępnia tylko zamkniętą listę opcji). Wymaga ustawienia `SEED_STAFF_PASSWORD` i `WORKSHOP_STAFF_PASSWORD` w środowisku produkcyjnym.
+
+Jeśli panel budowania pozwala wpisać dowolną komendę, można zamiast tego użyć rozdzielonych opcji poniżej (`build:hostinger` na co dzień, `build:hostinger:workshop` świadomie przed szkoleniem) — to nadal jest preferowany, bardziej jawny podział. `build:hostinger:seed` z `workshop:prepare` w środku istnieje jako bezpieczny wariant dla platform z ograniczonym wyborem Build command, nie jako zmiana domyślnego zachowania zwykłego `build:hostinger`.
 
 ## Przygotowanie środowiska warsztatowego
 
