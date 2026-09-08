@@ -1,6 +1,15 @@
 import { PrismaClient } from "@prisma/client";
 import * as argon2 from "argon2";
 
+/**
+ * Hasło i odpowiadający mu hash argon2id używane WYŁĄCZNIE w testach panelu
+ * `/admin`. Nie jest to sekret produkcyjny — to syntetyczna wartość testowa,
+ * analogiczna do `SEED_STAFF_PASSWORD`.
+ */
+export const TEST_ADMIN_PASSWORD = "AdminPanelTest123!";
+export const TEST_ADMIN_PASSWORD_HASH =
+  "$argon2id$v=19$m=65536,t=3,p=4$rNHkJ6aCMcggJAoD+xaEZw$dk4Brk7dzp6r1Ch7dPeNfpCp1Fa28TCCSBhEPUoqHFQ";
+
 export function configureTestEnvironment() {
   const databaseUrl = process.env.TEST_DATABASE_URL;
   if (!databaseUrl) {
@@ -14,6 +23,8 @@ export function configureTestEnvironment() {
   process.env.PORT ??= "3000";
   process.env.SESSION_TOKEN_PEPPER ??= "test-session-pepper";
   process.env.LAB_WEBHOOK_SECRET ??= "test-lab-webhook-secret";
+  process.env.ADMIN_PASSWORD_HASH ??= TEST_ADMIN_PASSWORD_HASH;
+  process.env.ADMIN_SESSION_SECRET ??= "test-admin-session-secret-value";
   // Celowo nie natychmiastowe: testy sprawdzające status SENT_TO_LAB tuż po wysyłce
   // nie mogą być ścigane przez scheduler zanim zdąży wykonać asercję.
   process.env.LAB_SIMULATOR_DELAY_MS ??= "1000";

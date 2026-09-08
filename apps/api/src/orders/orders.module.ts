@@ -4,9 +4,10 @@ import { LabSimulatorModule } from "../lab-simulator/lab-simulator.module";
 import { OrderHistoryModule } from "../order-history/order-history.module";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
+import { WorkshopConfigModule } from "../workshop-config/workshop-config.module";
 
 @Module({
-  imports: [AuthModule, LabSimulatorModule, OrderHistoryModule],
+  imports: [AuthModule, LabSimulatorModule, OrderHistoryModule, WorkshopConfigModule],
   controllers: [OrdersController],
   providers: [OrdersService],
   exports: [OrdersService]

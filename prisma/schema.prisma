@@ -493,6 +493,30 @@ model ProcessedLabEvent {
   @@map("processed_lab_events")
 }
 
+/**
+ * Globalna, jednowierszowa konfiguracja panelu prowadzącego (`/admin`).
+ *
+ * Model jest celowo pojedynczym singletonem (`id = "singleton"`), a nie
+ * konfiguracją per-workspace ani systemem feature flag: Workshop MVP wymaga
+ * tylko jednego globalnego scenariusza laboratorium i jednego aktywnego
+ * kontrolowanego błędu naraz. Nie ma tu historii ani audytu zmian — tylko
+ * bieżący stan.
+ *
+ * `labScenario` i `controlledBug` są trzymane jako `String`, a nie enum bazy
+ * danych: dozwolone wartości waliduje warstwa aplikacyjna
+ * (`WorkshopConfigService`), więc rozszerzenie zestawu kontrolowanych błędów
+ * w kolejnym PR-ze (`workshop-controlled-bugs`) nie wymaga kolejnej migracji
+ * zmieniającej enum.
+ */
+model WorkshopConfig {
+  id            String   @id
+  labScenario   String
+  controlledBug String
+  updatedAt     DateTime @updatedAt
+
+  @@map("workshop_config")
+}
+
 model OrderHistory {
   id                 String                @id @default(cuid())
   workspaceId        String

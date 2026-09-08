@@ -75,6 +75,7 @@ import {
   OrderHistoryService,
   type OrderHistoryListParams
 } from "../order-history/order-history.service";
+import { WorkshopConfigService } from "../workshop-config/workshop-config.service";
 import { toOrderResponse, toOrderListResponse, toOrderDetailsResponse } from "./orders.mapper";
 
 /**
@@ -97,7 +98,8 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly labSimulator: LabSimulatorService,
-    private readonly orderHistory: OrderHistoryService
+    private readonly orderHistory: OrderHistoryService,
+    private readonly workshopConfig: WorkshopConfigService
   ) {}
 
   async create(
@@ -787,7 +789,12 @@ export class OrdersService {
       throw this.orderSendError(fieldErrors);
     }
 
-    const scenario = resolveLabSimulatorScenario();
+    // Nowa wysyłka zawsze czyta BIEŻĄCĄ, globalną konfigurację panelu
+    // `/admin` (WorkshopConfigService, trwałą w bazie). W odróżnieniu od tego
+    // automatyczne ponowienie (executeSendRetry) czyta scenariusz zapisany w
+    // zadaniu w chwili jego utworzenia — zmiana konfiguracji po fakcie nie
+    // może zamienić już zaplanowanego ponowienia w inny scenariusz.
+    const scenario = await this.workshopConfig.getLabScenario();
     const simulatorResult = this.labSimulator.acceptOrder({
       workspaceId,
       orderId,
