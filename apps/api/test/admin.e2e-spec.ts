@@ -133,10 +133,15 @@ describe("panel /admin", () => {
       "SERVER_ERROR",
       "TIMEOUT"
     ]);
-    expect(body.availableControlledBugs).toEqual(["CLEAN"]);
+    expect(body.availableControlledBugs).toEqual([
+      "CLEAN",
+      "PATIENT_GUARDIAN",
+      "ORDER_FLOW",
+      "API_DIAGNOSTICS"
+    ]);
   });
 
-  it("zapisuje nowy scenariusz laboratorium i odrzuca kontrolowany błąd inny niż CLEAN", async () => {
+  it("zapisuje nowy scenariusz laboratorium i akceptuje dozwolony kontrolowany błąd", async () => {
     const cookie = await loginAsAdmin();
 
     const updateOk = await app.inject({
@@ -148,11 +153,20 @@ describe("panel /admin", () => {
     expect(updateOk.statusCode).toBe(200);
     expect(JSON.parse(updateOk.body).labScenario).toBe("SERVER_ERROR");
 
-    const updateBadBug = await app.inject({
+    const updateAllowedBug = await app.inject({
       method: "PUT",
       url: "/admin/api/config",
       headers: { cookie },
       payload: { labScenario: "SUCCESS", controlledBug: "PATIENT_GUARDIAN" }
+    });
+    expect(updateAllowedBug.statusCode).toBe(200);
+    expect(JSON.parse(updateAllowedBug.body).controlledBug).toBe("PATIENT_GUARDIAN");
+
+    const updateBadBug = await app.inject({
+      method: "PUT",
+      url: "/admin/api/config",
+      headers: { cookie },
+      payload: { labScenario: "SUCCESS", controlledBug: "NOT_A_CONTROLLED_BUG" }
     });
     expect(updateBadBug.statusCode).toBe(400);
 
