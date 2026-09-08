@@ -741,6 +741,66 @@ th {
   background: #ffffff;
 }
 
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 18px;
+}
+
+.dashboard-card {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  border: 1px solid #d8e2db;
+  border-radius: 8px;
+  padding: 20px;
+  background: #ffffff;
+}
+
+.dashboard-card h2 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  color: #52635b;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.dashboard-number {
+  margin: 0;
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.dashboard-stat-list {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 18px;
+}
+
+.dashboard-stat-list div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-stat-list dt {
+  color: #52635b;
+  font-weight: 500;
+}
+
+.dashboard-stat-list dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.dashboard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .workspace-summary p,
 .workspace-summary span {
   margin: 0;
@@ -780,7 +840,8 @@ th {
   .app-body,
   .filters-panel,
   .form-grid,
-  .details-grid {
+  .details-grid,
+  .dashboard-grid {
     grid-template-columns: 1fr;
   }
 

@@ -159,3 +159,33 @@ export async function createTestPatient(
     }
   });
 }
+
+export async function createTestOrder(
+  prisma: PrismaClient,
+  input: {
+    workspaceId: string;
+    patientId: string;
+    createdByUserId: string;
+    priority?: "ROUTINE" | "URGENT";
+    status?:
+      | "DRAFT"
+      | "SAMPLE_COLLECTION_IN_PROGRESS"
+      | "SAMPLE_COLLECTED"
+      | "SENT_TO_LAB"
+      | "PROCESSING"
+      | "PARTIAL"
+      | "COMPLETED"
+      | "REJECTED"
+      | "TECHNICAL_ERROR";
+  }
+) {
+  return prisma.order.create({
+    data: {
+      workspaceId: input.workspaceId,
+      patientId: input.patientId,
+      createdByUserId: input.createdByUserId,
+      priority: input.priority ?? "ROUTINE",
+      status: input.status ?? "DRAFT"
+    }
+  });
+}

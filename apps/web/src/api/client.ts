@@ -1,6 +1,7 @@
 import type {
   CreateOrderRequest,
   CreatePatientRequest,
+  DashboardSummaryResponse,
   LoginResponse,
   MeResponse,
   MedicalTestsListResponse,
@@ -62,6 +63,13 @@ export async function getCurrentUser(token: string) {
     headers: {
       Authorization: `Bearer ${token}`
     }
+  });
+}
+
+export async function getDashboardSummary(token: string, signal?: AbortSignal) {
+  return request<DashboardSummaryResponse>("/api/v1/dashboard/summary", {
+    headers: authHeaders(token),
+    signal
   });
 }
 

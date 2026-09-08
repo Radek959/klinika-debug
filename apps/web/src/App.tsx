@@ -76,7 +76,12 @@ export function App() {
             </RequireAuth>
           }
         >
-          <Route index element={<DashboardPage user={user as AuthenticatedUser} />} />
+          <Route
+            index
+            element={
+              <DashboardPage user={user as AuthenticatedUser} token={token ?? ""} />
+            }
+          />
           <Route path="patients" element={<PatientListPage token={token ?? ""} />} />
           <Route path="patients/new" element={<NewPatientPage token={token ?? ""} />} />
           <Route
