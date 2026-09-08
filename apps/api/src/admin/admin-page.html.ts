@@ -118,7 +118,12 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
     SERVER_ERROR: "SERVER_ERROR — błąd serwera (503)",
     TIMEOUT: "TIMEOUT — brak odpowiedzi (504)"
   };
-  var BUG_LABELS = { CLEAN: "CLEAN — brak aktywnego defektu" };
+  var BUG_LABELS = {
+    CLEAN: "CLEAN — brak aktywnego defektu",
+    PATIENT_GUARDIAN: "PATIENT_GUARDIAN — pacjent/opiekun",
+    ORDER_FLOW: "ORDER_FLOW — proces zlecenia",
+    API_DIAGNOSTICS: "API_DIAGNOSTICS — diagnostyka API"
+  };
 
   function showStatus(el, message, isError) {
     el.textContent = message;

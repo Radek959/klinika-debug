@@ -92,9 +92,27 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DATABASE_TEXT_MAX_LENGTH = 191;
 
+export interface PatientWriteValidationOptions {
+  /**
+   * WORKSHOP CONTROLLED DEFECT (PATIENT_GUARDIAN): when `true`, disables
+   * ONLY the `GUARDIAN_REQUIRED` rule below — a minor patient without a
+   * guardian is accepted instead of rejected. Every other rule (PESEL,
+   * birth date, sex, patient contact, guardian-data validation when a
+   * guardian IS provided, etc.) is completely unaffected.
+   *
+   * Default (`false`/omitted) is the CLEAN, product-doc-correct behavior:
+   * `GUARDIAN_REQUIRED` always applies to a minor without a guardian. This
+   * option exists only so `apps/api/src/patients/patients.service.ts` can
+   * pass the current, globally-configured controlled bug through — it is
+   * never toggled from within this file.
+   */
+  disableGuardianRequiredRule?: boolean;
+}
+
 export function validatePatientFinalState(
   input: PatientWriteState,
-  referenceDate: Date
+  referenceDate: Date,
+  options?: PatientWriteValidationOptions
 ): PatientWriteValidationResult {
   const errors: PatientWriteFieldError[] = [];
   const identifierType = input.identifierType;
@@ -201,11 +219,16 @@ export function validatePatientFinalState(
   const guardianWasProvided =
     input.guardian !== undefined && input.guardian !== null;
   const guardian = validateGuardian(input.guardian, errors);
+  // WORKSHOP CONTROLLED DEFECT (PATIENT_GUARDIAN): see
+  // PatientWriteValidationOptions.disableGuardianRequiredRule above. CLEAN
+  // (the `!options?.disableGuardianRequiredRule` branch) always rejects a
+  // minor patient without a guardian.
   if (
     birthDate &&
     isMinorOnDate(birthDate, referenceDate) &&
     !guardian &&
-    !guardianWasProvided
+    !guardianWasProvided &&
+    !options?.disableGuardianRequiredRule
   ) {
     errors.push({ field: "guardian", code: "GUARDIAN_REQUIRED" });
   }
