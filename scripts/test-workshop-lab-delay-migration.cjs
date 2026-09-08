@@ -143,14 +143,18 @@ async function assertNewRowsCanSetExplicitLabDelayMs() {
     throw new Error("Po migracji nie da się zapisać wybranego presetu labDelayMs w workshop_config.");
   }
 
+  // order-a już ma jedno zadanie ponowienia (retry-existing-1) — ograniczenie
+  // lab_send_retry_jobs_workspace_order_key dopuszcza co najwyżej jedno na
+  // zlecenie, więc nowy wiersz idzie do osobnego, dopiero co utworzonego order-b.
+  await insertOrder("order-b", "workspace-a", "patient-a", "user-a", "SAMPLE_COLLECTED");
   await query(`
     INSERT INTO lab_send_retry_jobs (
       id, workspaceId, orderId, attemptNumber, executeAt, status, correlationId,
       scenario, labDelayMs, idempotencyKey, requestHash, updatedAt
     )
     VALUES (
-      'retry-new-1', 'workspace-a', 'order-a', 2, CURRENT_TIMESTAMP(3), 'PENDING',
-      'corr-new-1', 'SERVER_ERROR', 15000, 'send-order-a-new', 'hash-new', CURRENT_TIMESTAMP(3)
+      'retry-new-1', 'workspace-a', 'order-b', 2, CURRENT_TIMESTAMP(3), 'PENDING',
+      'corr-new-1', 'SERVER_ERROR', 15000, 'send-order-b-new', 'hash-new', CURRENT_TIMESTAMP(3)
     )
   `);
   const retry = await query("SELECT labDelayMs FROM lab_send_retry_jobs WHERE id = 'retry-new-1'");
