@@ -176,6 +176,59 @@ Zasady:
 - testy muszą potwierdzać zarówno `CLEAN`, jak i aktywację defektu;
 - nie tworzymy ogólnego frameworka rozszerzeń, jeśli proste jawne przełączniki wystarczają.
 
+#### Status: `workshop-controlled-bugs` (zaimplementowane)
+
+Wszystkie trzy defekty są aktywowane wyłącznie przez `controlledBug` w
+globalnej konfiguracji panelu `/admin` (`WorkshopConfigService`, patrz sekcja
+1. powyżej) — dozwolone wartości są zdefiniowane w jednym miejscu:
+`apps/api/src/workshop-config/controlled-bug.ts`. Aktywny może być co
+najwyżej jeden defekt naraz; `CLEAN` (domyślny) zawsze oznacza zachowanie
+zgodne z dokumentacją produktową. Każde miejsce zmiany jest oznaczone
+komentarzem `WORKSHOP CONTROLLED DEFECT`.
+
+- `PATIENT_GUARDIAN` — wyłącza WYŁĄCZNIE regułę `GUARDIAN_REQUIRED` w
+  `packages/domain/src/patients/patient-write.ts`
+  (`PatientWriteValidationOptions.disableGuardianRequiredRule`). W trybie
+  `CLEAN` pacjent niepełnoletni bez opiekuna jest nadal odrzucany. Reguła
+  jest wołana z `apps/api/src/patients/patients.service.ts`
+  (`create`/`update`), które odczytuje bieżący kontrolowany błąd z
+  `WorkshopConfigService` przy każdym zapisie. Nie dotyka PESEL-u, daty
+  urodzenia, płci, kontaktu pacjenta ani walidacji danych opiekuna, gdy
+  opiekun JEST podany.
+- `ORDER_FLOW` — dla zlecenia wymagającego 2+ różnych próbek, po
+  zarejestrowaniu PIERWSZEJ z nich zlecenie błędnie przechodzi od razu do
+  `SAMPLE_COLLECTED`, mimo że kolejna próbka jest nadal `REQUIRED`. Zmiana
+  jest ograniczona do jednej decyzji przejścia statusu:
+  `determineOrderStatusAfterSampleCollection` w
+  `packages/domain/src/orders/sample-collection.ts`
+  (`OrderStatusAfterSampleCollectionOptions.forceCollectedAfterFirstSample`),
+  wołana z `apps/api/src/orders/orders.service.ts` (`registerSample`). Nie
+  osłabia blokady wysyłki: zlecenie, dla którego naprawdę nie zarejestrowano
+  jeszcze żadnej próbki, nadal nie może zostać wysłane (`canSendOrder`
+  sprawdza wyłącznie faktyczny status zlecenia).
+- `API_DIAGNOSTICS` — deterministyczny wyzwalacz: defekt aktywny ORAZ
+  zlecenie gotowe do wysyłki ORAZ zlecenie zawiera badanie `TSH`. `POST
+  /api/v1/orders/{orderId}/send` kończy się wtedy kontrolowanym HTTP 500
+  (`apps/api/src/orders/orders.service.ts`, `sendOrder`) PRZED wywołaniem
+  symulatora laboratorium — bez `externalOrderId`, bez zadania `lab_jobs`,
+  bez zadania ponowienia i bez zarezerwowanego klucza idempotencji, więc
+  zlecenie pozostaje możliwe do ponowienia po dezaktywacji defektu.
+  Publiczna odpowiedź używa dokładnie tego samego, generycznego kształtu co
+  każdy nieobsłużony błąd 500 (`ApiExceptionFilter`), więc nigdy nie
+  ujawnia nazwy defektu, wewnętrznego przełącznika, sekretów ani stack
+  trace'a. Tryb `CLEAN` zachowuje się identycznie jak normalna, działająca
+  wysyłka dla tego samego zlecenia. Zgodnie z zakresem tego PR-a runtime'owe
+  logowanie tego zdarzenia NIE zostało dodane — statyczne fixture'y logów
+  powstaną w `workshop-log-fixtures`.
+- Testy: `apps/api/src/patients/patient-write-domain.spec.ts` i
+  `packages/domain/src/orders/sample-collection.spec.ts` (reguła CLEAN i
+  aktywnego defektu na poziomie domeny), `apps/api/test/workshop-controlled-bugs.e2e-spec.ts`
+  (integracja przez `/admin`: przełączanie `CLEAN → BUG → CLEAN` bez restartu
+  aplikacji, brak wzajemnej aktywacji defektów, brak ujawnienia nazwy
+  defektu w publicznej odpowiedzi, reset przywracający `CLEAN`, izolacja
+  workspace'ów przy aktywnym defekcie, brak efektów ubocznych integracji dla
+  `API_DIAGNOSTICS`).
+
 ### 3. Realistyczne syntetyczne logi warsztatowe
 
 Nie budujemy pełnego subsystemu observability tylko po to, aby ćwiczyć analizę logów. Przygotowujemy kontrolowane fixture'y odzwierciedlające materiał z prawdziwego projektu.

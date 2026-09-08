@@ -73,5 +73,41 @@ describe("sample collection domain", () => {
         "SAMPLE_COLLECTED"
       );
     });
+
+    it("[CLEAN] zwraca SAMPLE_COLLECTION_IN_PROGRESS po pierwszej z dwóch wymaganych próbek", () => {
+      const statuses: SampleStatusValue[] = ["COLLECTED", "REQUIRED"];
+      expect(
+        determineOrderStatusAfterSampleCollection(statuses, {
+          forceCollectedAfterFirstSample: false
+        })
+      ).toBe("SAMPLE_COLLECTION_IN_PROGRESS");
+    });
+
+    it("[WORKSHOP CONTROLLED DEFECT: ORDER_FLOW aktywny] zwraca SAMPLE_COLLECTED po PIERWSZEJ z dwóch wymaganych próbek", () => {
+      const statuses: SampleStatusValue[] = ["COLLECTED", "REQUIRED"];
+      expect(
+        determineOrderStatusAfterSampleCollection(statuses, {
+          forceCollectedAfterFirstSample: true
+        })
+      ).toBe("SAMPLE_COLLECTED");
+    });
+
+    it("ORDER_FLOW nie zmienia zachowania, gdy żadna próbka nie została jeszcze zarejestrowana", () => {
+      const statuses: SampleStatusValue[] = ["REQUIRED", "REQUIRED"];
+      expect(
+        determineOrderStatusAfterSampleCollection(statuses, {
+          forceCollectedAfterFirstSample: true
+        })
+      ).toBe("SAMPLE_COLLECTION_IN_PROGRESS");
+    });
+
+    it("ORDER_FLOW nie zmienia zachowania, gdy wszystkie próbki są już zarejestrowane", () => {
+      const statuses: SampleStatusValue[] = ["COLLECTED", "COLLECTED"];
+      expect(
+        determineOrderStatusAfterSampleCollection(statuses, {
+          forceCollectedAfterFirstSample: true
+        })
+      ).toBe("SAMPLE_COLLECTED");
+    });
   });
 });

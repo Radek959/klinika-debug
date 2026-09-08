@@ -14,6 +14,7 @@ import type {
 } from "@klinika/api-contracts";
 import { ApiErrorException } from "../common/errors/api-error.exception";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { WorkshopConfigService } from "../workshop-config/workshop-config.service";
 import type { PatientListQueryDto } from "./dto/patient-list-query.dto";
 import { toPatientListItem, toPatientResponse } from "./patients.mapper";
 
@@ -21,7 +22,10 @@ type PatientWithGuardian = Patient & { guardian: Guardian | null };
 
 @Injectable()
 export class PatientsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly workshopConfig: WorkshopConfigService
+  ) {}
 
   async create(
     workspaceId: string,
@@ -32,7 +36,8 @@ export class PatientsService {
         ...input,
         active: true
       },
-      new Date()
+      new Date(),
+      await this.guardianRuleOptions()
     );
 
     if (!validation.valid) {
@@ -125,7 +130,11 @@ export class PatientsService {
   ): Promise<PatientResponse> {
     const existing = await this.findPatientInWorkspace(workspaceId, patientId);
     const finalState = this.mergePatientUpdate(existing, input);
-    const validation = validatePatientFinalState(finalState, new Date());
+    const validation = validatePatientFinalState(
+      finalState,
+      new Date(),
+      await this.guardianRuleOptions()
+    );
 
     if (input.active === true) {
       const errors = validation.valid ? [] : validation.errors;
@@ -174,6 +183,17 @@ export class PatientsService {
     } catch (error) {
       throw this.mapPrismaConflict(error);
     }
+  }
+
+  /**
+   * WORKSHOP CONTROLLED DEFECT (PATIENT_GUARDIAN): reads the globally
+   * configured controlled bug and, ONLY when it is `PATIENT_GUARDIAN`,
+   * disables the `GUARDIAN_REQUIRED` rule in `validatePatientFinalState`.
+   * CLEAN (any other value) leaves the rule fully active.
+   */
+  private async guardianRuleOptions(): Promise<{ disableGuardianRequiredRule: boolean }> {
+    const controlledBug = await this.workshopConfig.getControlledBug();
+    return { disableGuardianRequiredRule: controlledBug === "PATIENT_GUARDIAN" };
   }
 
   private buildWhere(

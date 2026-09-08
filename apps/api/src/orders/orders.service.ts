@@ -571,6 +571,7 @@ export class OrdersService {
     userId: string,
     input: RegisterSampleRequest
   ): Promise<OrderResponse> {
+    const controlledBug = await this.workshopConfig.getControlledBug();
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, workspaceId },
       include: {
@@ -651,8 +652,14 @@ export class OrdersService {
       }
 
       const samples = await tx.sample.findMany({ where: { workspaceId, orderId } });
+      // WORKSHOP CONTROLLED DEFECT (ORDER_FLOW): see
+      // OrderStatusAfterSampleCollectionOptions.forceCollectedAfterFirstSample
+      // in packages/domain/src/orders/sample-collection.ts. CLEAN
+      // (controlledBug !== "ORDER_FLOW") always requires every sample to be
+      // collected before the order moves to SAMPLE_COLLECTED.
       const nextStatus = determineOrderStatusAfterSampleCollection(
-        samples.map((current) => current.status)
+        samples.map((current) => current.status),
+        { forceCollectedAfterFirstSample: controlledBug === "ORDER_FLOW" }
       );
 
       const statusToPersist =
@@ -787,6 +794,28 @@ export class OrdersService {
     }
     if (fieldErrors.length > 0) {
       throw this.orderSendError(fieldErrors);
+    }
+
+    // WORKSHOP CONTROLLED DEFECT (API_DIAGNOSTICS): order is ready to send
+    // (fieldErrors above is empty) and contains a TSH test -> deterministic
+    // HTTP 500, BEFORE calling the lab simulator. Nothing is persisted here:
+    // no idempotency key, no lab job, no retry job, no status change — the
+    // order stays exactly as it was and remains retryable once the defect is
+    // deactivated. The public error body uses the same generic 500 shape as
+    // any unhandled error (ApiExceptionFilter.defaultCode/defaultMessage) so
+    // it never reveals the defect name, an internal switch, secrets or a
+    // stack trace. CLEAN (controlledBug !== "API_DIAGNOSTICS") behaves
+    // identically to normal, working send behavior for the same order.
+    const controlledBug = await this.workshopConfig.getControlledBug();
+    if (
+      controlledBug === "API_DIAGNOSTICS" &&
+      order.tests.some((test) => test.medicalTest.code === "TSH")
+    ) {
+      throw new ApiErrorException(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        "INTERNAL_SERVER_ERROR",
+        "Wystąpił nieoczekiwany błąd systemu."
+      );
     }
 
     // Nowa wysyłka zawsze czyta BIEŻĄCĄ, globalną konfigurację panelu

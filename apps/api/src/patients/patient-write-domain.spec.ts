@@ -166,6 +166,99 @@ describe("patient write domain rules", () => {
     }
   });
 
+  it("[CLEAN] odrzuca pacjenta niepełnoletniego bez opiekuna (GUARDIAN_REQUIRED)", () => {
+    const result = validatePatientFinalState(
+      {
+        firstName: "Maja",
+        lastName: "Syntetyczna",
+        identifierType: "PESEL",
+        pesel: "18210112349",
+        birthDate: "2018-01-01",
+        gender: "FEMALE",
+        phone: "123456789"
+      },
+      new Date("2026-09-05T00:00:00.000Z")
+    );
+
+    expect(result).toMatchObject({
+      valid: false,
+      errors: [{ field: "guardian", code: "GUARDIAN_REQUIRED" }]
+    });
+  });
+
+  it("[WORKSHOP CONTROLLED DEFECT: PATIENT_GUARDIAN aktywny] akceptuje pacjenta niepełnoletniego bez opiekuna", () => {
+    const result = validatePatientFinalState(
+      {
+        firstName: "Maja",
+        lastName: "Syntetyczna",
+        identifierType: "PESEL",
+        pesel: "18210112349",
+        birthDate: "2018-01-01",
+        gender: "FEMALE",
+        phone: "123456789"
+      },
+      new Date("2026-09-05T00:00:00.000Z"),
+      { disableGuardianRequiredRule: true }
+    );
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("PATIENT_GUARDIAN nie wpływa na PESEL, datę urodzenia, płeć ani kontakt pacjenta", () => {
+    const result = validatePatientFinalState(
+      {
+        firstName: "Maja",
+        lastName: "Syntetyczna",
+        identifierType: "PESEL",
+        pesel: "18210112349",
+        birthDate: "2019-01-01", // niezgodna z PESEL (rok 2018)
+        gender: "FEMALE"
+        // celowo brak telefonu i e-maila -> CONTACT_REQUIRED musi nadal działać
+      },
+      new Date("2026-09-05T00:00:00.000Z"),
+      { disableGuardianRequiredRule: true }
+    );
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors).toContainEqual({
+        field: "birthDate",
+        code: "PESEL_BIRTH_DATE_MISMATCH"
+      });
+      expect(result.errors).toContainEqual({ field: "contact", code: "CONTACT_REQUIRED" });
+      expect(result.errors).not.toContainEqual({
+        field: "guardian",
+        code: "GUARDIAN_REQUIRED"
+      });
+    }
+  });
+
+  it("PATIENT_GUARDIAN nie wyłącza walidacji danych opiekuna, gdy opiekun JEST podany", () => {
+    const result = validatePatientFinalState(
+      {
+        firstName: "Maja",
+        lastName: "Syntetyczna",
+        identifierType: "PESEL",
+        pesel: "18210112349",
+        birthDate: "2018-01-01",
+        gender: "FEMALE",
+        phone: "123456789",
+        guardian: {
+          firstName: "Karolina",
+          lastName: "Syntetyczna"
+          // brak kontaktu opiekuna -> GUARDIAN_CONTACT_REQUIRED musi nadal działać
+        }
+      },
+      new Date("2026-09-05T00:00:00.000Z"),
+      { disableGuardianRequiredRule: true }
+    );
+
+    expect(result).toMatchObject({
+      valid: false,
+      errors: [{ field: "guardian.contact", code: "GUARDIAN_CONTACT_REQUIRED" }]
+    });
+  });
+
   it("odrzuca opcjonalne pola tekstowe dłuższe niż pojemność kolumny", () => {
     const result = validatePatientFinalState(
       {

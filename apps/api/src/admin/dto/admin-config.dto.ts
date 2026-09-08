@@ -6,10 +6,9 @@ export class AdminConfigUpdateDto {
   @IsIn(LAB_SIMULATOR_SCENARIOS)
   labScenario!: string;
 
-  // W tym PR-ze `CONTROLLED_BUGS` zawiera wyłącznie "CLEAN": panel nie
-  // pozwala aktywować żadnego defektu, który jeszcze nie istnieje. Kolejne
-  // wartości dopisze PR workshop-controlled-bugs w jednym miejscu:
-  // ../../workshop-config/controlled-bug.ts.
+  // Dozwolone wartości (i tylko one) pochodzą z jednego miejsca:
+  // ../../workshop-config/controlled-bug.ts. Aktywny może być co najwyżej
+  // jeden defekt naraz.
   @IsIn(CONTROLLED_BUGS)
   controlledBug!: string;
 }
