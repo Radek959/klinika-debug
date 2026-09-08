@@ -336,6 +336,16 @@ Minimalny smoke test:
 
 Po pozytywnym smoke teście development Workshop MVP jest zakończony.
 
+Realizacja: `npm run workshop:prepare` (przygotowanie środowiska bez resetu
+danych, PR `workshop-production-prepare`), `npm run workshop:smoke`
+(automatyczny smoke test wdrożonego środowiska pokrywający punkty 1-10
+powyżej, PR `workshop-remote-smoke`) oraz techniczny runbook
+`docs/warsztat/workshop-readiness.md` (audit zgodności ze szkoleniem,
+checklisty przed szkoleniem, recovery, PR `workshop-final-readiness`).
+Rzeczywiste uruchomienie smoke testu przeciwko wdrożonemu środowisku
+Hostinger pozostaje krokiem do wykonania przez właściciela projektu — patrz
+`docs/warsztat/workshop-readiness.md`, sekcja 7.
+
 ## Świadomie poza zakresem
 
 Na potrzeby warsztatu nie implementujemy teraz:
@@ -364,3 +374,8 @@ Rekomendowana sekwencja:
 5. `workshop-readiness` — smoke test, poprawki stabilności i finalizacja dokumentacji.
 
 Każdy kolejny PR powstaje tylko wtedy, gdy wnosi wartość do konkretnego elementu warsztatu.
+
+Faktyczna realizacja punktu 5 objęła trzy PR-y: `workshop-production-prepare`
+(przygotowanie środowiska), `workshop-remote-smoke` (automatyczny smoke
+runner) i `workshop-final-readiness` (audit, drobne poprawki, runbook,
+zamknięcie planu).

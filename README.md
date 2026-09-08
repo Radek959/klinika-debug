@@ -157,6 +157,8 @@ Smoke drukuje host przed startem, nigdy nie loguje haseł/tokenów/cookies, na k
 
 Testy samego runnera (bez sieci, mock HTTP server): `npm run test:workshop-smoke`.
 
+Pełny techniczny runbook przygotowania warsztatu (audit zgodności ze szkoleniem, checklisty, recovery, emergency clean state): [`docs/warsztat/workshop-readiness.md`](docs/warsztat/workshop-readiness.md).
+
 ## Testy i build
 
 Podstawowe bramki:
