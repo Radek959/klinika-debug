@@ -32,6 +32,13 @@ export function configureTestEnvironment() {
 }
 
 export async function resetTestDatabase(prisma: PrismaClient) {
+  // Konfiguracja warsztatu jest globalna i trwała (jeden wiersz), więc bez
+  // tego czyszczenia wiersz utworzony przez jeden plik e2e (np. domyślny
+  // scenariusz SUCCESS przy pierwszym wysłaniu zlecenia) przeciekałby do
+  // kolejnych plików w tym samym uruchomieniu `--runInBand` i ignorował ich
+  // `LAB_SIMULATOR_SCENARIO` — ten scenariusz jest odczytywany z env tylko
+  // przy tworzeniu wiersza od nowa.
+  await prisma.workshopConfig.deleteMany();
   await prisma.orderHistory.deleteMany();
   await prisma.processedLabEvent.deleteMany();
   await prisma.labJob.deleteMany();
