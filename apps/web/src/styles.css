@@ -774,24 +774,40 @@ th {
 
 .dashboard-stat-list {
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px 16px;
   margin: 14px 0 18px;
 }
 
 .dashboard-stat-list div {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .dashboard-stat-list dt {
+  overflow: hidden;
   color: #52635b;
   font-weight: 500;
+  font-size: 0.92rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dashboard-stat-list dd {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
   margin: 0;
+  border-radius: 999px;
+  padding: 0 6px;
+  background: #e8f0eb;
+  color: #175541;
+  font-size: 0.82rem;
   font-weight: 700;
 }
 
