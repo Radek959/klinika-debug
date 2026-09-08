@@ -30,6 +30,8 @@
     "db:migrate:test": "node scripts/run-with-test-database.cjs prisma-migrate-deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "prisma db seed",
+    "workshop:seed": "ts-node --project tsconfig.base.json prisma/workshop-seed.ts",
+    "workshop:reset": "ts-node --project tsconfig.base.json prisma/workshop-reset.ts",
     "check": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {

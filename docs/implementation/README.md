@@ -56,7 +56,7 @@ Osobne konta w tym samym workspace nie zapewniają niezależnych danych — pacj
 | Etap 2 — pacjenci | `IMPLEMENTED` | Podstawowa obsługa pacjentów w API i UI jest obecna. |
 | Etap 3 — zlecenia i próbki | `IMPLEMENTED` | Zlecenia, katalog badań, próbki, edycja `DRAFT` i historia operacji są zaimplementowane. |
 | Etap 4 — laboratorium | `IMPLEMENTED` | Wysyłka, callbacki, retry i wszystkie potrzebne scenariusze laboratoryjne są zaimplementowane. |
-| Workshop MVP — uczestnicy | `PLANNED` | Wiele izolowanych workspace'ów i kont warsztatowych + reset do znanego stanu. |
+| Workshop MVP — uczestnicy | `IMPLEMENTED` | Provisioning (`npm run workshop:seed -- --participants=N`) tworzy deterministyczne workspace'y `warsztat-NN` z kontami `testerNN` (STAFF) i danymi startowymi; `npm run workshop:reset` przywraca dane wyłącznie tych workspace'ów do stanu początkowego. Panel `/admin` nie jest jeszcze zaimplementowany — reset jest na razie dostępny tylko z CLI. |
 | Workshop MVP — trainer controls | `PLANNED` | Minimalny `/admin`: lab scenario, kontrolowany bug, reset. |
 | Workshop MVP — controlled bugs | `PLANNED` | 2–3 deterministyczne defekty potrzebne do ćwiczeń. |
 | Workshop MVP — log fixtures | `PLANNED` | Realistyczne syntetyczne logi zamiast pełnego subsystemu observability. |

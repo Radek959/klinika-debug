@@ -43,6 +43,44 @@ Wymagania:
 - reset warsztatu przywraca dane wszystkich workspace'ów uczestników do znanego stanu;
 - panel prowadzącego działa globalnie i nie jest kontem uczestnika.
 
+### Status: `workshop-participant-workspaces` (zaimplementowane)
+
+Provisioning i reset są zaimplementowane jako mechanizmy CLI (fundament pod
+przyszły endpoint `/admin`, nie jego zamiennik):
+
+- `npm run workshop:seed -- --participants=15` — tworzy (albo aktualizuje)
+  deterministyczne workspace'y `warsztat-01`…`warsztat-NN` (widoczna nazwa
+  `Klinika Warsztatowa NN`), po jednym koncie `tester01`…`testerNN` (rola
+  `STAFF`, aktywne) w każdym, oraz zasiewa w nich te same syntetyczne dane
+  startowe co standardowy seed. Operacja jest idempotentna — ponowne
+  uruchomienie dla tej samej liczby uczestników nie tworzy duplikatów.
+  Domyślna liczba uczestników to 15.
+- Hasło kont `testerNN` pochodzi ze zmiennej środowiskowej
+  `WORKSHOP_STAFF_PASSWORD` (wymagana w produkcji, bezpieczna wartość
+  domyślna wyłącznie lokalnie/testowo — analogicznie do `SEED_STAFF_PASSWORD`
+  używanego przez standardowy seed).
+- `WORKSHOP_RESET_CONFIRM=RESET npm run workshop:reset` — resetuje dane
+  WYŁĄCZNIE workspace'ów, których `slug` pasuje do wzorca `warsztat-NN`
+  (nigdy `deleteMany({})` bez warunku `workspaceId`, nigdy `klinika-pokazowa`
+  ani inne workspace'y). Reset usuwa dane utworzone przez uczestnika
+  (pacjentów, zlecenia, próbki, wyniki, historię, zadania integracji z
+  laboratorium), przywraca deterministyczne dane początkowe, zachowuje sam
+  workspace, konto `testerNN` i globalny katalog badań. Bez ustawienia
+  `WORKSHOP_RESET_CONFIRM=RESET` polecenie zawsze się zatrzymuje — to
+  celowy dodatkowy bezpiecznik przed przypadkowym uruchomieniem. Funkcja
+  resetu wymaga też programistycznego potwierdzenia (`confirm: true`) na
+  poziomie wywołania, więc przyszły endpoint `/admin` będzie mógł ją wywołać
+  bezpośrednio, bez kopiowania logiki i bez polegania na zmiennej
+  środowiskowej CLI.
+- Decyzja o sesjach: reset unieważnia (`revokedAt`) wszystkie aktywne sesje
+  kont z resetowanych workspace'ów. Uczestnik musi zalogować się ponownie po
+  reset — to akceptowalny, przewidywalny efekt uboczny, pokryty testem.
+- Izolacja danych między workspace'ami warsztatowymi korzysta z tego samego,
+  istniejącego mechanizmu `workspaceId`, co reszta aplikacji — nie
+  wprowadzono żadnego nowego, osobnego mechanizmu izolacji.
+- Panel `/admin` (wybór scenariusza, wybór błędu, UI resetu) pozostaje poza
+  zakresem tego PR-a i zostanie dodany w `workshop-trainer-controls`.
+
 ## Pozostały zakres Workshop MVP
 
 ### 1. Minimalny Trainer Panel
