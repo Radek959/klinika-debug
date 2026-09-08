@@ -1520,6 +1520,12 @@ describe("lab results webhook and scheduler", () => {
           barcode: "SMP-VAL-11",
           collectedAt: nowIso()
         });
+        // Ten test polega na rzeczywistym schedulerze, który ma naturalnie
+        // doprowadzić zlecenie do COMPLETED — musi więc jawnie wymusić SUCCESS,
+        // inaczej odziedziczy scenariusz ustawiony przez poprzedni test w tym
+        // pliku (np. SAMPLE_REJECTED), bo WorkshopConfigService cache'uje
+        // konfigurację w pamięci na czas życia instancji aplikacji.
+        await setWorkshopConfig(app, { labScenario: "SUCCESS" });
         const sendResponse = await sendOrder(token, order.id);
         const externalOrderId = JSON.parse(sendResponse.body).externalOrderId as string;
 
