@@ -96,6 +96,68 @@ Musi pozwalać na:
 
 Nie budujemy pełnego panelu administracyjnego. Monitoring aplikacji, dashboard stanu bazy, rozbudowany RBAC, historia audytowa i zaawansowany UX są poza Workshop MVP.
 
+#### Status: `workshop-trainer-controls` (zaimplementowane)
+
+- Panel `/admin` jest samodzielną stroną HTML (inline CSS/JS, bez zależności
+  od `apps/web`), serwowaną przez `AdminViewController`
+  (`apps/api/src/admin/admin-view.controller.ts`). Nie jest zarejestrowany w
+  routingu SPA uczestnika i nie jest nigdzie linkowany — jest osiągalny
+  wyłącznie dla kogoś, kto zna adres `/admin`.
+- Globalna konfiguracja (`labScenario`, `controlledBug`, `updatedAt`) jest
+  jednym wierszem w nowej tabeli `workshop_config`
+  (migracja addytywna `prisma/migrations/20260908090000_workshop_config`) i
+  jest odczytywana/zapisywana przez `WorkshopConfigService`
+  (`apps/api/src/workshop-config/workshop-config.service.ts`), z prostym
+  cache'em w procesie — aplikacja działa jako pojedynczy proces Node, więc nie
+  jest potrzebna żadna dodatkowa warstwa (Redis, pub/sub itd.). Nowa instancja
+  serwisu (np. po restarcie procesu) zawsze odczytuje bieżący stan z bazy.
+- `OrdersService.sendOrder` czyta scenariusz NOWEJ wysyłki z
+  `WorkshopConfigService`, zamiast bezpośrednio z `LAB_SIMULATOR_SCENARIO`.
+  Automatyczne ponowienie wysyłki (`executeSendRetry`) nadal używa wyłącznie
+  scenariusza zapisanego w `LabSendRetryJob.scenario` w chwili utworzenia
+  zadania — zmiana konfiguracji z panelu `/admin` NIE może zamienić już
+  zaplanowanego ponowienia w inny scenariusz. `LAB_SIMULATOR_SCENARIO`
+  pozostaje tylko jako wartość STARTOWA (bootstrap) dla świeżo zmigrowanej
+  bazy, odczytywana raz przy pierwszym utworzeniu wiersza `workshop_config`.
+- Kontrolowany błąd: w tym PR-ze dozwolona jest wyłącznie wartość `CLEAN`
+  (`apps/api/src/workshop-config/controlled-bug.ts`). Panel przygotowuje pole
+  wyboru na przyszłe defekty (`workshop-controlled-bugs`), ale nie pozwala
+  aktywować niczego, co jeszcze nie istnieje — backend odrzuca każdą inną
+  wartość (HTTP 400).
+- Przycisk „Resetuj środowisko” w panelu wymaga jawnego potwierdzenia
+  (natywny `window.confirm` w UI + pole `confirm: true` w kontrakcie API) i
+  wywołuje WYŁĄCZNIE istniejący `resetWorkshopWorkspaces(...)`
+  (`apps/api/src/common/prisma/reset-workshop.ts`) — nie ma drugiej,
+  równoległej implementacji resetu. Po resecie konfiguracja panelu wraca do
+  `SUCCESS` + `CLEAN`. Reset nigdy nie dotyka `klinika-pokazowa` ani innych
+  workspace'ów spoza wzorca `warsztat-NN` — to zachowanie istniejącej funkcji
+  z PR-a `workshop-participant-workspaces`, bez zmian.
+- Uwierzytelnienie panelu jest CELOWO osobne od sesji `STAFF`
+  (`apps/api/src/admin/admin-session.service.ts`,
+  `apps/api/src/admin/admin-auth.guard.ts`): hasło porównywane jest przez
+  `argon2` z hashem w `ADMIN_PASSWORD_HASH`, a sesja to bezstanowy,
+  podpisany token (`HMAC-SHA256` z `ADMIN_SESSION_SECRET`) w ciasteczku
+  `HttpOnly`, `SameSite=Strict`, `Secure` w produkcji, z TTL 2 godzin. Nie ma
+  nowej tabeli kont admina, ról ani RBAC — jest tylko ważne/nieważne
+  ciasteczko sesji prowadzącego.
+- API panelu (`/admin/api/login`, `/admin/api/logout`, `/admin/api/config`,
+  `/admin/api/reset`) jest wyłączone z prefiksu `/api/v1`
+  (`app.setGlobalPrefix` w `apps/api/src/app.setup.ts`) i z publicznego
+  OpenAPI (`@ApiExcludeController()`), więc nie pojawia się w dokumentacji
+  API dla uczestnika ani w API produktu/uprawnieniach `STAFF`.
+- Testy: `apps/api/src/workshop-config/workshop-config.service.spec.ts`
+  (bootstrap, cache w procesie, przeżycie restartu, walidacja, reset do
+  domyślnych wartości), `apps/api/src/admin/admin-session.service.spec.ts`
+  (wydawanie/weryfikacja/wygasanie/fałszowanie tokenu sesji),
+  `apps/api/src/config/env.validation.spec.ts` (wymagane
+  `ADMIN_PASSWORD_HASH`/`ADMIN_SESSION_SECRET`),
+  `apps/api/test/admin.e2e-spec.ts` (uwierzytelnienie, zapis konfiguracji,
+  wpływ na nową wysyłkę vs. zapisany scenariusz ponowienia, reset,
+  izolacja `klinika-pokazowa`, brak wycieku konfiguracji do API uczestnika i
+  do OpenAPI), `scripts/test-workshop-config-migration.cjs`
+  (`npm run test:migration:workshop-config`, uruchamiany w
+  `.github/workflows/ci.yml`).
+
 ### 2. Kontrolowane błędy
 
 Zamiast ogólnego frameworka pakietów błędów implementujemy 2–3 deterministyczne defekty potrzebne w ćwiczeniach.

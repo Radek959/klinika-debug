@@ -9,7 +9,11 @@ export function configureApp(app: NestFastifyApplication) {
   app.setGlobalPrefix("api/v1", {
     exclude: [
       { path: "health/live", method: RequestMethod.GET },
-      { path: "health/ready", method: RequestMethod.GET }
+      { path: "health/ready", method: RequestMethod.GET },
+      // Panel prowadzącego (`/admin`) jest narzędziem technicznym, celowo
+      // POZA `/api/v1` i poza uprawnieniami STAFF (AGENTS.md).
+      { path: "admin", method: RequestMethod.ALL },
+      { path: "admin/*", method: RequestMethod.ALL }
     ]
   });
 

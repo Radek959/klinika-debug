@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { CorrelationIdMiddleware } from "./common/correlation/correlation-id.middleware";
 import { PrismaModule } from "./common/prisma/prisma.module";
@@ -12,6 +13,7 @@ import { LabSendRetryModule } from "./lab-send-retry/lab-send-retry.module";
 import { OrdersModule } from "./orders/orders.module";
 import { PatientsModule } from "./patients/patients.module";
 import { TestsCatalogModule } from "./tests-catalog/tests-catalog.module";
+import { WorkshopConfigModule } from "./workshop-config/workshop-config.module";
 
 @Module({
   imports: [
@@ -28,7 +30,9 @@ import { TestsCatalogModule } from "./tests-catalog/tests-catalog.module";
     TestsCatalogModule,
     LabCallbacksModule,
     LabJobsModule,
-    LabSendRetryModule
+    LabSendRetryModule,
+    WorkshopConfigModule,
+    AdminModule
   ]
 })
 export class AppModule implements NestModule {

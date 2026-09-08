@@ -7,13 +7,17 @@ describe("validateEnvironment", () => {
         NODE_ENV: "test",
         PORT: "3000",
         DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
-        SESSION_TOKEN_PEPPER: "test-session-pepper"
+        SESSION_TOKEN_PEPPER: "test-session-pepper",
+        ADMIN_PASSWORD_HASH: "test-admin-password-hash",
+        ADMIN_SESSION_SECRET: "test-admin-session-secret"
       })
     ).toEqual({
       NODE_ENV: "test",
       PORT: "3000",
       DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
       SESSION_TOKEN_PEPPER: "test-session-pepper",
+      ADMIN_PASSWORD_HASH: "test-admin-password-hash",
+      ADMIN_SESSION_SECRET: "test-admin-session-secret",
       LAB_SIMULATOR_SCENARIO: "SUCCESS"
     });
   });
@@ -25,6 +29,8 @@ describe("validateEnvironment", () => {
         PORT: "3000",
         DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
         SESSION_TOKEN_PEPPER: "test-session-pepper",
+        ADMIN_PASSWORD_HASH: "test-admin-password-hash",
+        ADMIN_SESSION_SECRET: "test-admin-session-secret",
         LAB_SIMULATOR_SCENARIO: "PARTIAL_SUCCESS"
       }).LAB_SIMULATOR_SCENARIO
     ).toBe("PARTIAL_SUCCESS");
@@ -37,6 +43,8 @@ describe("validateEnvironment", () => {
         PORT: "3000",
         DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
         SESSION_TOKEN_PEPPER: "test-session-pepper",
+        ADMIN_PASSWORD_HASH: "test-admin-password-hash",
+        ADMIN_SESSION_SECRET: "test-admin-session-secret",
         LAB_SIMULATOR_SCENARIO: "SAMPLE_REJECTED"
       }).LAB_SIMULATOR_SCENARIO
     ).toBe("SAMPLE_REJECTED");
@@ -49,6 +57,8 @@ describe("validateEnvironment", () => {
         PORT: "3000",
         DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
         SESSION_TOKEN_PEPPER: "test-session-pepper",
+        ADMIN_PASSWORD_HASH: "test-admin-password-hash",
+        ADMIN_SESSION_SECRET: "test-admin-session-secret",
         LAB_SIMULATOR_SCENARIO: "VALIDATION_ERROR"
       }).LAB_SIMULATOR_SCENARIO
     ).toBe("VALIDATION_ERROR");
@@ -61,6 +71,8 @@ describe("validateEnvironment", () => {
         PORT: "3000",
         DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
         SESSION_TOKEN_PEPPER: "test-session-pepper",
+        ADMIN_PASSWORD_HASH: "test-admin-password-hash",
+        ADMIN_SESSION_SECRET: "test-admin-session-secret",
         LAB_SIMULATOR_SCENARIO: "RATE_LIMIT"
       }).LAB_SIMULATOR_SCENARIO
     ).toBe("RATE_LIMIT");
@@ -73,6 +85,8 @@ describe("validateEnvironment", () => {
         PORT: "3000",
         DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
         SESSION_TOKEN_PEPPER: "test-session-pepper",
+        ADMIN_PASSWORD_HASH: "test-admin-password-hash",
+        ADMIN_SESSION_SECRET: "test-admin-session-secret",
         LAB_SIMULATOR_SCENARIO: "SERVER_ERROR"
       }).LAB_SIMULATOR_SCENARIO
     ).toBe("SERVER_ERROR");
@@ -91,6 +105,8 @@ describe("validateEnvironment", () => {
         PORT: "3000",
         DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
         SESSION_TOKEN_PEPPER: "test-session-pepper",
+        ADMIN_PASSWORD_HASH: "test-admin-password-hash",
+        ADMIN_SESSION_SECRET: "test-admin-session-secret",
         LAB_SIMULATOR_SCENARIO: "NOT_A_SCENARIO"
       })
     ).toThrow(/LAB_SIMULATOR_SCENARIO/);
@@ -103,8 +119,35 @@ describe("validateEnvironment", () => {
         PORT: "3000",
         DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
         SESSION_TOKEN_PEPPER: "test-session-pepper",
+        ADMIN_PASSWORD_HASH: "test-admin-password-hash",
+        ADMIN_SESSION_SECRET: "test-admin-session-secret",
         LAB_SIMULATOR_SCENARIO: "NOT_A_SCENARIO"
       })
     ).toThrow(/SUCCESS, PARTIAL_SUCCESS, SAMPLE_REJECTED, VALIDATION_ERROR, RATE_LIMIT, SERVER_ERROR/);
+  });
+
+  it("zatrzymuje start, gdy brakuje ADMIN_PASSWORD_HASH", () => {
+    expect(() =>
+      validateEnvironment({
+        NODE_ENV: "test",
+        PORT: "3000",
+        DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
+        SESSION_TOKEN_PEPPER: "test-session-pepper",
+        ADMIN_SESSION_SECRET: "test-admin-session-secret"
+      })
+    ).toThrow(/ADMIN_PASSWORD_HASH/);
+  });
+
+  it("zatrzymuje start, gdy ADMIN_SESSION_SECRET jest za krótki", () => {
+    expect(() =>
+      validateEnvironment({
+        NODE_ENV: "test",
+        PORT: "3000",
+        DATABASE_URL: "mysql://user:password@localhost:3306/klinika",
+        SESSION_TOKEN_PEPPER: "test-session-pepper",
+        ADMIN_PASSWORD_HASH: "test-admin-password-hash",
+        ADMIN_SESSION_SECRET: "short"
+      })
+    ).toThrow(/ADMIN_SESSION_SECRET/);
   });
 });

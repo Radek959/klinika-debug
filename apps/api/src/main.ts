@@ -12,7 +12,7 @@ import { configureApp } from "./app.setup";
 import { logBootstrapError } from "./config/bootstrap-error";
 import { getWebDistPath } from "./config/repo-paths";
 
-const RESERVED_SPA_PREFIXES = ["/api", "/api/docs", "/health", "/internal"];
+const RESERVED_SPA_PREFIXES = ["/api", "/api/docs", "/health", "/internal", "/admin"];
 type StaticReply = { sendFile: (fileName: string) => unknown };
 type CorrelatedRequest = { correlationId?: string };
 

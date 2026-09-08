@@ -14,6 +14,8 @@ interface ValidatedEnv {
   DATABASE_URL: string;
   SESSION_TOKEN_PEPPER: string;
   LAB_SIMULATOR_SCENARIO: LabSimulatorScenario;
+  ADMIN_PASSWORD_HASH: string;
+  ADMIN_SESSION_SECRET: string;
 }
 
 export function validateEnvironment(config: Record<string, unknown>): ValidatedEnv {
@@ -58,6 +60,20 @@ export function validateEnvironment(config: Record<string, unknown>): ValidatedE
     errors.push("SESSION_TOKEN_PEPPER musi mieć co najmniej 16 znaków.");
   }
 
+  // Sekrety panelu prowadzącego (`/admin`). Ten panel ma osobne, techniczne
+  // uwierzytelnienie, niezależne od kont STAFF — patrz AGENTS.md i
+  // docs/ai/backend-playbook.md. Wartości nigdy nie są logowane ani zwracane
+  // w odpowiedzi — walidujemy tylko obecność i minimalną długość.
+  const adminPasswordHash = readString(config, "ADMIN_PASSWORD_HASH");
+  if (!adminPasswordHash || adminPasswordHash.length < 8) {
+    errors.push("ADMIN_PASSWORD_HASH musi być ustawione (hash hasła panelu prowadzącego).");
+  }
+
+  const adminSessionSecret = readString(config, "ADMIN_SESSION_SECRET");
+  if (!adminSessionSecret || adminSessionSecret.trim().length < 16) {
+    errors.push("ADMIN_SESSION_SECRET musi mieć co najmniej 16 znaków.");
+  }
+
   if (errors.length > 0) {
     throw new Error(`Nieprawidłowa konfiguracja aplikacji:\n- ${errors.join("\n- ")}`);
   }
@@ -67,7 +83,9 @@ export function validateEnvironment(config: Record<string, unknown>): ValidatedE
     PORT: port!,
     DATABASE_URL: databaseUrl!,
     SESSION_TOKEN_PEPPER: sessionTokenPepper!,
-    LAB_SIMULATOR_SCENARIO: labSimulatorScenario!
+    LAB_SIMULATOR_SCENARIO: labSimulatorScenario!,
+    ADMIN_PASSWORD_HASH: adminPasswordHash!,
+    ADMIN_SESSION_SECRET: adminSessionSecret!
   };
 }
 

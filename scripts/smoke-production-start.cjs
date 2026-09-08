@@ -26,7 +26,11 @@ const app = spawn(process.execPath, [apiEntry], {
     PORT: port,
     DATABASE_URL: process.env.TEST_DATABASE_URL,
     SESSION_TOKEN_PEPPER:
-      process.env.SESSION_TOKEN_PEPPER ?? "smoke-test-session-pepper"
+      process.env.SESSION_TOKEN_PEPPER ?? "smoke-test-session-pepper",
+    ADMIN_PASSWORD_HASH:
+      process.env.ADMIN_PASSWORD_HASH ?? "smoke-test-admin-password-hash",
+    ADMIN_SESSION_SECRET:
+      process.env.ADMIN_SESSION_SECRET ?? "smoke-test-admin-session-secret"
   }
 });
 
