@@ -1,5 +1,9 @@
 import { PrismaClient } from "@prisma/client";
+import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import * as argon2 from "argon2";
+import { WorkshopConfigService } from "../src/workshop-config/workshop-config.service";
+import { DEFAULT_CONTROLLED_BUG, type ControlledBug } from "../src/workshop-config/controlled-bug";
+import type { LabSimulatorScenario } from "../src/lab-simulator/lab-simulator-scenario";
 
 /**
  * Hasło i odpowiadający mu hash argon2id używane WYŁĄCZNIE w testach panelu
@@ -55,6 +59,34 @@ export async function resetTestDatabase(prisma: PrismaClient) {
   await prisma.medicalTest.deleteMany();
   await prisma.user.deleteMany();
   await prisma.workspace.deleteMany();
+}
+
+/**
+ * Ustawia scenariusz symulatora laboratorium (i opcjonalnie kontrolowany
+ * błąd) dla trwających testów e2e, poprawnie aktualizując zarówno wiersz
+ * `workshop_config` w bazie, jak i cache w pamięci `WorkshopConfigService`.
+ *
+ * Testy pre-istniejące (sprzed `WorkshopConfigService`) historycznie
+ * sterowały scenariuszem przez bezpośrednie przypisanie do
+ * `process.env.LAB_SIMULATOR_SCENARIO`. Od PR #29/#30 `WorkshopConfigService`
+ * cache'uje konfigurację w pamięci procesu na czas życia instancji aplikacji
+ * Nest (tworzonej raz na plik testowy w `beforeAll`) — zmiana samej zmiennej
+ * środowiskowej w trakcie działania pliku testowego jest więc cicho
+ * ignorowana po pierwszym odczycie. Ta funkcja jest jedynym poprawnym
+ * sposobem zmiany scenariusza (lub kontrolowanego błędu) w trakcie testu.
+ */
+export async function setWorkshopConfig(
+  app: NestFastifyApplication,
+  input: {
+    labScenario: LabSimulatorScenario;
+    controlledBug?: ControlledBug;
+  }
+) {
+  const workshopConfigService = app.get(WorkshopConfigService);
+  return workshopConfigService.setConfig({
+    labScenario: input.labScenario,
+    controlledBug: input.controlledBug ?? DEFAULT_CONTROLLED_BUG
+  });
 }
 
 export async function createStaffUser(

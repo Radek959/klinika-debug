@@ -4,7 +4,7 @@ import { PrismaService } from "../src/common/prisma/prisma.service";
 import { seedDatabase } from "../src/common/prisma/seed-database";
 import { OrderHistoryService } from "../src/order-history/order-history.service";
 import { closeTestApp, createTestApp } from "./test-app";
-import { configureTestEnvironment, resetTestDatabase } from "./database";
+import { configureTestEnvironment, resetTestDatabase, setWorkshopConfig } from "./database";
 
 describe("lab results webhook and scheduler", () => {
   let app: NestFastifyApplication;
@@ -261,16 +261,6 @@ describe("lab results webhook and scheduler", () => {
   });
 
   describe("scenariusz symulatora PARTIAL_SUCCESS", () => {
-    const ORIGINAL_SCENARIO = process.env.LAB_SIMULATOR_SCENARIO;
-
-    afterEach(() => {
-      if (ORIGINAL_SCENARIO === undefined) {
-        delete process.env.LAB_SIMULATOR_SCENARIO;
-      } else {
-        process.env.LAB_SIMULATOR_SCENARIO = ORIGINAL_SCENARIO;
-      }
-    });
-
     it("przechodzi SENT_TO_LAB -> PARTIAL -> COMPLETED przez dwa zaplanowane zadania lab_jobs", async () => {
       const { token, patientId, tests } = await setupDefaultOrderData();
       const order = await createOrderAndParse(token, {
@@ -289,7 +279,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      await setWorkshopConfig(app, { labScenario: "PARTIAL_SUCCESS" });
       const sendResponse = await sendOrder(token, order.id);
       expect(sendResponse.statusCode).toBe(200);
       const sendBody = JSON.parse(sendResponse.body);
@@ -419,7 +409,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      await setWorkshopConfig(app, { labScenario: "PARTIAL_SUCCESS" });
       const first = await sendOrder(token, order.id);
       expect(first.statusCode).toBe(200);
       const second = await sendOrder(token, order.id);
@@ -447,7 +437,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      await setWorkshopConfig(app, { labScenario: "PARTIAL_SUCCESS" });
       const sendResponse = await sendOrder(token, order.id);
       const externalOrderId = JSON.parse(sendResponse.body).externalOrderId as string;
 
@@ -498,7 +488,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      await setWorkshopConfig(app, { labScenario: "PARTIAL_SUCCESS" });
       const sendResponse = await sendOrder(token, order.id);
       expect(sendResponse.statusCode).toBe(200);
 
@@ -539,7 +529,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "SUCCESS";
+      await setWorkshopConfig(app, { labScenario: "SUCCESS" });
       const sendResponse = await sendOrder(token, order.id);
       expect(sendResponse.statusCode).toBe(200);
 
@@ -569,7 +559,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      await setWorkshopConfig(app, { labScenario: "PARTIAL_SUCCESS" });
       const sendResponse = await sendOrder(token, order.id);
       expect(sendResponse.statusCode).toBe(200);
 
@@ -599,16 +589,6 @@ describe("lab results webhook and scheduler", () => {
   });
 
   describe("scenariusz symulatora SAMPLE_REJECTED", () => {
-    const ORIGINAL_SCENARIO = process.env.LAB_SIMULATOR_SCENARIO;
-
-    afterEach(() => {
-      if (ORIGINAL_SCENARIO === undefined) {
-        delete process.env.LAB_SIMULATOR_SCENARIO;
-      } else {
-        process.env.LAB_SIMULATOR_SCENARIO = ORIGINAL_SCENARIO;
-      }
-    });
-
     it("odrzuca jedyną próbkę zlecenia i kończy je statusem REJECTED", async () => {
       const { token, patientId, tests } = await setupDefaultOrderData();
       const order = await createOrderAndParse(token, {
@@ -622,7 +602,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "SAMPLE_REJECTED";
+      await setWorkshopConfig(app, { labScenario: "SAMPLE_REJECTED" });
       const sendResponse = await sendOrder(token, order.id);
       expect(sendResponse.statusCode).toBe(200);
       const sentOrder = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
@@ -731,7 +711,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "SAMPLE_REJECTED";
+      await setWorkshopConfig(app, { labScenario: "SAMPLE_REJECTED" });
       const sendResponse = await sendOrder(token, order.id);
       expect(sendResponse.statusCode).toBe(200);
 
@@ -879,7 +859,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "SAMPLE_REJECTED";
+      await setWorkshopConfig(app, { labScenario: "SAMPLE_REJECTED" });
       const sendResponse = await sendOrder(token, order.id);
       expect(sendResponse.statusCode).toBe(200);
 
@@ -1595,7 +1575,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "SAMPLE_REJECTED";
+      await setWorkshopConfig(app, { labScenario: "SAMPLE_REJECTED" });
       const sendResponse = await sendOrder(token, order.id);
       expect(sendResponse.statusCode).toBe(200);
       const job = await prisma.labJob.findFirstOrThrow({ where: { orderId: order.id } });
@@ -1640,7 +1620,7 @@ describe("lab results webhook and scheduler", () => {
     it("nie zmienia zachowania scenariuszy SUCCESS i PARTIAL_SUCCESS", async () => {
       const { token, patientId, tests } = await setupDefaultOrderData();
 
-      process.env.LAB_SIMULATOR_SCENARIO = "SUCCESS";
+      await setWorkshopConfig(app, { labScenario: "SUCCESS" });
       const successOrder = await createOrderAndParse(token, {
         patientId,
         priority: "ROUTINE",
@@ -1673,7 +1653,7 @@ describe("lab results webhook and scheduler", () => {
         })
       ).toBe(0);
 
-      process.env.LAB_SIMULATOR_SCENARIO = "PARTIAL_SUCCESS";
+      await setWorkshopConfig(app, { labScenario: "PARTIAL_SUCCESS" });
       const partialOrder = await createOrderAndParse(token, {
         patientId,
         priority: "ROUTINE",
@@ -1753,7 +1733,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = "SAMPLE_REJECTED";
+      await setWorkshopConfig(app, { labScenario: "SAMPLE_REJECTED" });
       expect((await sendOrder(token, order.id)).statusCode).toBe(200);
 
       const otherWorkspace = await prisma.workspace.create({
@@ -1778,16 +1758,6 @@ describe("lab results webhook and scheduler", () => {
   });
 
   describe("publiczna historia zlecenia nie ujawnia scenariusza symulatora", () => {
-    const ORIGINAL_SCENARIO = process.env.LAB_SIMULATOR_SCENARIO;
-
-    afterEach(() => {
-      if (ORIGINAL_SCENARIO === undefined) {
-        delete process.env.LAB_SIMULATOR_SCENARIO;
-      } else {
-        process.env.LAB_SIMULATOR_SCENARIO = ORIGINAL_SCENARIO;
-      }
-    });
-
     /**
      * Nazwy scenariuszy nie mogą wyciekać przez pole `details` publicznej
      * historii. Test celowo pomija samo `details.eventType`: wartość
@@ -1833,7 +1803,7 @@ describe("lab results webhook and scheduler", () => {
         collectedAt: nowIso()
       });
 
-      process.env.LAB_SIMULATOR_SCENARIO = scenario;
+      await setWorkshopConfig(app, { labScenario: scenario });
       expect((await sendOrder(token, order.id)).statusCode).toBe(200);
       await waitForOrderStatus(
         order.id,
