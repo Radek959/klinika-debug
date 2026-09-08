@@ -10,10 +10,9 @@ import {
   type ControlledBug
 } from "./controlled-bug";
 import {
-  assertLabDelayMs,
+  assertFiniteNonNegativeLabDelayMs,
   DEFAULT_LAB_DELAY_MS,
-  resolveLabDelayMsBootstrap,
-  type LabDelayMs
+  resolveLabDelayMsBootstrap
 } from "./lab-delay";
 
 const CONFIG_ROW_ID = "singleton";
@@ -35,7 +34,14 @@ export interface WorkshopConfigState {
 export interface WorkshopConfigInput {
   labScenario: LabSimulatorScenario;
   controlledBug: ControlledBug;
-  labDelayMs: LabDelayMs;
+  /**
+   * "Tylko presety" jest wymogiem panelu `/admin`, egzekwowanym przez
+   * `AdminConfigUpdateDto` (`@IsIn(LAB_DELAY_PRESETS_MS)`) — ten serwis robi
+   * tylko luźny sanity check (`assertFiniteNonNegativeLabDelayMs`), żeby móc
+   * też przyjąć wartość odziedziczoną z bootstrapu `LAB_SIMULATOR_DELAY_MS`
+   * (furtka testowa), gdy wywołujący zmienia tylko scenariusz/defekt.
+   */
+  labDelayMs: number;
 }
 
 /**
@@ -107,7 +113,7 @@ export class WorkshopConfigService {
   async setConfig(input: WorkshopConfigInput): Promise<WorkshopConfigState> {
     const labScenario = resolveLabSimulatorScenario(input.labScenario);
     const controlledBug = assertControlledBug(input.controlledBug);
-    const labDelayMs = assertLabDelayMs(input.labDelayMs);
+    const labDelayMs = assertFiniteNonNegativeLabDelayMs(input.labDelayMs);
 
     const row = await this.prisma.workshopConfig.upsert({
       where: { id: CONFIG_ROW_ID },

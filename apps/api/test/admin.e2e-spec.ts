@@ -411,14 +411,18 @@ async function bootstrapOrderReadyToSend(
   app: NestFastifyApplication,
   prisma: PrismaClient
 ) {
+  // Sufiks unikalny per wywołanie — pozwala wywołać helper wielokrotnie w
+  // jednym teście (np. porównanie delay starej i nowej wysyłki) bez kolizji
+  // na unikalnym slug/login.
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const workspace = await prisma.workspace.create({
-    data: { slug: "admin-scenario-test", name: "Admin Scenario Test" }
+    data: { slug: `admin-scenario-test-${suffix}`, name: "Admin Scenario Test" }
   });
   const argon2 = await import("argon2");
   const user = await prisma.user.create({
     data: {
       workspaceId: workspace.id,
-      login: "admin-scenario-staff",
+      login: `admin-scenario-staff-${suffix}`,
       displayName: "Personel testowy",
       role: "STAFF",
       passwordHash: await argon2.hash("HasloTestowe123!", { type: argon2.argon2id })

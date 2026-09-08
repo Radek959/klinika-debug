@@ -40,3 +40,18 @@ export function resolveLabDelayMsBootstrap(
   const configured = Number(rawValue);
   return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_LAB_DELAY_MS;
 }
+
+/**
+ * Sanity check użyty przez `WorkshopConfigService.setConfig` — luźniejszy niż
+ * `assertLabDelayMs`. „Tylko presety" jest wymogiem panelu `/admin`
+ * (egzekwowanym przez `AdminConfigUpdateDto` z `@IsIn(LAB_DELAY_PRESETS_MS)`),
+ * a nie samego serwisu: serwis musi też przyjąć wartość odziedziczoną z
+ * bootstrapu `LAB_SIMULATOR_DELAY_MS` (furtka testowa, może nie być presetem)
+ * przy odczycie-i-zapisie tego samego stanu (np. zmiana samego scenariusza).
+ */
+export function assertFiniteNonNegativeLabDelayMs(value: number): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`Nieprawidłowy czas generowania wyników: "${value}".`);
+  }
+  return value;
+}

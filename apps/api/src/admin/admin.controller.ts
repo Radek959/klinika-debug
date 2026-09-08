@@ -92,7 +92,7 @@ export class AdminController {
     const config = await this.workshopConfig.setConfig({
       labScenario: dto.labScenario as WorkshopConfigState["labScenario"],
       controlledBug: dto.controlledBug as WorkshopConfigState["controlledBug"],
-      labDelayMs: dto.labDelayMs as (typeof LAB_DELAY_PRESETS_MS)[number]
+      labDelayMs: dto.labDelayMs
     });
     return this.toConfigResponse(config);
   }

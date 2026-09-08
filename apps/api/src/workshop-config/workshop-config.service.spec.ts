@@ -158,23 +158,39 @@ describe("WorkshopConfigService", () => {
       const updated = await service.setConfig({
         labScenario: "SUCCESS",
         controlledBug: "CLEAN",
-        labDelayMs: preset as 5000 | 15000 | 30000 | 60000 | 300000
+        labDelayMs: preset
       });
 
       expect(updated.labDelayMs).toBe(preset);
     }
   );
 
-  it("odrzuca dowolną (arbitrary) wartość labDelayMs spoza presetów", async () => {
+  it("setConfig akceptuje wartość labDelayMs spoza presetów (walidacja presetów jest wymogiem panelu /admin, nie serwisu)", async () => {
     const { prisma } = createPrismaStub();
     const service = new WorkshopConfigService(prisma);
+
+    const updated = await service.setConfig({
+      labScenario: "SUCCESS",
+      controlledBug: "CLEAN",
+      labDelayMs: 12345
+    });
+
+    expect(updated.labDelayMs).toBe(12345);
+  });
+
+  it("odrzuca ujemną albo nieskończoną wartość labDelayMs", async () => {
+    const { prisma } = createPrismaStub();
+    const service = new WorkshopConfigService(prisma);
+
+    await expect(
+      service.setConfig({ labScenario: "SUCCESS", controlledBug: "CLEAN", labDelayMs: -1 })
+    ).rejects.toThrow(/Nieprawidłowy czas generowania wyników/);
 
     await expect(
       service.setConfig({
         labScenario: "SUCCESS",
         controlledBug: "CLEAN",
-        // @ts-expect-error - celowo nieprawidłowa wartość na potrzeby testu
-        labDelayMs: 12345
+        labDelayMs: Number.POSITIVE_INFINITY
       })
     ).rejects.toThrow(/Nieprawidłowy czas generowania wyników/);
   });
