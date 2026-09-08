@@ -164,6 +164,10 @@ Wymagania wobec aplikacji:
 - spójne `correlationId` w głównym procesie;
 - log fixture'y zgodne z nazwami endpointów, statusami, retry i zachowaniem prawdziwej aplikacji.
 
+Uczestnik otrzymuje materiały przez UI (**Materiały → Logi**, `/materials`), nie
+przez repozytorium ani VS Code: podgląd w przeglądarce (Ctrl+F, zaznaczanie i
+kopiowanie fragmentów) oraz pobranie pliku `.log` przyciskiem „Pobierz .log”.
+
 Pełny subsystem observability nie jest wymagany.
 
 ### Etap G — raport błędu

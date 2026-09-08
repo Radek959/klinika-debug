@@ -30,6 +30,7 @@ export function AppLayout({ user, onLogout }: AppLayoutProps) {
           </NavLink>
           <NavLink to="/patients">Pacjenci</NavLink>
           <NavLink to="/orders">Zlecenia</NavLink>
+          <NavLink to="/materials">Materiały</NavLink>
         </nav>
         <main className="content">
           <Outlet />

@@ -55,7 +55,7 @@ Python) pozostają świadomie `OUT_OF_SCOPE` — patrz `docs/implementation/READ
 - [ ] logowanie `tester01` działa
 - [ ] logowanie do `/admin` działa
 - [ ] `/api/docs` (OpenAPI) jest dostępne
-- [ ] fixture'y logów są dostępne uczestnikom (`workshop-assets/logs/`)
+- [ ] fixture'y logów są dostępne uczestnikom w UI (**Materiały**, `/materials`), a nie tylko w repozytorium (`workshop-assets/logs/`)
 - [ ] konfiguracja w `/admin`: `SUCCESS`
 - [ ] konfiguracja w `/admin`: `CLEAN`
 
@@ -120,6 +120,9 @@ Krótka checklista do wykonania przez człowieka na finalnym, wdrożonym
 [ ] admin
 [ ] controlled bug
 [ ] reset
+[ ] Materiały
+[ ] podgląd logu
+[ ] pobranie .log
 ```
 
 ## 7. Statusy — IMPLEMENTED vs VERIFIED vs DEPLOYED

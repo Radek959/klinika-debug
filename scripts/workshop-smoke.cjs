@@ -11,7 +11,8 @@
  *   (patrz `maskSecrets`/`safeLog` poniżej — używane przy KAŻDYM logu);
  * - drukuje host przed startem, ale nigdy sekrety;
  * - bez `WORKSHOP_SMOKE_CONFIRM=RUN` wykonuje wyłącznie read-only preflight
- *   (health, odczyt configu admina, OpenAPI, log fixtures) i kończy się bez
+ *   (health, odczyt configu admina, OpenAPI, log fixtures, materiał /materials
+ *   webowego builda) i kończy się bez
  *   żadnej zmiany danych;
  * - z potwierdzeniem, na końcu ZAWSZE (także po błędzie w trakcie testu)
  *   próbuje przywrócić SUCCESS + CLEAN i zresetować środowisko w `finally`.
@@ -93,6 +94,7 @@ async function main() {
 
     runOpenApiCheck(await client.get("/api/docs-json", { expectJson: true }), report);
     runLogFixturesCheck(report);
+    await runMaterialsAssetCheck(client, report);
   } catch (error) {
     const step = error && error.smokeStep;
     if (step) {
@@ -539,6 +541,23 @@ function runLogFixturesCheck(report) {
   } catch (error) {
     throw fail("Log fixtures", `npm run test:workshop-logs nie powiodło się: ${describeError(error)}`);
   }
+}
+
+/**
+ * Read-only sprawdzenie, że materiał `Materiały` jest faktycznie dostępny po
+ * deployu jako statyczny asset webowy (`workshop-log-browser`) — celowo
+ * pobiera TYLKO jeden, mały fixture (`happy-path.log`), a nie wszystkie
+ * siedem plików.
+ */
+async function runMaterialsAssetCheck(client, report) {
+  const response = await client.get("/materials/logs/happy-path.log", { expectJson: false });
+  if (response.status !== 200 || !response.text) {
+    throw fail(
+      "Materials asset",
+      `/materials/logs/happy-path.log nie zwróciło HTTP 200 z treścią (HTTP ${response.status}).`
+    );
+  }
+  report.pass("Materials asset");
 }
 
 async function runFinalCleanup(adminClient, report, log) {
