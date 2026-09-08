@@ -1,6 +1,9 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import * as argon2 from "argon2";
 import { readPeselData } from "@klinika/domain";
+
+/** Klient Prisma albo klient transakcji — obie strony mają identyczne API modeli. */
+export type SeedableClient = PrismaClient | Prisma.TransactionClient;
 
 const medicalTestsCatalog = [
   {
@@ -72,7 +75,12 @@ const medicalTestsCatalog = [
   }
 ] as const;
 
-const seedPatients = [
+/**
+ * Syntetyczni pacjenci startowi. Współdzieleni przez standardowy seed
+ * (`klinika-pokazowa`) i provisioning/reset workspace'ów warsztatowych, żeby
+ * nie utrzymywać dwóch kopii tych samych danych demonstracyjnych.
+ */
+export const seedPatients = [
   {
     firstName: "Jan",
     lastName: "Nowak-Testowy",
@@ -163,11 +171,11 @@ export async function seedDatabase(client: PrismaClient) {
     }
   });
 
-  await seedDemoPatients(client, workspace.id);
+  await seedWorkspacePatients(client, workspace.id);
   await seedMedicalTestsCatalog(client);
 }
 
-async function seedMedicalTestsCatalog(client: PrismaClient) {
+export async function seedMedicalTestsCatalog(client: PrismaClient) {
   for (const test of medicalTestsCatalog) {
     const savedTest = await client.medicalTest.upsert({
       where: { code: test.code },
@@ -253,7 +261,16 @@ async function seedMedicalTestsCatalog(client: PrismaClient) {
   }
 }
 
-async function seedDemoPatients(client: PrismaClient, workspaceId: string) {
+/**
+ * Zapewnia deterministyczny, syntetyczny zestaw pacjentów startowych w danym
+ * workspace. Idempotentne (upsert po unikalnym identyfikatorze pacjenta w
+ * workspace) — wielokrotne wywołanie nie tworzy duplikatów, więc nadaje się
+ * zarówno do provisioningu, jak i resetu danych warsztatowych.
+ */
+export async function seedWorkspacePatients(
+  client: SeedableClient,
+  workspaceId: string
+) {
   for (const patient of seedPatients) {
     const savedPatient = await client.patient.upsert({
       where: getSeedPatientWhere(workspaceId, patient),
