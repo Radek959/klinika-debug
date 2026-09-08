@@ -272,6 +272,51 @@ Materiały powinny umożliwiać ćwiczenia takie jak:
 
 Fixture'y muszą być spójne z rzeczywistymi endpointami, statusami, kodami błędów, harmonogramem retry i `correlationId` Kliniki Debug. Wszystkie dane są syntetyczne, bez prawdziwych danych pacjentów, sekretów i tokenów.
 
+#### Status: `workshop-log-fixtures` (zaimplementowane)
+
+- Fixture'y JSONL (`workshop-assets/logs/`): `happy-path.log` (101 wpisów),
+  `patient-error.log` (145), `order-flow.log` (138), `lab-timeout.log`
+  (199), `api-diagnostics.log` (189), `correlation-trace.log` (220),
+  `production-like.log` (601) — wszystkie powyżej wymaganego minimum, a
+  `production-like.log` w widełkach 400-700. Plus `workshop-assets/logs/README.md`
+  z opisem formatu, znaczenia pól, sposobu filtrowania po `correlationId` i
+  informacją o w pełni syntetycznym charakterze danych — bez rozwiązań
+  ćwiczeń, root cause, instrukcji dla prowadzącego ani listy aktywnych
+  kontrolowanych błędów.
+- Materiał jest generowany deterministycznie skryptem
+  `scripts/generate-workshop-logs.cjs` (`npm run generate:workshop-logs`,
+  PRNG `mulberry32` z ustalonym ziarnem — to samo ziarno zawsze daje
+  identyczny wynik) na podstawie rzeczywistych endpointów (`/api/v1/...`,
+  `/api/v1/integrations/lab/results`, `/health/live`, `/health/ready`),
+  kodów błędów, statusów HTTP i harmonogramu retry 15/30/60 s
+  (`LAB_SEND_RETRY_DELAYS_SECONDS`) Kliniki Debug — nie wymyślonego stosu
+  technologicznego. Skrypt nie łączy się z żadną bazą, API ani usługą
+  zewnętrzną. Współdzielone „kroki" narracji (logowanie, pacjent, zlecenie,
+  próbka, wysyłka, akceptacja/callback laboratorium, ponowienie) są w
+  `scripts/workshop-logs/narrative.cjs`, żeby scenariusze nie duplikowały
+  logiki budowania wpisów.
+- `order-flow.log` i `api-diagnostics.log` odzwierciedlają obserwowalne
+  skutki defektów `ORDER_FLOW`/`API_DIAGNOSTICS` z `workshop-controlled-bugs`
+  (niespójny status zlecenia po jednej z dwóch próbek; bardzo krótki, stały
+  wzorzec HTTP 500 wyłącznie dla zleceń z badaniem `TSH`), ale — zgodnie z
+  wymaganiem — NIGDZIE nie zawierają dosłownych nazw `PATIENT_GUARDIAN`,
+  `ORDER_FLOW` ani `API_DIAGNOSTICS`; sprawdza to automatyczny walidator.
+- Automatyczny walidator `scripts/validate-workshop-logs.cjs`
+  (`npm run test:workshop-logs`) jest częścią zwykłego zestawu testów —
+  wpięty do `npm test` w katalogu głównym, więc uruchamia się automatycznie
+  w `npm run check` i w CI. Sprawdza: poprawność JSONL, minimalną liczbę
+  wpisów na plik (i maksimum dla `production-like.log`), obecność wielu
+  `correlationId` i wszystkich czterech poziomów logowania
+  (`DEBUG`/`INFO`/`WARN`/`ERROR`), realistyczne, w przybliżeniu
+  chronologiczne znaczniki czasu, wymagane kody statusu per scenariusz,
+  obecność harmonogramu ponowień 15/30/60 s w `lab-timeout.log`, brak
+  sekretów/haseł/znanych testowych numerów PESEL (i ogólnie wzorca pola
+  `"pesel"`), brak nazw kontrolowanych błędów oraz brak znaczników w stylu
+  `ROOT_CAUSE` — zarówno w plikach `.log`, jak i w `README.md`.
+- Runtime'owe logowanie zdarzeń NIE zostało dodane do aplikacji — to
+  świadomie statyczne fixture'y, a nie nowy podsystem observability, zgodnie
+  z zakresem Workshop MVP.
+
 ### 4. Workshop readiness
 
 Ostatnim etapem developmentu jest sprawdzenie gotowości warsztatu, nie dodawanie kolejnych funkcji.
