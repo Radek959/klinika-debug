@@ -122,12 +122,40 @@ ADMIN_SESSION_SECRET=...
 ```text
 1. deploy aplikacji (build:hostinger albo build:hostinger:workshop)
 2. npm run workshop:prepare  (jeśli nie użyto build:hostinger:workshop)
-3. preflight/smoke wdrożonego środowiska
+3. npm run workshop:smoke   (przeciwko wdrożonemu środowisku, patrz niżej)
 4. sprawdź /admin
 5. zresetuj środowisko (npm run workshop:reset albo reset w /admin) tuż przed wejściem uczestników
 ```
 
-Krok 3 (automatyczny smoke przeciwko wdrożonemu środowisku) opisuje osobny dokument techniczny warsztatu.
+## Smoke test wdrożonego środowiska
+
+`npm run workshop:smoke` uruchamia automatyczny smoke test przeciwko RZECZYWIŚCIE WDROŻONEJ Klinice Debug, odzwierciedlający główny przebieg warsztatu (health, logowanie do `/admin`, logowanie uczestników, izolacja workspace'ów, ścieżka pacjent → zlecenie → próbka → laboratorium → wynik, kontrolowane błędy, OpenAPI, fixture'y logów).
+
+Konfiguracja:
+
+```text
+WORKSHOP_BASE_URL=https://klinikadebug.rwasik.pl
+WORKSHOP_STAFF_PASSWORD=...
+WORKSHOP_ADMIN_PASSWORD=...
+```
+
+`WORKSHOP_ADMIN_PASSWORD` jest sekretem WYŁĄCZNIE tego runnera (jawne hasło panelu `/admin`, odpowiadające hashowi w `ADMIN_PASSWORD_HASH`) — nigdy nie trafia do repo ani logów.
+
+Bez jawnego potwierdzenia smoke wykonuje wyłącznie read-only preflight (health, odczyt konfiguracji `/admin`, OpenAPI, fixture'y logów) i nie zmienia żadnych danych:
+
+```powershell
+npm run workshop:smoke
+```
+
+Pełny smoke (logowanie uczestników, reset, główna ścieżka, kontrolowane błędy) wymaga jawnego potwierdzenia:
+
+```powershell
+WORKSHOP_SMOKE_CONFIRM=RUN npm run workshop:smoke
+```
+
+Smoke drukuje host przed startem, nigdy nie loguje haseł/tokenów/cookies, na końcu (także po błędzie w trakcie testu) próbuje przywrócić `SUCCESS` + `CLEAN` i zresetować środowisko, oraz kończy się kodem `0` (PASS) albo `1` (co najmniej jeden krok FAIL).
+
+Testy samego runnera (bez sieci, mock HTTP server): `npm run test:workshop-smoke`.
 
 ## Testy i build
 
