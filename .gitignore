@@ -5,4 +5,7 @@ coverage/
 .env.*
 !.env.example
 *.log
+# Syntetyczne fixture'y logów warsztatowych są celowo częścią repozytorium
+# (workshop-log-fixtures) — wyjątek od ogólnej reguły *.log powyżej.
+!workshop-assets/logs/*.log
 *.tsbuildinfo
