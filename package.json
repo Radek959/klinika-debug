@@ -36,6 +36,7 @@
     "test:migration:workshop-config": "node scripts/test-workshop-config-migration.cjs",
     "test:migration:workshop-lab-delay": "node scripts/test-workshop-lab-delay-migration.cjs",
     "test:production-start": "node scripts/smoke-production-start.cjs",
+    "test:workshop-browser": "playwright test --config=tests/workshop-browser/playwright.config.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:test": "node scripts/run-with-test-database.cjs prisma-migrate-deploy",
@@ -48,6 +49,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
+    "@playwright/test": "^1.63.0",
     "eslint": "^9.9.0",
     "mariadb": "3.4.7",
     "prisma": "^6.0.0",
