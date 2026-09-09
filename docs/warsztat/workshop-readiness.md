@@ -87,7 +87,7 @@ selectami scenariusza laboratorium i kontrolowanego błędu — szczegóły w
 | Wszyscy muszą zacząć od nowa | `/admin` → `Resetuj środowisko` (albo `npm run workshop:reset`) — resetuje WSZYSTKIE workspace'y `warsztat-NN`, wylogowuje wszystkich uczestników (unieważnia ich sesje) i przywraca globalną konfigurację do `SUCCESS` + `CLEAN` + 5 minut. Nie rusza `klinika-pokazowa`. |
 | Aktywny jest zły `controlledBug` | `/admin` → ustaw `controlledBug = CLEAN`. Zmiana jest natychmiastowa, bez restartu aplikacji. |
 | Aktywny jest zły `labScenario` | `/admin` → ustaw `labScenario = SUCCESS`. Dotyczy NOWYCH wysyłek; zadania już zaplanowane (retry) używają scenariusza zapisanego w chwili wysyłki. |
-| Sesja uczestnika została unieważniona (np. po reset) | Uczestnik loguje się ponownie tym samym loginem/hasłem — to oczekiwany, nieszkodliwy efekt uboczny resetu. |
+| Sesja uczestnika została unieważniona (np. po reset) | Uczestnik loguje się ponownie tym samym loginem/hasłem — to oczekiwany, nieszkodliwy efekt uboczny resetu. Frontend uczestnika przechodzi do `/login` SAM, przy najbliższym requestcie po resecie (`401 SESSION_EXPIRED` obsługiwane centralnie w `apps/web/src/api/client.ts` + `App.tsx`) — nie jest potrzebne F5 ani ręczne „Wyloguj”. |
 | Środowisko wygląda niespójnie i nie wiadomo dlaczego | Wykonaj pełną sekwencję z sekcji "Emergency clean state" poniżej. |
 
 ### Emergency clean state
@@ -98,7 +98,9 @@ Jednoznaczna sekwencja przywracająca środowisko do stanu startowego:
 1. /admin → labScenario = SUCCESS
 2. /admin → controlledBug = CLEAN
 3. /admin → Resetuj środowisko (potwierdź) — albo npm run workshop:reset
-4. odśwież sesje uczestników (ponowne logowanie testerNN)
+4. uczestnicy logują się ponownie tym samym testerNN — frontend sam
+   przechodzi do /login przy najbliższym requestcie (401 SESSION_EXPIRED),
+   bez F5 ani ręcznego „Wyloguj”
 ```
 
 Ta sama sekwencja jest wykonywana automatycznie w kroku sprzątania

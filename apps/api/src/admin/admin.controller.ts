@@ -108,10 +108,15 @@ export class AdminController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(AdminAuthGuard)
   async reset(@Body() dto: AdminResetDto) {
+    // `resetWorkshopWorkspaces` jest jedynym, współdzielonym źródłem logiki
+    // globalnego resetu (workspace'y + sesje + globalna konfiguracja) — to
+    // samo wywołuje `npm run workshop:reset` (`prisma/workshop-reset.ts`),
+    // więc oba sposoby resetu środowiska są równoważne. `getConfig()` czyta
+    // stan bezpośrednio z bazy (serwis nie cache'uje go w procesie).
     const result = await resetWorkshopWorkspaces(this.prisma, {
       confirm: dto.confirm
     });
-    const config = await this.workshopConfig.resetToDefaults();
+    const config = await this.workshopConfig.getConfig();
 
     return {
       resetWorkspaceSlugs: result.resetWorkspaceSlugs,

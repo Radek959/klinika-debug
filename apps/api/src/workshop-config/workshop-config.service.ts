@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import {
+  DEFAULT_LAB_SIMULATOR_SCENARIO,
   resolveLabSimulatorScenario,
   type LabSimulatorScenario
 } from "../lab-simulator/lab-simulator-scenario";
@@ -49,13 +50,14 @@ export interface WorkshopConfigInput {
  * aktywny scenariusz symulatora laboratorium i aktywny kontrolowany błąd.
  *
  * Konfiguracja jest trwała (jeden wiersz w tabeli `workshop_config`) i
- * podręcznie cache'owana w pamięci procesu — aplikacja działa jako pojedynczy
- * proces Node, więc prosty cache w instancji serwisu jest wystarczający i nie
- * wymaga żadnej dodatkowej warstwy (Redis, pub/sub itp.).
- *
- * Nowa instancja serwisu (np. po restarcie procesu) zawsze odczytuje bieżący
- * stan z bazy przy pierwszym użyciu — konfiguracja nigdy nie wraca cicho do
- * wartości domyślnych tylko dlatego, że proces się zrestartował.
+ * CELOWO nie jest cache'owana w pamięci procesu: `npm run workshop:reset`
+ * (`prisma/workshop-reset.ts`) i panel `/admin` mogą modyfikować ten wiersz z
+ * osobnego procesu Node niż już uruchomione API (patrz
+ * `resetWorkshopWorkspaces` w `common/prisma/reset-workshop.ts`). Cache w
+ * instancji serwisu zostawiałby wtedy działający proces API z nieaktualną
+ * konfiguracją mimo poprawnego resetu w bazie. Odczyt jednego wiersza przy
+ * każdym użyciu jest tanią ceną za to, że globalny reset (CLI albo `/admin`)
+ * zawsze faktycznie obowiązuje w już uruchomionym API — bez restartu procesu.
  *
  * `LAB_SIMULATOR_SCENARIO` pozostaje wyłącznie jako wartość startowa
  * (bootstrap) użyta TYLKO przy tworzeniu wiersza konfiguracji po raz
@@ -64,18 +66,11 @@ export interface WorkshopConfigInput {
  */
 @Injectable()
 export class WorkshopConfigService {
-  private cached: WorkshopConfigState | null = null;
-
   constructor(private readonly prisma: PrismaService) {}
 
   async getConfig(): Promise<WorkshopConfigState> {
-    if (this.cached) {
-      return this.cached;
-    }
-
     const row = await this.ensureRow();
-    this.cached = this.toState(row);
-    return this.cached;
+    return this.toState(row);
   }
 
   /**
@@ -121,14 +116,21 @@ export class WorkshopConfigService {
       update: { labScenario, controlledBug, labDelayMs }
     });
 
-    this.cached = this.toState(row);
-    return this.cached;
+    return this.toState(row);
   }
 
-  /** Przywraca konfigurację do stanu domyślnego: `SUCCESS` + `CLEAN` + `300000`. */
+  /**
+   * Przywraca konfigurację do stanu domyślnego: `SUCCESS` + `CLEAN` + `300000`.
+   *
+   * Używa dosłownie `DEFAULT_LAB_SIMULATOR_SCENARIO` (`SUCCESS`), NIE
+   * `resolveLabSimulatorScenario()` bez argumentu — ta funkcja czyta
+   * `LAB_SIMULATOR_SCENARIO` ze środowiska jako fallback, więc wywołanie jej
+   * tutaj mogłoby przywrócić inny scenariusz niż `SUCCESS`, gdy ta zmienna
+   * jest ustawiona. Reset musi być deterministyczny niezależnie od env.
+   */
   async resetToDefaults(): Promise<WorkshopConfigState> {
     return this.setConfig({
-      labScenario: resolveLabSimulatorScenario(undefined),
+      labScenario: DEFAULT_LAB_SIMULATOR_SCENARIO,
       controlledBug: DEFAULT_CONTROLLED_BUG,
       labDelayMs: DEFAULT_LAB_DELAY_MS
     });
