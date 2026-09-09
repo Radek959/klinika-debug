@@ -1,6 +1,16 @@
 import { PrismaClient } from "@prisma/client";
 import { isWorkshopWorkspaceSlug, WORKSHOP_SLUG_PREFIX } from "./workshop-workspaces";
 import { seedWorkspacePatients } from "./seed-database";
+import { DEFAULT_CONTROLLED_BUG } from "../../workshop-config/controlled-bug";
+import { DEFAULT_LAB_DELAY_MS } from "../../workshop-config/lab-delay";
+import { DEFAULT_LAB_SIMULATOR_SCENARIO } from "../../lab-simulator/lab-simulator-scenario";
+
+/**
+ * Musi być zgodne z `CONFIG_ROW_ID` w `WorkshopConfigService` i
+ * `ensure-workshop-config.ts` — jeden, jednowierszowy singleton
+ * `workshop_config`.
+ */
+const WORKSHOP_CONFIG_ROW_ID = "singleton";
 
 export interface ResetWorkshopOptions {
   /**
@@ -60,7 +70,18 @@ export class WorkshopWorkspaceNotFoundError extends Error {
  * - aktywne sesje uczestników workspace'ów warsztatowych są unieważniane
  *   (ustawiane `revokedAt`), więc po reset uczestnik musi zalogować się
  *   ponownie — to akceptowalny, przewidywalny efekt uboczny resetu, a nie
- *   błąd.
+ *   błąd;
+ * - globalna konfiguracja warsztatu (`workshop_config`: `labScenario` +
+ *   `controlledBug` + `labDelayMs`) jest przywracana do stanu domyślnego
+ *   (`SUCCESS` + `CLEAN` + `300000`) — zawsze, nawet gdy nie istnieje żaden
+ *   workspace warsztatowy do zresetowania. To JEDYNE, współdzielone źródło
+ *   logiki globalnego resetu: wywołuje je zarówno `npm run workshop:reset`
+ *   (osobny proces CLI, `prisma/workshop-reset.ts`) jak i `POST
+ *   /admin/api/reset`, więc oba sposoby resetu środowiska są równoważne.
+ *   `WorkshopConfigService` celowo nie cache'uje konfiguracji w pamięci
+ *   procesu — dzięki temu ten bezpośredni zapis do wiersza `workshop_config`
+ *   z osobnego procesu CLI jest natychmiast widoczny w już uruchomionym API,
+ *   bez restartu procesu (patrz `workshop-config.service.ts`).
  *
  * Kasowanie danych zależnych respektuje kolejność kluczy obcych (najpierw
  * dane zależne od zlecenia/pacjenta, na końcu sami pacjenci), żeby nie
@@ -83,11 +104,8 @@ export async function resetWorkshopWorkspaces(
   const targetWorkspaces = workshopWorkspaces.filter((workspace) =>
     isWorkshopWorkspaceSlug(workspace.slug)
   );
-  if (targetWorkspaces.length === 0) {
-    return { resetWorkspaceSlugs: [] };
-  }
 
-  await resetWorkspacesData(client, targetWorkspaces);
+  await resetWorkspacesData(client, targetWorkspaces, { resetGlobalConfig: true });
 
   return {
     resetWorkspaceSlugs: targetWorkspaces.map((workspace) => workspace.slug)
@@ -129,14 +147,18 @@ export async function resetSingleWorkshopWorkspace(
     throw new WorkshopWorkspaceNotFoundError(options.workspaceSlug);
   }
 
-  await resetWorkspacesData(client, [workspace]);
+  // Reset jednego uczestnika NIGDY nie dotyka globalnej konfiguracji
+  // (`workshop_config`) — to świadoma różnica względem
+  // `resetWorkshopWorkspaces` (patrz jego docstring).
+  await resetWorkspacesData(client, [workspace], { resetGlobalConfig: false });
 
   return { resetWorkspaceSlug: workspace.slug };
 }
 
 async function resetWorkspacesData(
   client: PrismaClient,
-  workspaces: Array<{ id: string; slug: string }>
+  workspaces: Array<{ id: string; slug: string }>,
+  options: { resetGlobalConfig: boolean }
 ): Promise<void> {
   const workspaceIds = workspaces.map((workspace) => workspace.id);
   const workspaceScope = { workspaceId: { in: workspaceIds } };
@@ -167,6 +189,23 @@ async function resetWorkspacesData(
 
     for (const workspace of workspaces) {
       await seedWorkspacePatients(tx, workspace.id);
+    }
+
+    if (options.resetGlobalConfig) {
+      await tx.workshopConfig.upsert({
+        where: { id: WORKSHOP_CONFIG_ROW_ID },
+        create: {
+          id: WORKSHOP_CONFIG_ROW_ID,
+          labScenario: DEFAULT_LAB_SIMULATOR_SCENARIO,
+          controlledBug: DEFAULT_CONTROLLED_BUG,
+          labDelayMs: DEFAULT_LAB_DELAY_MS
+        },
+        update: {
+          labScenario: DEFAULT_LAB_SIMULATOR_SCENARIO,
+          controlledBug: DEFAULT_CONTROLLED_BUG,
+          labDelayMs: DEFAULT_LAB_DELAY_MS
+        }
+      });
     }
   });
 }

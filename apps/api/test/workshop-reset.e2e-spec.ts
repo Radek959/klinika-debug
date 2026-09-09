@@ -3,7 +3,11 @@ import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PrismaService } from "../src/common/prisma/prisma.service";
 import { seedDatabase } from "../src/common/prisma/seed-database";
 import { provisionWorkshopWorkspaces } from "../src/common/prisma/seed-workshop";
-import { resetWorkshopWorkspaces } from "../src/common/prisma/reset-workshop";
+import {
+  resetSingleWorkshopWorkspace,
+  resetWorkshopWorkspaces
+} from "../src/common/prisma/reset-workshop";
+import { WorkshopConfigService } from "../src/workshop-config/workshop-config.service";
 import { closeTestApp, createTestApp } from "./test-app";
 import {
   configureTestEnvironment,
@@ -180,6 +184,94 @@ describe("workshop reset", () => {
       payload: { login: "tester01", password: "WarsztatTestowe123!" }
     });
     expect(reloginResponse.statusCode).toBe(200);
+  });
+
+  it(
+    "reset globalny (współdzielona ścieżka CLI/admin) przywraca globalną konfigurację " +
+      "do SUCCESS/CLEAN/300000, widoczne natychmiast w już uruchomionym API",
+    async () => {
+      await seedDatabase(prisma);
+      await provisionWorkshopWorkspaces(prisma, 1);
+
+      const workshopConfig = app.get(WorkshopConfigService);
+      await workshopConfig.setConfig({
+        labScenario: "TIMEOUT",
+        controlledBug: "API_DIAGNOSTICS",
+        labDelayMs: 5000
+      });
+      await expect(workshopConfig.getConfig()).resolves.toMatchObject({
+        labScenario: "TIMEOUT",
+        controlledBug: "API_DIAGNOSTICS",
+        labDelayMs: 5000
+      });
+
+      const loginResponse = await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/login",
+        payload: { login: "tester01", password: "WarsztatTestowe123!" }
+      });
+      expect(loginResponse.statusCode).toBe(200);
+      const { token } = JSON.parse(loginResponse.body);
+
+      // Ta sama funkcja, którą wywołuje `npm run workshop:reset`
+      // (`prisma/workshop-reset.ts`) — realna, współdzielona ścieżka resetu
+      // globalnego, nie tylko helper konfiguracji.
+      const result = await resetWorkshopWorkspaces(prisma, { confirm: true });
+      expect(result.resetWorkspaceSlugs).toEqual(["warsztat-01"]);
+
+      // 1) dane uczestnika odtworzone
+      const workspace = await prisma.workspace.findUniqueOrThrow({
+        where: { slug: "warsztat-01" }
+      });
+      await expect(
+        prisma.patient.count({ where: { workspaceId: workspace.id } })
+      ).resolves.toBe(4);
+
+      // 2) sesja uczestnika unieważniona
+      const afterResetResponse = await app.inject({
+        method: "GET",
+        url: "/api/v1/patients",
+        headers: { authorization: `Bearer ${token}` }
+      });
+      expect(afterResetResponse.statusCode).toBe(401);
+      expect(JSON.parse(afterResetResponse.body).error.code).toBe("SESSION_EXPIRED");
+
+      // 3) klinika-pokazowa bez zmian
+      await expect(
+        prisma.user.findUniqueOrThrow({ where: { login: "staff.demo" } })
+      ).resolves.toMatchObject({ active: true });
+
+      // 4) globalna konfiguracja wraca do SUCCESS/CLEAN/300000 — odczytana
+      // przez WorkshopConfigService JUŻ URUCHOMIONEGO API (bez restartu
+      // procesu), a nie tylko bezpośrednio z bazy.
+      await expect(workshopConfig.getConfig()).resolves.toMatchObject({
+        labScenario: "SUCCESS",
+        controlledBug: "CLEAN",
+        labDelayMs: 300000
+      });
+    }
+  );
+
+  it("reset pojedynczego uczestnika NIE zmienia globalnej konfiguracji", async () => {
+    await provisionWorkshopWorkspaces(prisma, 1);
+
+    const workshopConfig = app.get(WorkshopConfigService);
+    await workshopConfig.setConfig({
+      labScenario: "RATE_LIMIT",
+      controlledBug: "ORDER_FLOW",
+      labDelayMs: 15000
+    });
+
+    await resetSingleWorkshopWorkspace(prisma, {
+      confirm: true,
+      workspaceSlug: "warsztat-01"
+    });
+
+    await expect(workshopConfig.getConfig()).resolves.toMatchObject({
+      labScenario: "RATE_LIMIT",
+      controlledBug: "ORDER_FLOW",
+      labDelayMs: 15000
+    });
   });
 
   it("jest idempotentny: ponowny reset nie usuwa danych początkowych ani nie rzuca błędu", async () => {

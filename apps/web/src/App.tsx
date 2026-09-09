@@ -8,7 +8,7 @@ import {
   useLocation
 } from "react-router-dom";
 import type { AuthenticatedUser } from "@klinika/api-contracts";
-import { getCurrentUser, logout } from "./api/client";
+import { getCurrentUser, logout, onSessionExpired } from "./api/client";
 import { clearToken, readToken } from "./auth/authStorage";
 import { LoginPage } from "./auth/LoginPage";
 import { DashboardPage } from "./dashboard/DashboardPage";
@@ -40,6 +40,20 @@ export function App() {
       .then((response) => setUser(response.user))
       .catch(() => clearToken())
       .finally(() => setIsRestoringSession(false));
+  }, []);
+
+  useEffect(() => {
+    // Centralny handler `SESSION_EXPIRED`: dowolny authenticated request z
+    // dowolnej strony (nie tylko `/admin`) — reset pojedynczego uczestnika,
+    // reset całego środowiska albo naturalne wygaśnięcie sesji — kończy się
+    // tym samym efektem: token i stan zalogowanego użytkownika znikają, więc
+    // `RequireAuth` automatycznie przekierowuje do `/login` bez F5 ani
+    // ręcznego „Wyloguj”.
+    onSessionExpired(() => {
+      clearToken();
+      setUser(null);
+    });
+    return () => onSessionExpired(null);
   }, []);
 
   async function handleLogout() {

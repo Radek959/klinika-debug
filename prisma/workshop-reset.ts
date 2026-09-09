@@ -28,6 +28,9 @@ resetWorkshopWorkspaces(prisma, { confirm: true })
         `Zresetowano dane workspace'ów warsztatowych: ${result.resetWorkspaceSlugs.join(", ")}.`
       );
     }
+    console.log(
+      "Globalna konfiguracja warsztatu (labScenario/controlledBug/labDelayMs) przywrócona do SUCCESS/CLEAN/300000."
+    );
     await prisma.$disconnect();
   })
   .catch(async (error) => {

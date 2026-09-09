@@ -31,6 +31,30 @@ interface ApiErrorResponse {
   };
 }
 
+/**
+ * Wywoływane centralnie, gdy dowolny uwierzytelniony request zwróci `HTTP 401`
+ * z `error.code === "SESSION_EXPIRED"` — jedyny bezpieczny sygnał, że backend
+ * unieważnił sesję (reset pojedynczego uczestnika, reset całego środowiska
+ * albo naturalne wygaśnięcie). Świadomie NIE reagujemy na każdy 401: API ma
+ * inne, nieistotne dla wylogowania przypadki 401 (np. błędne hasło przy
+ * logowaniu), których nie wolno mylić z revoke sesji.
+ *
+ * Rejestrowane przez `App` (jeden, centralny handler zamiast dokładania
+ * obsługi na każdej stronie osobno) — patrz `onSessionExpired` niżej.
+ */
+let sessionExpiredListener: (() => void) | null = null;
+
+/**
+ * Rejestruje JEDYNY aktywny centralny handler wygaśnięcia sesji. Wywołanie z
+ * `null` usuwa handler (np. przy odmontowaniu `App` w testach). Nie jest to
+ * event bus ani state manager — to zwykły, pojedynczy callback pomiędzy
+ * klientem API a `App`, celowo najmniejsze rozwiązanie pasujące do obecnej
+ * architektury (bez Reduxa, kontekstu ani event busa).
+ */
+export function onSessionExpired(listener: (() => void) | null): void {
+  sessionExpiredListener = listener;
+}
+
 export class ApiClientError extends Error {
   constructor(
     message: string,
@@ -287,6 +311,15 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
     const payload = (await safeJson(response)) as ApiErrorResponse;
     const message =
       payload.error?.message ?? "Nie udało się wykonać operacji.";
+
+    // Sesja została unieważniona (reset uczestnika, reset środowiska albo
+    // naturalne wygaśnięcie) — powiadamiamy centralny handler PRZED rzuceniem
+    // błędu, żeby `App` mogła wylogować i przejść do `/login` niezależnie od
+    // tego, czy i jak konkretny wywołujący obsłuży swój `catch`.
+    if (response.status === 401 && payload.error?.code === "SESSION_EXPIRED") {
+      sessionExpiredListener?.();
+    }
+
     throw new ApiClientError(
       message,
       response.status,

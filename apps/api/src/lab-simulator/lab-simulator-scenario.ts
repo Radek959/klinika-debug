@@ -10,7 +10,7 @@ export const LAB_SIMULATOR_SCENARIOS = [
 
 export type LabSimulatorScenario = (typeof LAB_SIMULATOR_SCENARIOS)[number];
 
-const DEFAULT_LAB_SIMULATOR_SCENARIO: LabSimulatorScenario = "SUCCESS";
+export const DEFAULT_LAB_SIMULATOR_SCENARIO: LabSimulatorScenario = "SUCCESS";
 
 /**
  * Odczyt aktywnego scenariusza symulatora laboratorium.

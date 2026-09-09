@@ -27,6 +27,13 @@ import { OrderProgressStepper } from "./OrderProgressStepper";
  * Statusy, w których zlecenie oczekuje na laboratorium — proces jest
  * asynchroniczny, więc uczestnik może chcieć ręcznie sprawdzić, czy wynik już
  * nadszedł, zamiast odświeżać całą stronę.
+ *
+ * `SAMPLE_COLLECTED` celowo NIE jest tu wymienione: zwykłe `SAMPLE_COLLECTED`
+ * przed pierwszą wysyłką nie oznacza oczekiwania na laboratorium. Gdy backend
+ * zwróci retryowalny błąd wysyłki (429/503/504) i zaplanuje automatyczne
+ * ponowienie, zlecenie ZOSTAJE w `SAMPLE_COLLECTED` — ten przypadek jest
+ * rozpoznawany osobno przez lokalny stan `hasActiveLabRetry`, patrz
+ * `OrderDetailsPage`.
  */
 const LAB_WAITING_STATUSES = new Set<OrderStatus>(["SENT_TO_LAB", "PROCESSING", "PARTIAL"]);
 
@@ -42,7 +49,18 @@ export function OrderDetailsPage({ token }: { token: string }) {
     (location.state as { message?: string } | null)?.message ?? null
   );
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  /**
+   * Ustawiane wyłącznie po retryowalnym błędzie wysyłki (429/503/504), gdy
+   * backend zaplanował automatyczne ponowienie, a zlecenie zostało w
+   * `SAMPLE_COLLECTED`. Pozwala pokazać „Odśwież status” dla TEGO przypadku,
+   * bez rozszerzania widoczności przycisku na każde `SAMPLE_COLLECTED`.
+   */
+  const [hasActiveLabRetry, setHasActiveLabRetry] = useState(false);
   const requestId = useRef(0);
+
+  useEffect(() => {
+    setHasActiveLabRetry(false);
+  }, [orderId]);
 
   const reload = useCallback((options?: { silent?: boolean }) => {
     if (!orderId) {
@@ -136,7 +154,8 @@ export function OrderDetailsPage({ token }: { token: string }) {
                 Edytuj zlecenie
               </Link>
             ) : null}
-            {LAB_WAITING_STATUSES.has(order.status) ? (
+            {LAB_WAITING_STATUSES.has(order.status) ||
+            (order.status === "SAMPLE_COLLECTED" && hasActiveLabRetry) ? (
               <button
                 type="button"
                 className="secondary-button"
@@ -220,16 +239,18 @@ export function OrderDetailsPage({ token }: { token: string }) {
           orderId={order.id}
           onSent={() => {
             setSuccess("Zlecenie zostało wysłane do laboratorium.");
+            setHasActiveLabRetry(false);
             reload();
           }}
           onHistoryRecorded={() => {
-            // Kontrolowana odmowa laboratorium (429 / 422 / 503) NIE jest sukcesem —
-            // komunikat błędu zostaje, a status zlecenia się nie zmienia. Backend
-            // zapisał jednak wpis historii, więc odświeżamy WYŁĄCZNIE sekcję
-            // historii: bez przeładowania strony, bez pobierania szczegółów
-            // zlecenia i bez pollingu.
+            // Kontrolowana odmowa laboratorium (429 / 422 / 503 / 504) NIE jest
+            // sukcesem — komunikat błędu zostaje, a status zlecenia się nie
+            // zmienia. Backend zapisał jednak wpis historii, więc odświeżamy
+            // WYŁĄCZNIE sekcję historii: bez przeładowania strony, bez
+            // pobierania szczegółów zlecenia i bez pollingu.
             setHistoryRefreshKey((current) => current + 1);
           }}
+          onRetryScheduled={() => setHasActiveLabRetry(true)}
         />
       ) : null}
 
@@ -407,15 +428,17 @@ function SampleRow({
  * zlecenia mimo zwrócenia błędu.
  *
  * `LAB_RATE_LIMITED` (429) zapisuje `LAB_RATE_LIMIT_RECEIVED`,
- * `LAB_SERVER_ERROR` (503) — `LAB_SEND_RETRY`, a
- * `LAB_ORDER_VALIDATION_ERROR` (422) — `LAB_ORDER_REJECTED`. Tylko dla tych
- * przypadków ma sens odświeżenie historii. Zwykły błąd sieci, 401, 404, konflikt
- * idempotencji ani lokalna walidacja (`ORDER_SEND_ERROR`) nie zapisują niczego,
- * więc nie wywołują niepotrzebnego żądania.
+ * `LAB_SERVER_ERROR` (503) — `LAB_SEND_RETRY`, `LAB_SEND_TIMEOUT` (504) —
+ * `LAB_SEND_TIMEOUT_RECEIVED`, a `LAB_ORDER_VALIDATION_ERROR` (422) —
+ * `LAB_ORDER_REJECTED`. Tylko dla tych przypadków ma sens odświeżenie
+ * historii. Zwykły błąd sieci, 401, 404, konflikt idempotencji ani lokalna
+ * walidacja (`ORDER_SEND_ERROR`) nie zapisują niczego, więc nie wywołują
+ * niepotrzebnego żądania.
  */
 const HISTORY_RECORDING_SEND_ERROR_CODES = new Set([
   "LAB_RATE_LIMITED",
   "LAB_SERVER_ERROR",
+  "LAB_SEND_TIMEOUT",
   "LAB_ORDER_VALIDATION_ERROR"
 ]);
 
@@ -431,12 +454,19 @@ function SendToLabAction({
   token,
   orderId,
   onSent,
-  onHistoryRecorded
+  onHistoryRecorded,
+  onRetryScheduled
 }: {
   token: string;
   orderId: string;
   onSent: () => void;
   onHistoryRecorded: () => void;
+  /**
+   * Wywoływane, gdy backend zaplanował automatyczne ponowienie wysyłki
+   * (429/503/504) — pozwala rodzicowi pokazać „Odśwież status” mimo tego, że
+   * zlecenie zostaje w `SAMPLE_COLLECTED`.
+   */
+  onRetryScheduled: () => void;
 }) {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<ApiErrorInfo | null>(null);
@@ -453,14 +483,18 @@ function SendToLabAction({
       onSent();
     } catch (caught) {
       // Laboratorium może odrzucić poprawne zlecenie (HTTP 422), chwilowo
-      // ograniczyć liczbę żądań (HTTP 429) albo zwrócić kontrolowany błąd 5xx.
-      // Pokazujemy polski komunikat i
-      // szczegóły pól, ale nigdy technicznego kodu błędu ani nazwy aktywnego
-      // trybu symulatora. Przycisk wysyłki zostaje aktywny — żaden z tych
-      // przypadków nie blokuje zlecenia.
+      // ograniczyć liczbę żądań (HTTP 429), zwrócić kontrolowany błąd 5xx
+      // (503) albo nie odpowiedzieć w terminie (504). Pokazujemy polski
+      // komunikat i szczegóły pól, ale nigdy technicznego kodu błędu ani
+      // nazwy aktywnego trybu symulatora. Przycisk wysyłki zostaje aktywny —
+      // żaden z tych przypadków nie blokuje zlecenia.
       setError(toApiErrorInfo(caught, "Nie udało się wysłać zlecenia do laboratorium."));
       setFieldErrors(caught instanceof ApiClientError ? caught.fieldErrors : []);
-      setRetryNotice(describeAutomaticRetry(caught));
+      const automaticRetryNotice = describeAutomaticRetry(caught);
+      setRetryNotice(automaticRetryNotice);
+      if (automaticRetryNotice) {
+        onRetryScheduled();
+      }
 
       // Backend zapisał wpis historii dla tej odmowy, więc oś czasu jest już
       // nieaktualna. Odświeżamy ją bez pokazywania fałszywego sukcesu.
@@ -514,12 +548,17 @@ function SendToLabAction({
  * a tutaj dokładamy wyłącznie czas najbliższej próby odczytany z nagłówka
  * `Retry-After`. Bez odczytanej wartości nie podajemy zmyślonej liczby sekund —
  * pokazujemy sam fakt automatycznego ponowienia. Interfejs nie pokazuje kodów
- * `LAB_RATE_LIMITED` / `LAB_SERVER_ERROR` ani nazwy scenariusza symulatora.
+ * `LAB_RATE_LIMITED` / `LAB_SERVER_ERROR` / `LAB_SEND_TIMEOUT` ani nazwy
+ * scenariusza symulatora.
+ *
+ * Obejmuje 429 (`RATE_LIMIT`), 503 (`SERVER_ERROR`) i 504 (`TIMEOUT`) — dla
+ * wszystkich trzech backend zostawia zlecenie w `SAMPLE_COLLECTED`, zapisuje
+ * historię i wykonuje retry w tle tak samo.
  */
 function describeAutomaticRetry(caught: unknown): string | null {
   if (
     !(caught instanceof ApiClientError) ||
-    (caught.status !== 429 && caught.status !== 503)
+    (caught.status !== 429 && caught.status !== 503 && caught.status !== 504)
   ) {
     return null;
   }

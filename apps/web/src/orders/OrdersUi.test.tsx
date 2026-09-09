@@ -686,6 +686,109 @@ describe("interfejs zleceń", () => {
     expect(screen.queryByText(/SERVER_ERROR/)).not.toBeInTheDocument();
   });
 
+  it(
+    "pokazuje timeout laboratorium (504), odświeża historię i pozwala ręcznie " +
+      "'Odśwież status' mimo pozostania w SAMPLE_COLLECTED",
+    async () => {
+      window.history.pushState({}, "", "/orders/order-1");
+      const collectedOrder = sendableOrderDetails();
+      let historyRequests = 0;
+      let orderRequests = 0;
+
+      mockFetch(({ url, init }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/orders/order-1/history")) {
+          historyRequests += 1;
+          return json(
+            historyRequests === 1
+              ? historyListResponse([])
+              : historyListResponse([sendTimeoutHistoryItem()])
+          );
+        }
+        if (url === "/api/v1/orders/order-1/send" && init?.method === "POST") {
+          return timeoutError(15);
+        }
+        if (url === "/api/v1/orders/order-1") {
+          orderRequests += 1;
+          if (orderRequests === 1) {
+            return json(collectedOrder);
+          }
+          // Ręczny 'Odśwież status' po zaplanowanym retry — backend może już
+          // zwrócić zaktualizowany status.
+          return json(orderDetails({ status: "SENT_TO_LAB" }));
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+
+      expect(
+        await screen.findByText("Brak zarejestrowanych zdarzeń dla tego zlecenia.")
+      ).toBeInTheDocument();
+      // Świeże SAMPLE_COLLECTED przed jakąkolwiek wysyłką nie pokazuje jeszcze
+      // przycisku ręcznego odświeżenia.
+      expect(screen.queryByRole("button", { name: "Odśwież status" })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Wyślij do laboratorium" }));
+
+      expect(
+        await screen.findByText(
+          "Timeout wysyłki do laboratorium. Wysyłka zostanie ponowiona automatycznie."
+        )
+      ).toBeInTheDocument();
+      expect(screen.getByText("Kolejna próba za około 15 sekund.")).toBeInTheDocument();
+      await waitFor(() => expect(historyRequests).toBe(2));
+      expect(await screen.findByText("Timeout wysyłki do laboratorium")).toBeInTheDocument();
+
+      // Zlecenie zostaje w SAMPLE_COLLECTED, ale backend zaplanował
+      // automatyczne ponowienie — 'Odśwież status' musi być dostępne mimo
+      // niezmienionego lokalnego statusu.
+      expect(screen.getByText("Próbki pobrane")).toBeInTheDocument();
+      expect(orderRequests).toBe(1);
+      expect(screen.queryByText(/LAB_SEND_TIMEOUT/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^TIMEOUT$/)).not.toBeInTheDocument();
+
+      const refreshButton = await screen.findByRole("button", { name: "Odśwież status" });
+      await userEvent.click(refreshButton);
+
+      expect(await screen.findByText("Wysłane do laboratorium")).toBeInTheDocument();
+      expect(orderRequests).toBe(2);
+      // Po zmianie statusu zlecenie nie jest już w SAMPLE_COLLECTED, więc
+      // przycisk wraca do zwykłej reguły widoczności (SENT_TO_LAB ją nadal
+      // pokazuje).
+      expect(screen.getByRole("button", { name: "Odśwież status" })).toBeEnabled();
+    }
+  );
+
+  it(
+    "nie pokazuje przycisku 'Odśwież status' dla świeżego SAMPLE_COLLECTED " +
+      "przed pierwszą wysyłką do laboratorium",
+    async () => {
+      window.history.pushState({}, "", "/orders/order-1");
+      mockFetch(({ url }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/orders/order-1/history")) {
+          return json(historyListResponse([]));
+        }
+        if (url === "/api/v1/orders/order-1") {
+          return json(sendableOrderDetails());
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+
+      expect(
+        await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Odśwież status" })).not.toBeInTheDocument();
+    }
+  );
+
   it("odświeża historię po zapisanym odrzuceniu walidacyjnym (422)", async () => {
     window.history.pushState({}, "", "/orders/order-1");
     const collectedOrder = sendableOrderDetails();
@@ -1762,6 +1865,29 @@ function serverErrorRetryHistoryItem() {
   };
 }
 
+function sendTimeoutHistoryItem() {
+  return {
+    id: "history-send-timeout-1",
+    eventType: "LAB_SEND_TIMEOUT_RECEIVED",
+    occurredAt: "2026-09-07T10:00:00.000Z",
+    actorType: "LAB",
+    actorUserId: null,
+    actorDisplayName: null,
+    correlationId: "corr-send-timeout-1",
+    integrationEventId: null,
+    previousStatus: "SAMPLE_COLLECTED",
+    newStatus: "SAMPLE_COLLECTED",
+    details: {
+      eventType: "LAB_SEND_TIMEOUT_RECEIVED",
+      attemptNumber: 1,
+      retryAfterSeconds: 15,
+      nextRetryAt: "2026-09-07T10:00:15.000Z",
+      previousStatus: "SAMPLE_COLLECTED",
+      newStatus: "SAMPLE_COLLECTED"
+    }
+  };
+}
+
 function orderRejectedHistoryItem() {
   return {
     id: "history-rejected-1",
@@ -1837,6 +1963,28 @@ function serverError(retryAfterSeconds?: number) {
       }
     }),
     { status: 503, headers }
+  );
+}
+
+/**
+ * Odpowiedź 504 laboratorium (`LAB_SEND_TIMEOUT`) wraz z opcjonalnym
+ * `Retry-After`, dokładnie tak jak zwraca ją API dla scenariusza `TIMEOUT`.
+ */
+function timeoutError(retryAfterSeconds?: number) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (retryAfterSeconds !== undefined) {
+    headers["Retry-After"] = String(retryAfterSeconds);
+  }
+
+  return new Response(
+    JSON.stringify({
+      error: {
+        code: "LAB_SEND_TIMEOUT",
+        message: "Timeout wysyłki do laboratorium. Wysyłka zostanie ponowiona automatycznie.",
+        correlationId: "corr-send-timeout-1"
+      }
+    }),
+    { status: 504, headers }
   );
 }
 
