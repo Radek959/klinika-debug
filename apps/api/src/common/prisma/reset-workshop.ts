@@ -27,6 +27,21 @@ export interface ResetSingleWorkshopWorkspaceResult {
 }
 
 /**
+ * Rzucany WYŁĄCZNIE wtedy, gdy `workspaceSlug` ma poprawny format `warsztat-NN`,
+ * ale taki workspace faktycznie nie istnieje w bazie. Odróżnia ten jeden,
+ * bezpieczny do zmapowania na HTTP 404 przypadek od każdego innego błędu
+ * (DB, transakcja, revoke sesji, reseeding) — te pozostałe mają propagować
+ * jako normalne błędy serwera, a nie zostać cicho zamaskowane jako "nie
+ * istnieje".
+ */
+export class WorkshopWorkspaceNotFoundError extends Error {
+  constructor(readonly workspaceSlug: string) {
+    super(`Workspace warsztatowy "${workspaceSlug}" nie istnieje.`);
+    this.name = "WorkshopWorkspaceNotFoundError";
+  }
+}
+
+/**
  * Resetuje dane WSZYSTKICH workspace'ów warsztatowych (i tylko ich) do
  * deterministycznego stanu początkowego.
  *
@@ -111,7 +126,7 @@ export async function resetSingleWorkshopWorkspace(
     select: { id: true, slug: true }
   });
   if (!workspace) {
-    throw new Error(`Workspace warsztatowy "${options.workspaceSlug}" nie istnieje.`);
+    throw new WorkshopWorkspaceNotFoundError(options.workspaceSlug);
   }
 
   await resetWorkspacesData(client, [workspace]);

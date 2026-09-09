@@ -23,7 +23,7 @@ z konkretną, zaimplementowaną funkcją Kliniki Debug.
 | Etap F — analiza logów | realistyczne, syntetyczne, production-like logi z wieloma `correlationId`, retry, szumem | `workshop-assets/logs/*.log` (7 fixture'ów, `scripts/validate-workshop-logs.cjs`) | OK |
 | Etap G — bug report | 2-3 deterministyczne, obserwowalne, odwracalne defekty | `apps/api/src/workshop-config/controlled-bug.ts` (`PATIENT_GUARDIAN`, `ORDER_FLOW`, `API_DIAGNOSTICS`), `apps/api/test/workshop-controlled-bugs.e2e-spec.ts` | OK |
 | Etap H — API z AI | kompletne OpenAPI dla endpointów uczestnika, bez ujawnienia `/admin` | `app.setup.ts` (`SwaggerModule`, `@ApiExcludeController` na `AdminController`) | OK |
-| Panel prowadzącego (sekcja 4) | scenariusz laboratorium, `CLEAN`/1 defekt, reset wszystkich workspace'ów, odczyt configu | `AdminController`, `resetWorkshopWorkspaces`, `WorkshopConfigService` | OK |
+| Panel prowadzącego (sekcja 4) | scenariusz laboratorium, `CLEAN`/1 defekt, reset pojedynczego uczestnika + reset całego środowiska, odczyt configu | `AdminController`, `resetSingleWorkshopWorkspace`, `resetWorkshopWorkspaces`, `WorkshopConfigService` | OK |
 | DoD #1 — 15+ uczestników równolegle | izolowane workspace'y i konta | `provisionWorkshopWorkspaces`, `workshop-provisioning.e2e-spec.ts`, `workshop-isolation.e2e-spec.ts` | OK |
 | DoD #8 — pełny smoke test zgodny z przebiegiem | zautomatyzowany smoke test wdrożonego środowiska | `npm run workshop:smoke` (`scripts/workshop-smoke.cjs`) | **Kod gotowy; rzeczywiste uruchomienie przeciwko wdrożonemu środowisku wymaga wykonania przez właściciela projektu — patrz sekcja 7.** |
 | Etap I — narzędzia własne (Python/Chrome) | świadomie poza repozytorium | `AGENTS.md`, `docs/implementation/README.md` ("Granice narzędzi warsztatowych") | OK (out of scope, celowo) |
@@ -31,6 +31,11 @@ z konkretną, zaimplementowaną funkcją Kliniki Debug.
 Elementy niepotrzebne do szkolenia (import/eksport, pełny observability,
 rozbudowany admin, ogólny framework błędów, gotowe rozszerzenie Chrome/skrypt
 Python) pozostają świadomie `OUT_OF_SCOPE` — patrz `docs/implementation/README.md`.
+
+Panel prowadzącego dodatkowo zawiera: szybkie presety (`labScenario` +
+`controlledBug` + `labDelayMs` jednym kliknięciem) oraz dynamiczne opisy pod
+selectami scenariusza laboratorium i kontrolowanego błędu — szczegóły w
+`docs/implementation/README.md` ("Workshop MVP — trainer controls").
 
 ## 2. Dzień przed szkoleniem
 
@@ -78,8 +83,8 @@ Python) pozostają świadomie `OUT_OF_SCOPE` — patrz `docs/implementation/READ
 
 | Sytuacja | Działanie |
 |---|---|
-| Uczestnik zepsuł własne dane | Reset dotyczy WSZYSTKICH workspace'ów warsztatowych naraz (`resetWorkshopWorkspaces` nie resetuje pojedynczego workspace'u) — jeśli tylko jeden uczestnik ma problem, rozważ, czy warto zresetować wszystkich, czy poczekać do przerwy. |
-| Wszyscy muszą zacząć od nowa | `/admin` → `Resetuj środowisko` (albo `npm run workshop:reset`) — przywraca dane startowe wszystkich workspace'ów warsztatowych, nie rusza `klinika-pokazowa`. |
+| Uczestnik zepsuł własne dane | `/admin` → sekcja "Reset uczestnika" → wybierz `testerNN` / `warsztat-NN` → potwierdź. Resetowane są WYŁĄCZNIE dane tego jednego workspace'u; jego sesja zostaje unieważniona (uczestnik loguje się ponownie tym samym loginem/hasłem). Inni uczestnicy NIE są resetowani, a globalna konfiguracja (`labScenario`/`controlledBug`/`labDelayMs`) pozostaje bez zmian. Backend: `resetSingleWorkshopWorkspace` (`POST /admin/api/workspaces/:slug/reset`). |
+| Wszyscy muszą zacząć od nowa | `/admin` → `Resetuj środowisko` (albo `npm run workshop:reset`) — resetuje WSZYSTKIE workspace'y `warsztat-NN`, wylogowuje wszystkich uczestników (unieważnia ich sesje) i przywraca globalną konfigurację do `SUCCESS` + `CLEAN` + 5 minut. Nie rusza `klinika-pokazowa`. |
 | Aktywny jest zły `controlledBug` | `/admin` → ustaw `controlledBug = CLEAN`. Zmiana jest natychmiastowa, bez restartu aplikacji. |
 | Aktywny jest zły `labScenario` | `/admin` → ustaw `labScenario = SUCCESS`. Dotyczy NOWYCH wysyłek; zadania już zaplanowane (retry) używają scenariusza zapisanego w chwili wysyłki. |
 | Sesja uczestnika została unieważniona (np. po reset) | Uczestnik loguje się ponownie tym samym loginem/hasłem — to oczekiwany, nieszkodliwy efekt uboczny resetu. |

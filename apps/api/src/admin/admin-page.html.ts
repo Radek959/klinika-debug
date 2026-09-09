@@ -258,7 +258,7 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
     CLEAN:
       "<strong class=\\"infoHeading\\">Co robi?</strong>" +
       "Brak kontrolowanego defektu. Aplikacja zachowuje się zgodnie z dokumentacją produktową. " +
-      "Bezpieczny/domowy stan środowiska.",
+      "Domyślny i bezpieczny stan środowiska.",
     PATIENT_GUARDIAN:
       "<strong class=\\"infoHeading\\">Co robi?</strong>" +
       "Wyłącza wyłącznie wymaganie podania opiekuna dla pacjenta niepełnoletniego." +
@@ -478,6 +478,7 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
   }
 
   function loadParticipants() {
+    clearStatus(participantResetStatus);
     return api("/admin/api/workspaces", { method: "GET" })
       .then(function (workspaces) {
         participantSelect.innerHTML = "";
@@ -487,9 +488,26 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
           option.textContent = workspace.login + " — " + workspace.slug;
           participantSelect.appendChild(option);
         });
+
+        if (workspaces.length === 0) {
+          participantSelect.disabled = true;
+          resetParticipantButton.disabled = true;
+          showStatus(
+            participantResetStatus,
+            "Brak workspace\\u2019ów warsztatowych do zresetowania.",
+            false
+          );
+          return;
+        }
+
+        participantSelect.disabled = false;
+        resetParticipantButton.disabled = false;
       })
       .catch(function () {
         participantSelect.innerHTML = "";
+        participantSelect.disabled = true;
+        resetParticipantButton.disabled = true;
+        showStatus(participantResetStatus, "Nie udało się pobrać listy uczestników.", true);
       });
   }
 

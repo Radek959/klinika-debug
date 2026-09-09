@@ -18,7 +18,8 @@ import { listWorkshopWorkspaces } from "../common/prisma/list-workshop-workspace
 import { PrismaService } from "../common/prisma/prisma.service";
 import {
   resetSingleWorkshopWorkspace,
-  resetWorkshopWorkspaces
+  resetWorkshopWorkspaces,
+  WorkshopWorkspaceNotFoundError
 } from "../common/prisma/reset-workshop";
 import { isWorkshopWorkspaceSlug } from "../common/prisma/workshop-workspaces";
 import { PasswordService } from "../auth/password.service";
@@ -157,14 +158,19 @@ export class AdminController {
         workspaceSlug: slug
       });
       return { resetWorkspaceSlug: result.resetWorkspaceSlug };
-    } catch {
-      // Workspace o poprawnym formacie sluga, ale nieistniejący (np. usunięty
-      // albo z innej liczby uczestników) — bezpieczny 404 zamiast 500.
-      throw new ApiErrorException(
-        HttpStatus.NOT_FOUND,
-        "ADMIN_WORKSPACE_NOT_FOUND",
-        "Workspace warsztatowy nie istnieje."
-      );
+    } catch (error) {
+      if (error instanceof WorkshopWorkspaceNotFoundError) {
+        // Workspace o poprawnym formacie sluga, ale nieistniejący (np.
+        // usunięty albo z innej liczby uczestników) — bezpieczny 404 zamiast
+        // 500. Każdy INNY błąd (DB, transakcja, revoke sesji, reseeding)
+        // propaguje dalej — nie jest maskowany jako "nie istnieje".
+        throw new ApiErrorException(
+          HttpStatus.NOT_FOUND,
+          "ADMIN_WORKSPACE_NOT_FOUND",
+          "Workspace warsztatowy nie istnieje."
+        );
+      }
+      throw error;
     }
   }
 
