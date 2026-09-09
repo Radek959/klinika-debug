@@ -190,6 +190,7 @@ describe("workshop reset", () => {
     "reset globalny (współdzielona ścieżka CLI/admin) przywraca globalną konfigurację " +
       "do SUCCESS/CLEAN/300000, widoczne natychmiast w już uruchomionym API",
     async () => {
+      await seedDatabase(prisma);
       await provisionWorkshopWorkspaces(prisma, 1);
 
       const workshopConfig = app.get(WorkshopConfigService);
