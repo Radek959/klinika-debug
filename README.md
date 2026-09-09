@@ -167,7 +167,10 @@ Pełny techniczny runbook przygotowania warsztatu (audit zgodności ze szkolenie
 
 - jest OBOWIĄZKOWĄ LOKALNĄ bramką przed każdym PR-em;
 - NIE jest wymaganym checkiem GitHub Actions i NIE jest uruchamiany w CI;
-- NIE jest uruchamiany przeciwko Hostingerowi ani żadnemu innemu publicznemu hostowi — działa wyłącznie przeciwko lokalnemu środowisku Kliniki Debug (`WORKSHOP_BASE_URL` musi wskazywać `localhost`/`127.0.0.1`/`::1`, inaczej suite kończy się jasnym błędem przed wysłaniem jakiegokolwiek requestu).
+- NIE jest uruchamiany przeciwko Hostingerowi ani żadnemu innemu publicznemu hostowi — działa wyłącznie przeciwko lokalnemu środowisku Kliniki Debug (`WORKSHOP_BROWSER_BASE_URL` musi wskazywać `localhost`/`127.0.0.1`/`::1`, inaczej suite kończy się jasnym błędem przed wysłaniem jakiegokolwiek requestu);
+- bez `WORKSHOP_E2E_CONFIRM=RUN` kończy się BŁĘDEM (non-zero exit code) — nigdy "X skipped" traktowanym jako przejście bramki.
+
+**Adres jest CELOWO osobny od `workshop:smoke`.** `WORKSHOP_BASE_URL` (sekcja wyżej) wskazuje wdrożone środowisko i jest używany WYŁĄCZNIE przez `workshop:smoke`. Playwright czyta `WORKSHOP_BROWSER_BASE_URL`, domyślnie `http://localhost:3000` — przy standardowym porcie nie trzeba go w ogóle ustawiać.
 
 Wymaga lokalnego, production-like środowiska, pod którym dostępne są jednocześnie frontend, `/api`, `/admin` i `/materials` — najprościej przez istniejący lokalny build:
 
@@ -177,13 +180,14 @@ npm run db:migrate
 npm start
 ```
 
-Konfiguracja — te same trzy zmienne co `workshop:smoke`, plus jawne potwierdzenie (suite zawsze tworzy dane i resetuje środowisko):
+Konfiguracja — hasła co `workshop:smoke`, plus jawne potwierdzenie (suite zawsze tworzy dane i resetuje środowisko); `WORKSHOP_BROWSER_BASE_URL` podaj tylko, jeśli lokalna aplikacja nie działa na standardowym `localhost:3000`:
 
 ```text
-WORKSHOP_BASE_URL=http://localhost:3000
 WORKSHOP_STAFF_PASSWORD=...
 WORKSHOP_ADMIN_PASSWORD=...
 WORKSHOP_E2E_CONFIRM=RUN
+# opcjonalnie, jeśli inny port niż domyślny 3000:
+# WORKSHOP_BROWSER_BASE_URL=http://localhost:XXXX
 ```
 
 ```powershell

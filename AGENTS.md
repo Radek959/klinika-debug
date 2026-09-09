@@ -63,7 +63,8 @@ Poprawny tryb bazowy jest obowiązkowy. Celowe błędy mogą być aktywowane wy�
   - NIE jest wymaganym checkiem GitHub Actions;
   - NIE jest uruchamiany w CI;
   - NIE jest uruchamiany przeciwko Hostingerowi ani żadnemu innemu publicznemu hostowi;
-  - działa wyłącznie przeciwko lokalnemu środowisku Kliniki Debug.
+  - działa wyłącznie przeciwko lokalnemu full-stackowi Kliniki Debug pod adresem `WORKSHOP_BROWSER_BASE_URL` (opcjonalny — domyślnie `http://localhost:3000`), NIGDY `WORKSHOP_BASE_URL` (ta zmienna jest wyłącznie dla `workshop:smoke` przeciwko wdrożonemu środowisku);
+  - bez `WORKSHOP_E2E_CONFIRM=RUN` kończy się błędem (non-zero exit code) — samo "X skipped" NIE jest przejściem tej bramki.
   Nie wpisuj w opisie PR-a „Playwright PASS", jeżeli test faktycznie nie został lokalnie uruchomiony — jeśli lokalne środowisko full-stack jest niedostępne, opisz tę blokadę wprost.
 - Nie zmieniaj zachowania produktu bez aktualizacji odpowiedniej dokumentacji.
 - Nie oznaczaj elementu jako zweryfikowanego lub wdrożonego bez dowodu: wykonanej komendy, wyniku CI, review albo sprawdzonego środowiska.

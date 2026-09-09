@@ -29,7 +29,17 @@ test.describe("Journey 4 — Materiały: dokumentacja i log", () => {
       .locator("xpath=ancestor::article");
     await docsCard.getByRole("link", { name: "Podgląd" }).click();
     await expect(page.getByRole("heading", { name: "Dokumentacja produktowa" })).toBeVisible();
-    await expect(page.locator("pre.product-docs-preview")).not.toBeEmpty();
+
+    // Dokumentacja jest renderowana jako sformatowana strona (react-markdown),
+    // nie surowy Markdown — sprawdzamy h1 z samej treści dokumentu oraz jedną
+    // charakterystyczną sekcję z tabelą (## 5. Użytkownicy systemu).
+    await expect(
+      page.getByRole("heading", { name: "Klinika Debug — dokumentacja produktowa", level: 1 })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "5. Użytkownicy systemu" })
+    ).toBeVisible();
+    await expect(page.locator(".product-docs-content table")).not.toBeEmpty();
 
     // Breadcrumb "Materiały" wraca do zakładki, z której wyszedł uczestnik.
     await page.getByRole("link", { name: "Materiały" }).click();

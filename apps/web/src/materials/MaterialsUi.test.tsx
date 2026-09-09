@@ -189,8 +189,20 @@ describe("materiały warsztatowe", () => {
     expect(breadcrumbLink).toHaveAttribute("href", "/materials?tab=logs");
   });
 
-  it("breadcrumb 'Materiały' z podglądu dokumentacji produktowej prowadzi do /materials?tab=documentation", async () => {
-    const docsContent = "# Dokumentacja produktowa\n\nTreść testowa.\n";
+  it("renderuje dokumentację produktową jako sformatowaną stronę (heading/akapit/lista/tabela), pozwala pobrać .md, a breadcrumb wraca do /materials?tab=documentation", async () => {
+    const docsContent = [
+      "## Sekcja testowa",
+      "",
+      "Akapit testowy z **pogrubieniem** i `inline code`.",
+      "",
+      "- Punkt A",
+      "- Punkt B",
+      "",
+      "| Kolumna | Wartość |",
+      "| --- | --- |",
+      "| a | 1 |",
+      ""
+    ].join("\n");
     mockFetch((request) => {
       if (request.url === "/api/v1/auth/me") {
         return json({ user: authenticatedUser });
@@ -204,10 +216,21 @@ describe("materiały warsztatowe", () => {
     window.history.pushState({}, "", "/materials/product-docs");
     render(<App />);
 
+    // Nagłówek strony (PageHeader) pochodzi z kodu, nagłówek "Sekcja testowa"
+    // z wyrenderowanego Markdownu dokumentacji — oba muszą się pojawić.
     expect(
-      await screen.findByRole("heading", { name: "Dokumentacja produktowa" })
+      await screen.findByRole("heading", { name: "Dokumentacja produktowa", level: 1 })
     ).toBeInTheDocument();
-    expect(screen.getByText(/Treść testowa\./)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Sekcja testowa", level: 2 })).toBeInTheDocument();
+    expect(screen.getByText(/Akapit testowy z/)).toBeInTheDocument();
+    expect(screen.getByText("pogrubieniem").tagName).toBe("STRONG");
+    expect(screen.getByText("inline code").tagName).toBe("CODE");
+    expect(screen.getByText("Punkt A").closest("li")).toBeInTheDocument();
+    expect(screen.getByText("Punkt B").closest("li")).toBeInTheDocument();
+
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Kolumna")).toBeInTheDocument();
+    expect(within(table).getByText("Wartość")).toBeInTheDocument();
 
     const breadcrumb = document.querySelector(".breadcrumbs") as HTMLElement;
     const breadcrumbLink = within(breadcrumb).getByRole("link", { name: "Materiały" });
@@ -215,6 +238,29 @@ describe("materiały warsztatowe", () => {
 
     const downloadLink = screen.getByRole("link", { name: "Pobierz .md" });
     expect(downloadLink).toHaveAttribute("href", "/materials/docs/dokumentacja-produktowa.md");
+  });
+
+  it("pokazuje komunikat błędu po polsku, a link 'Wróć do materiałów' wraca do /materials?tab=documentation, gdy pobranie dokumentacji się nie powiedzie", async () => {
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === "/materials/docs/dokumentacja-produktowa.md") {
+        return new Response("not found", { status: 404 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/materials/product-docs");
+    render(<App />);
+
+    expect(
+      await screen.findByText("Nie udało się załadować dokumentacji.")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Wróć do materiałów" })).toHaveAttribute(
+      "href",
+      "/materials?tab=documentation"
+    );
   });
 
   it("placeholder pola wyszukiwania nie sugeruje wpisania correlationId", async () => {

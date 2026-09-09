@@ -1,14 +1,27 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { PageHeader } from "../layout/AppLayout";
 
 const PRODUCT_DOCS_URL = "/materials/docs/dokumentacja-produktowa.md";
 
+/** Tabela w osobnym, poziomo przewijalnym kontenerze — nie rozwala layoutu na wąskich ekranach. */
+const MARKDOWN_COMPONENTS = {
+  table: ({ children }: { children?: ReactNode }) => (
+    <div className="product-docs-table-wrap">
+      <table>{children}</table>
+    </div>
+  )
+};
+
 /**
  * Podgląd dokumentacji produktowej wprost z jej jedynego źródła
  * (`docs/dokumentacja-produktowa.md`, skopiowanego przez build do
- * `/materials/docs/`). Treść jest Markdownem wyświetlonym jako czytelny
- * tekst — bez renderowania HTML, bez nowej zależności.
+ * `/materials/docs/`). Treść jest Markdownem renderowanym jako zwykła
+ * dokumentacja (`react-markdown` + `remark-gfm` dla tabel) — celowo BEZ
+ * `rehype-raw`, więc surowy HTML z dokumentu nigdy nie jest wykonywany.
  */
 export function ProductDocsPage() {
   const [content, setContent] = useState<string | null>(null);
@@ -69,14 +82,18 @@ export function ProductDocsPage() {
       {error ? (
         <>
           <p className="form-error">Nie udało się załadować dokumentacji.</p>
-          <Link className="secondary-link" to="/materials">
+          <Link className="secondary-link" to="/materials?tab=documentation">
             Wróć do materiałów
           </Link>
         </>
       ) : null}
 
       {!isLoading && !error && content !== null ? (
-        <pre className="product-docs-preview">{content}</pre>
+        <div className="product-docs-content">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+            {content}
+          </ReactMarkdown>
+        </div>
       ) : null}
     </>
   );
