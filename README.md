@@ -152,7 +152,8 @@ npm run workshop:smoke
 Pełny smoke (logowanie uczestników, reset, główna ścieżka, kontrolowane błędy) wymaga jawnego potwierdzenia:
 
 ```powershell
-WORKSHOP_SMOKE_CONFIRM=RUN npm run workshop:smoke
+$env:WORKSHOP_SMOKE_CONFIRM = "RUN"
+npm run workshop:smoke
 ```
 
 Smoke drukuje host przed startem, nigdy nie loguje haseł/tokenów/cookies, na końcu (także po błędzie w trakcie testu) próbuje przywrócić `SUCCESS` + `CLEAN` i zresetować środowisko, oraz kończy się kodem `0` (PASS) albo `1` (co najmniej jeden krok FAIL).
@@ -161,24 +162,40 @@ Testy samego runnera (bez sieci, mock HTTP server): `npm run test:workshop-smoke
 
 Pełny techniczny runbook przygotowania warsztatu (audit zgodności ze szkoleniem, checklisty, recovery, emergency clean state): [`docs/warsztat/workshop-readiness.md`](docs/warsztat/workshop-readiness.md).
 
-## Browser journeys wdrożonego środowiska (Playwright)
+## Standardowa weryfikacja przed PR
 
-`npm run test:workshop-browser` uruchamia mały, ręczny (nie jest bramką CI) suite Playwright przeciwko RZECZYWIŚCIE WDROŻONEJ Klinice Debug — chroni flow, które właściciel testuje manualnie przed warsztatem (logowanie, dashboard, pacjent → zlecenie, próbki → laboratorium → wynik, Materiały/dokumentacja/log, investigation z `correlationId`).
+```powershell
+npm run verify:pr
+```
 
-Konfiguracja — te same trzy zmienne co `workshop:smoke`, plus jawne potwierdzenie (suite zawsze tworzy dane i resetuje środowisko):
+Obejmuje lint, typecheck, testy i build (`npm run check`) — bez bazy, bez uruchamiania aplikacji, bez Chromium i bez `WORKSHOP_E2E_CONFIRM`. To jest Definition of Done dla każdego PR-a (patrz `docs/ai/feature-delivery-playbook.md`). `verify:pr` NIE jest uruchamiane w CI — to niezależna, lokalna bramka developera/agenta, dokładnie te same kroki co zwykły CI.
+
+## Opcjonalny lokalny Playwright smoke
+
+`npm run test:workshop-browser` to mały suite Playwright chroniący flow testowane manualnie przed warsztatem (logowanie, dashboard, pacjent → zlecenie, próbki → laboratorium → wynik, Materiały/dokumentacja/log, investigation z `correlationId`). Jest:
+
+- OPCJONALNY i uruchamiany RĘCZNIE — NIE jest wymagany przed każdym PR-em i NIE blokuje pracy nad kolejnymi PR-ami;
+- NIE jest wymaganym checkiem GitHub Actions i NIE jest uruchamiany w CI;
+- działa WYŁĄCZNIE przeciwko lokalnemu środowisku — nigdy przeciwko Hostingerowi ani żadnemu innemu publicznemu hostowi (`WORKSHOP_BROWSER_BASE_URL` musi wskazywać `localhost`/`127.0.0.1`/`::1`, inaczej suite kończy się jasnym błędem przed wysłaniem jakiegokolwiek requestu).
+
+Warto go uruchomić przed warsztatem, przed ważnym releasem albo po większych zmianach end-to-end (auth, `/admin`, izolacja workspace'ów, lab flow). Jeśli nie został uruchomiony, po prostu to pomiń — to nie jest blocker PR-a.
+
+Wymagania: lokalna aplikacja pod `http://localhost:3000` (`npm run build` + `npm start`, migracja bazy i konta `tester01`/panel `/admin` przygotowane tak jak w [„Lokalne uruchomienie"](#lokalne-uruchomienie) i [„Przygotowanie środowiska warsztatowego"](#przygotowanie-środowiska-warsztatowego) wyżej), oraz:
 
 ```text
-WORKSHOP_BASE_URL=https://klinikadebug.rwasik.pl
 WORKSHOP_STAFF_PASSWORD=...
 WORKSHOP_ADMIN_PASSWORD=...
 WORKSHOP_E2E_CONFIRM=RUN
+# opcjonalnie, jeśli inny port/host niż domyślny localhost:3000:
+# WORKSHOP_BROWSER_BASE_URL=http://localhost:XXXX
 ```
 
 ```powershell
-WORKSHOP_E2E_CONFIRM=RUN npm run test:workshop-browser
+$env:WORKSHOP_E2E_CONFIRM = "RUN"
+npm run test:workshop-browser
 ```
 
-Suite jest serial (globalny config `/admin` nie nadaje się do równoległych testów). Przed testami ustawia `SUCCESS` + `CLEAN` + `labDelay=5s` i resetuje środowisko; po testach przywraca `SUCCESS` + `CLEAN` + `labDelay=5min` i resetuje ponownie — jeśli sprzątanie się nie powiedzie, suite jasno kończy się komunikatem „Środowisko wymaga ręcznego resetu.”. Przy niepowodzeniu zapisuje zrzut ekranu i trace (`retain-on-failure`); artefakty nie są commitowane.
+`WORKSHOP_BROWSER_BASE_URL` jest CELOWO osobny od `WORKSHOP_BASE_URL` (sekcja wyżej, wyłącznie dla `workshop:smoke` przeciwko wdrożonemu środowisku) — domyślnie `http://localhost:3000`, więc przy standardowym porcie nie trzeba go ustawiać. Suite jest destrukcyjny (tworzy dane, resetuje środowisko), dlatego wymaga jawnego `WORKSHOP_E2E_CONFIRM=RUN` — bez niego kończy się błędem, nigdy cichym "skipped". Jest też serial (globalny config `/admin` nie nadaje się do równoległych testów): setup resetuje środowisko, a DOPIERO POTEM ustawia `SUCCESS` + `CLEAN` + `labDelay=5s`; cleanup resetuje i przywraca `labDelay=5min` — jeśli sprzątanie się nie powiedzie, suite jasno kończy się komunikatem „Środowisko wymaga ręcznego resetu.”. Przy niepowodzeniu zapisuje zrzut ekranu i trace (`retain-on-failure`); artefakty nie są commitowane.
 
 ## Testy i build
 
@@ -209,6 +226,8 @@ npm run test:production-start
 ```
 
 Jeżeli lokalnie nie ma MySQL albo Dockera, testy integracyjne i smoke test produkcyjny uruchamia workflow GitHub Actions z usługą MySQL.
+
+`npm run verify:pr` (patrz [„Standardowa weryfikacja przed PR"](#standardowa-weryfikacja-przed-pr) wyżej) łączy podstawowe bramki (lint, typecheck, testy, build) w jedną komendę.
 
 ## Status
 

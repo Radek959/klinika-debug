@@ -58,7 +58,15 @@ Poprawny tryb bazowy jest obowiązkowy. Celowe błędy mogą być aktywowane wy�
 
 - Implementuj małe, pionowe fragmenty działające od UI do bazy i API.
 - Dodawaj testy jednostkowe i integracyjne do reguł biznesowych oraz kontraktów API.
-- Testy Playwright i k6 są opcjonalne; nie są warunkiem ukończenia MVP ani obowiązkową bramką CI.
+- Testy k6 są opcjonalne.
+- Playwright browser smoke tests (`npm run test:workshop-browser`) są DODATKOWĄ, RĘCZNĄ bramką jakości — nie są częścią `npm run verify:pr` ani obowiązkowych PR gates. Doprecyzowanie:
+  - NIE są wymagane przed każdym PR-em;
+  - NIE są uruchamiane w CI;
+  - NIE powinny blokować autonomicznej pracy agenta nad serią PR-ów;
+  - mogą być uruchamiane ręcznie: przed warsztatem, przed ważnym releasem, po większych zmianach w flow end-to-end, albo po zmianach w auth, `/admin`, izolacji workspace'ów lub lab flow;
+  - działają wyłącznie przeciwko lokalnemu full-stackowi Kliniki Debug pod adresem `WORKSHOP_BROWSER_BASE_URL` (opcjonalny — domyślnie `http://localhost:3000`), NIGDY przeciwko Hostingerowi ani `WORKSHOP_BASE_URL` (ta zmienna jest wyłącznie dla `workshop:smoke` przeciwko wdrożonemu środowisku);
+  - wymagają jawnego potwierdzenia `WORKSHOP_E2E_CONFIRM=RUN` (suite jest destrukcyjny — tworzy dane, resetuje środowisko) i lokalnego full-stacka (`npm run build && npm start`).
+  Jeżeli Playwright NIE został uruchomiony, agent nie może napisać „Playwright PASS" — po prostu pomija ten krok albo pisze „Local Playwright: NOT RUN". Obowiązkowe PR gates to `npm run verify:pr` (lint, typecheck, testy, build) — patrz `docs/ai/feature-delivery-playbook.md`.
 - Nie zmieniaj zachowania produktu bez aktualizacji odpowiedniej dokumentacji.
 - Nie oznaczaj elementu jako zweryfikowanego lub wdrożonego bez dowodu: wykonanej komendy, wyniku CI, review albo sprawdzonego środowiska.
 - Celowe defekty warsztatowe muszą być oddzielone od prawidłowej implementacji i jasno identyfikowalne w kodzie.

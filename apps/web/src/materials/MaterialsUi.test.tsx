@@ -38,12 +38,26 @@ describe("materiały warsztatowe", () => {
     expect(link).toHaveAttribute("href", "/materials");
   });
 
-  it("wyświetla wszystkie zatwierdzone materiały z neutralnymi polskimi nazwami, podglądem i pobraniem", async () => {
+  it("domyślnie (bez parametru tab) pokazuje wyłącznie zakładkę Logi aplikacji", async () => {
     mockFetch(defaultHandler);
     window.history.pushState({}, "", "/materials");
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "Materiały warsztatowe" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Logi aplikacji" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dokumentacja" })).not.toBeInTheDocument();
+
+    const logsTab = screen.getByRole("link", { name: "Logi aplikacji" });
+    expect(logsTab).toHaveAttribute("aria-current", "page");
+  });
+
+  it("?tab=logs pokazuje wyłącznie sekcję Logi aplikacji z kartami logów", async () => {
+    mockFetch(defaultHandler);
+    window.history.pushState({}, "", "/materials?tab=logs");
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Logi aplikacji" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dokumentacja" })).not.toBeInTheDocument();
 
     for (const material of workshopLogs) {
       const heading = screen.getByRole("heading", { name: material.title });
@@ -59,6 +73,63 @@ describe("materiały warsztatowe", () => {
     }
 
     expect(screen.queryByText("api-diagnostics.log")).not.toBeInTheDocument();
+  });
+
+  it("?tab=documentation pokazuje wyłącznie sekcję Dokumentacja", async () => {
+    mockFetch(defaultHandler);
+    window.history.pushState({}, "", "/materials?tab=documentation");
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Dokumentacja" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Logi aplikacji" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: workshopLogs[0].title })).not.toBeInTheDocument();
+
+    const docsTab = screen.getByRole("link", { name: "Dokumentacja" });
+    expect(docsTab).toHaveAttribute("aria-current", "page");
+
+    const heading = screen.getByRole("heading", { name: "Dokumentacja produktowa" });
+    const card = heading.closest("article") as HTMLElement;
+    expect(
+      within(card).getByRole("link", { name: "Podgląd" })
+    ).toHaveAttribute("href", "/materials/product-docs");
+    const downloadLink = within(card).getByRole("link", { name: "Pobierz .md" });
+    expect(downloadLink).toHaveAttribute("href", "/materials/docs/dokumentacja-produktowa.md");
+    expect(downloadLink).toHaveAttribute("download");
+
+    const apiHeading = screen.getByRole("heading", { name: "Dokumentacja API" });
+    const apiCard = apiHeading.closest("article") as HTMLElement;
+    const openApiLink = within(apiCard).getByRole("link", { name: "Otwórz OpenAPI" });
+    expect(openApiLink).toHaveAttribute("href", "/api/docs");
+    expect(openApiLink).toHaveAttribute("target", "_blank");
+  });
+
+  it("nieprawidłowa wartość parametru tab bezpiecznie pokazuje domyślną zakładkę Logi aplikacji", async () => {
+    mockFetch(defaultHandler);
+    window.history.pushState({}, "", "/materials?tab=xyz");
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Logi aplikacji" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dokumentacja" })).not.toBeInTheDocument();
+  });
+
+  it("pozwala przełączać zakładki klikając w linki stylizowane jak taby", async () => {
+    mockFetch(defaultHandler);
+    window.history.pushState({}, "", "/materials");
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Logi aplikacji" });
+
+    await userEvent.click(screen.getByRole("link", { name: "Dokumentacja" }));
+
+    expect(await screen.findByRole("heading", { name: "Dokumentacja" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Logi aplikacji" })).not.toBeInTheDocument();
+    expect(window.location.search).toBe("?tab=documentation");
+
+    await userEvent.click(screen.getByRole("link", { name: "Logi aplikacji" }));
+
+    expect(await screen.findByRole("heading", { name: "Logi aplikacji" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dokumentacja" })).not.toBeInTheDocument();
+    expect(window.location.search).toBe("?tab=logs");
   });
 
   it("pokazuje stan ładowania, a następnie treść pobranego logu w podglądzie", async () => {
@@ -95,6 +166,166 @@ describe("materiały warsztatowe", () => {
     const downloadLink = screen.getByRole("link", { name: "Pobierz .log" });
     expect(downloadLink).toHaveAttribute("href", `/materials/logs/${material.filename}`);
     expect(downloadLink).toHaveAttribute("download");
+  });
+
+  it("breadcrumb 'Materiały' z podglądu logu prowadzi do /materials?tab=logs", async () => {
+    const material = workshopLogs[0];
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === `/materials/logs/${material.filename}`) {
+        return new Response(sampleLogContent, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", `/materials/logs/${material.id}`);
+    render(<App />);
+
+    await screen.findByText(material.filename);
+    const breadcrumb = document.querySelector(".breadcrumbs") as HTMLElement;
+    const breadcrumbLink = within(breadcrumb).getByRole("link", { name: "Materiały" });
+    expect(breadcrumbLink).toHaveAttribute("href", "/materials?tab=logs");
+  });
+
+  it("renderuje dokumentację produktową jako sformatowaną stronę (heading/akapit/lista/tabela), pozwala pobrać .md, a breadcrumb wraca do /materials?tab=documentation", async () => {
+    const docsContent = [
+      "## Sekcja testowa",
+      "",
+      "Akapit testowy z **pogrubieniem** i `inline code`.",
+      "",
+      "- Punkt A",
+      "- Punkt B",
+      "",
+      "| Kolumna | Wartość |",
+      "| --- | --- |",
+      "| a | 1 |",
+      ""
+    ].join("\n");
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === "/materials/docs/dokumentacja-produktowa.md") {
+        return new Response(docsContent, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/materials/product-docs");
+    render(<App />);
+
+    // Nagłówek strony (PageHeader) pochodzi z kodu, nagłówek "Sekcja testowa"
+    // z wyrenderowanego Markdownu dokumentacji — oba muszą się pojawić.
+    expect(
+      await screen.findByRole("heading", { name: "Dokumentacja produktowa", level: 1 })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Sekcja testowa", level: 2 })).toBeInTheDocument();
+    expect(screen.getByText(/Akapit testowy z/)).toBeInTheDocument();
+    expect(screen.getByText("pogrubieniem").tagName).toBe("STRONG");
+    expect(screen.getByText("inline code").tagName).toBe("CODE");
+    expect(screen.getByText("Punkt A").closest("li")).toBeInTheDocument();
+    expect(screen.getByText("Punkt B").closest("li")).toBeInTheDocument();
+
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Kolumna")).toBeInTheDocument();
+    expect(within(table).getByText("Wartość")).toBeInTheDocument();
+
+    const breadcrumb = document.querySelector(".breadcrumbs") as HTMLElement;
+    const breadcrumbLink = within(breadcrumb).getByRole("link", { name: "Materiały" });
+    expect(breadcrumbLink).toHaveAttribute("href", "/materials?tab=documentation");
+
+    const downloadLink = screen.getByRole("link", { name: "Pobierz .md" });
+    expect(downloadLink).toHaveAttribute("href", "/materials/docs/dokumentacja-produktowa.md");
+  });
+
+  it("dokumentacja z wiodącym H1 ma tylko JEDEN H1 (użyty jako PageHeader, nie zdublowany w treści)", async () => {
+    const docsContent = "# Tytuł Testowy\n\nAkapit po H1.\n";
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === "/materials/docs/dokumentacja-produktowa.md") {
+        return new Response(docsContent, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/materials/product-docs");
+    render(<App />);
+
+    // getByRole rzuci błąd, gdyby na stronie było więcej niż jedno
+    // dopasowanie — to jest dowód na brak zdublowanego H1.
+    expect(
+      await screen.findByRole("heading", { name: "Tytuł Testowy", level: 1 })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Akapit po H1.")).toBeInTheDocument();
+  });
+
+  it("dokumentacja bez wiodącego H1 pokazuje fallbackowy tytuł 'Dokumentacja produktowa'", async () => {
+    const docsContent = "Treść bez nagłówka.\n";
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === "/materials/docs/dokumentacja-produktowa.md") {
+        return new Response(docsContent, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/materials/product-docs");
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Dokumentacja produktowa", level: 1 })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Treść bez nagłówka.")).toBeInTheDocument();
+  });
+
+  it("pokazuje komunikat błędu po polsku, a link 'Wróć do materiałów' wraca do /materials?tab=documentation, gdy pobranie dokumentacji się nie powiedzie", async () => {
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === "/materials/docs/dokumentacja-produktowa.md") {
+        return new Response("not found", { status: 404 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/materials/product-docs");
+    render(<App />);
+
+    expect(
+      await screen.findByText("Nie udało się załadować dokumentacji.")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Wróć do materiałów" })).toHaveAttribute(
+      "href",
+      "/materials?tab=documentation"
+    );
+  });
+
+  it("placeholder pola wyszukiwania nie sugeruje wpisania correlationId", async () => {
+    const material = workshopLogs[0];
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === `/materials/logs/${material.filename}`) {
+        return new Response(sampleLogContent, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", `/materials/logs/${material.id}`);
+    render(<App />);
+
+    const input = await screen.findByLabelText("Szukaj w logu");
+    const placeholder = input.getAttribute("placeholder") ?? "";
+    expect(placeholder.toLowerCase()).not.toContain("correlationid");
+    expect(placeholder).toBe("Wpisz szukany tekst");
   });
 
   it("filtruje log po tekście, pokazuje licznik i pozwala kopiować całość oraz wynik", async () => {
@@ -160,50 +391,6 @@ describe("materiały warsztatowe", () => {
     expect(screen.getByText("0 z 3 wpisów")).toBeInTheDocument();
   });
 
-  it("pokazuje sekcję Dokumentacja z podglądem, pobraniem i linkiem do OpenAPI", async () => {
-    mockFetch(defaultHandler);
-    window.history.pushState({}, "", "/materials");
-    render(<App />);
-
-    const heading = await screen.findByRole("heading", { name: "Dokumentacja produktowa" });
-    const card = heading.closest("article") as HTMLElement;
-    expect(
-      within(card).getByRole("link", { name: "Podgląd" })
-    ).toHaveAttribute("href", "/materials/product-docs");
-    const downloadLink = within(card).getByRole("link", { name: "Pobierz .md" });
-    expect(downloadLink).toHaveAttribute("href", "/materials/docs/dokumentacja-produktowa.md");
-    expect(downloadLink).toHaveAttribute("download");
-
-    const apiHeading = screen.getByRole("heading", { name: "Dokumentacja API" });
-    const apiCard = apiHeading.closest("article") as HTMLElement;
-    const openApiLink = within(apiCard).getByRole("link", { name: "Otwórz OpenAPI" });
-    expect(openApiLink).toHaveAttribute("href", "/api/docs");
-    expect(openApiLink).toHaveAttribute("target", "_blank");
-  });
-
-  it("pokazuje podgląd dokumentacji produktowej pobranej z /materials/docs", async () => {
-    const docsContent = "# Dokumentacja produktowa\n\nTreść testowa.\n";
-    mockFetch((request) => {
-      if (request.url === "/api/v1/auth/me") {
-        return json({ user: authenticatedUser });
-      }
-      if (request.url === "/materials/docs/dokumentacja-produktowa.md") {
-        return new Response(docsContent, { status: 200 });
-      }
-      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
-    });
-
-    window.history.pushState({}, "", "/materials/product-docs");
-    render(<App />);
-
-    expect(
-      await screen.findByRole("heading", { name: "Dokumentacja produktowa" })
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Treść testowa\./)).toBeInTheDocument();
-    const downloadLink = screen.getByRole("link", { name: "Pobierz .md" });
-    expect(downloadLink).toHaveAttribute("href", "/materials/docs/dokumentacja-produktowa.md");
-  });
-
   it("pokazuje bezpieczny ekran, gdy logId nie jest na whiteliście, bez próby pobrania pliku", async () => {
     const fetchSpy = mockFetch((request) => {
       if (request.url === "/api/v1/auth/me") {
@@ -221,7 +408,7 @@ describe("materiały warsztatowe", () => {
     expect(await screen.findByText("Materiał nie istnieje")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Wróć do materiałów" })).toHaveAttribute(
       "href",
-      "/materials"
+      "/materials?tab=logs"
     );
 
     const attemptedFetchOfRawParam = fetchSpy.mock.calls.some(([input]) =>
@@ -248,7 +435,7 @@ describe("materiały warsztatowe", () => {
     expect(await screen.findByText("Nie udało się załadować materiału.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Wróć do materiałów" })).toHaveAttribute(
       "href",
-      "/materials"
+      "/materials?tab=logs"
     );
     expect(screen.queryByText(/stack/i)).not.toBeInTheDocument();
   });

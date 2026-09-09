@@ -15,7 +15,25 @@ Użyj tego playbooka przy realizacji kompletnego zadania, funkcji albo PR-a, nie
 7. Uruchom wymagane bramki jakości i zapisz dokładne komendy.
 8. Zaktualizuj dokumentację, jeśli zmienia się zachowanie produktu, API, proces albo status planu.
 9. Zaktualizuj status planu zgodnie z Definition of Done.
-10. Przygotuj opis PR-a z zakresem, elementem planu i dowodami weryfikacji.
+10. Przed utworzeniem PR-a uruchom lokalną bramkę `npm run verify:pr` (patrz niżej).
+11. Przygotuj opis PR-a z zakresem, elementem planu i dowodami weryfikacji.
+
+## `npm run verify:pr` — obowiązkowa lokalna bramka przed PR-em
+
+Definition of Done dla każdego PR-a obejmuje lokalne uruchomienie `npm run verify:pr` (lint, typecheck, testy, build) PRZED utworzeniem PR-a:
+
+```powershell
+npm run verify:pr
+```
+
+- PR nie powinien zostać utworzony, jeśli ta bramka nie przeszła.
+- `verify:pr` NIE obejmuje Playwrighta — nie wymaga bazy, uruchomionej aplikacji, Chromium ani `WORKSHOP_E2E_CONFIRM`.
+
+## Playwright browser smoke tests — opcjonalny, ręczny, poza CI
+
+`npm run test:workshop-browser` jest DODATKOWĄ, ręczną bramką jakości — NIE jest wymagany przed każdym PR-em, NIE jest uruchamiany w CI i NIE powinien blokować autonomicznej pracy agenta nad serią PR-ów. Wartościowy do ręcznego uruchomienia przed warsztatem, przed ważnym releasem albo po większych zmianach end-to-end (auth, `/admin`, izolacja workspace'ów, lab flow) — patrz README.
+
+Jeżeli Playwright nie został uruchomiony, nie wpisuj w opisie PR-a „Playwright PASS" — to po prostu nie jest blocker dla tego PR-a.
 
 ## Zakazy
 
@@ -40,3 +58,4 @@ Użyj tego playbooka przy realizacji kompletnego zadania, funkcji albo PR-a, nie
 - Status wdrożenia jest zgodny z faktycznym stanem.
 - UI pozostaje po polsku.
 - Dane są syntetyczne.
+- `npm run verify:pr` zostało uruchomione lokalnie z wynikiem PASS.

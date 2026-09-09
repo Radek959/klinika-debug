@@ -91,6 +91,7 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
       <button class="danger" id="resetButton" type="button">Resetuj środowisko</button>
       <button class="secondary" id="logoutButton" type="button" style="margin-left:auto;">Wyloguj</button>
     </div>
+    <p class="meta">Reset środowiska przywraca też czas generowania wyników do wartości domyślnej (5 minut).</p>
 
     <div id="configStatus" class="status"></div>
     <p class="meta" id="updatedAtLabel"></p>
@@ -229,7 +230,7 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
 
   resetButton.addEventListener("click", function () {
     var confirmed = window.confirm(
-      "Reset przywróci dane WSZYSTKICH workspace\\u00f3w warsztatowych do stanu początkowego i wyloguje wszystkich uczestników. Kontynuować?"
+      "Reset przywróci dane WSZYSTKICH workspace\\u00f3w warsztatowych do stanu początkowego, wyloguje wszystkich uczestników i przywróci czas generowania wyników do 5 minut. Kontynuować?"
     );
     if (!confirmed) {
       return;

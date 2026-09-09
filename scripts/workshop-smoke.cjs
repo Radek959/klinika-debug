@@ -78,6 +78,7 @@ async function main() {
       cleanupNeeded = true;
 
       await runReset(adminClient, report);
+      await runLabDelaySetup(adminClient, report);
 
       const { testerOne, testerTwo } = await runParticipantLogin(client, config, report);
       await runWorkspaceIsolation(client, testerOne, testerTwo, report);
@@ -172,6 +173,25 @@ async function runReset(adminClient, report) {
   }
 
   report.pass("Reset");
+}
+
+/**
+ * Ustawia labDelayMs=5000 (5 s) PO resecie środowiskowym (`runReset`) —
+ * reset przywraca domyślne 300000 ms (5 min), więc gdyby ta konfiguracja
+ * nastąpiła PRZED resetem, `runLabSuccess` zaczynałby oczekiwanie na wynik
+ * przy realnym opóźnieniu 5 minut zamiast 5 sekund i przekraczałby
+ * `labTimeoutMs`. Kończy smoke natychmiast czytelnym błędem, jeżeli
+ * odczytana z powrotem konfiguracja nie potwierdza 5000 ms.
+ */
+async function runLabDelaySetup(adminClient, report) {
+  const config = await setWorkshopConfig(adminClient, "SUCCESS", "CLEAN", 5000);
+  if (config?.labDelayMs !== 5000) {
+    throw fail(
+      "Lab delay setup",
+      `Po ustawieniu labDelayMs=5000 /admin/api/config zwróciło ${config?.labDelayMs}.`
+    );
+  }
+  report.pass("Lab delay setup");
 }
 
 async function runParticipantLogin(client, config, report) {
@@ -501,11 +521,27 @@ async function runApiDiagnosticsDefect(client, adminClient, testerOne, report) {
   report.pass("API_DIAGNOSTICS");
 }
 
-async function setWorkshopConfig(adminClient, labScenario, controlledBug, labDelayMs = 300000) {
+/**
+ * Zmienia `labScenario`/`controlledBug`. Gdy `labDelayMs` nie jest podane,
+ * zachowuje AKTUALNIE skonfigurowaną wartość zamiast cichego resetu do
+ * 300000 ms — zmiana samego scenariusza albo kontrolowanego błędu (np.
+ * `runPatientGuardianDefect`) nie może przypadkiem odwrócić `labDelayMs=5000`
+ * ustawionego przez `runLabDelaySetup` dla `runLabSuccess`.
+ */
+async function setWorkshopConfig(adminClient, labScenario, controlledBug, labDelayMs) {
+  let resolvedLabDelayMs = labDelayMs;
+  if (resolvedLabDelayMs === undefined) {
+    const current = await adminClient.get("/admin/api/config");
+    if (current.status !== 200 || typeof current.json?.labDelayMs !== "number") {
+      throw fail("Reset", "Nie udało się odczytać bieżącego labDelayMs przed zmianą konfiguracji.");
+    }
+    resolvedLabDelayMs = current.json.labDelayMs;
+  }
+
   const response = await adminClient.put("/admin/api/config", {
     labScenario,
     controlledBug,
-    labDelayMs
+    labDelayMs: resolvedLabDelayMs
   });
   if (response.status !== 200) {
     throw fail(
@@ -566,7 +602,7 @@ async function runMaterialsAssetCheck(client, report) {
 
 async function runFinalCleanup(adminClient, report, log) {
   try {
-    await setWorkshopConfig(adminClient, "SUCCESS", "CLEAN");
+    await setWorkshopConfig(adminClient, "SUCCESS", "CLEAN", 300000);
     const reset = await adminClient.post("/admin/api/reset", { confirm: true });
     if (reset.status !== 200) {
       throw new Error(`Reset końcowy zwrócił HTTP ${reset.status}.`);

@@ -16,7 +16,7 @@
     "dev:web": "npm run dev --workspace=@klinika/web",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test:safety && npm run test --workspaces --if-present && npm run test:workshop-logs && npm run test:workshop-logs-web-copy && npm run test:workshop-docs-web-copy && npm run test:workshop-smoke",
+    "test": "npm run test:safety && npm run test --workspaces --if-present && npm run test:workshop-logs && npm run test:workshop-logs-web-copy && npm run test:workshop-docs-web-copy && npm run test:workshop-smoke && npm run test:workshop-browser-config",
     "test:safety": "node scripts/test-database-safety.spec.cjs",
     "test:workshop-logs": "node scripts/validate-workshop-logs.cjs",
     "test:workshop-logs-web-copy": "node --test scripts/workshop-logs-web-copy.test.cjs",
@@ -24,6 +24,7 @@
     "copy:workshop-logs-web": "node scripts/copy-workshop-logs-web.cjs",
     "copy:workshop-docs-web": "node scripts/copy-workshop-docs-web.cjs",
     "test:workshop-smoke": "node --test scripts/workshop-smoke/*.test.cjs",
+    "test:workshop-browser-config": "node scripts/test-workshop-browser-config.cjs",
     "workshop:smoke": "node scripts/workshop-smoke.cjs",
     "generate:workshop-logs": "node scripts/generate-workshop-logs.cjs",
     "test:integration": "node scripts/run-with-test-database.cjs jest-e2e",
@@ -45,7 +46,8 @@
     "workshop:seed": "ts-node --project tsconfig.base.json prisma/workshop-seed.ts",
     "workshop:prepare": "ts-node --project tsconfig.base.json prisma/workshop-prepare.ts",
     "workshop:reset": "ts-node --project tsconfig.base.json prisma/workshop-reset.ts",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "verify:pr": "npm run check"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

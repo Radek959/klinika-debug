@@ -79,8 +79,7 @@ Workshop MVP nie obejmuje:
 - eksportu danych do CSV lub JSON;
 - systemu powiadomień użytkownika;
 - rozbudowanego dashboardu analitycznego;
-- wbudowanej wyszukiwarki logów;
-- osobnego widoku dokumentacji produktowej w aplikacji.
+- pełnego systemu wyszukiwania i obserwowalności logów runtime (np. live logs, Splunk, Kibana). Materiały udostępniają wyłącznie prosty filtr tekstowy statycznych, syntetycznych fixture'ów logów.
 
 ## 4. Organizacja danych
 

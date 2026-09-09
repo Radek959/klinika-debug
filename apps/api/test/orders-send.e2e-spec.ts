@@ -3,7 +3,7 @@ import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PrismaService } from "../src/common/prisma/prisma.service";
 import { seedDatabase } from "../src/common/prisma/seed-database";
 import { closeTestApp, createTestApp } from "./test-app";
-import { configureTestEnvironment, resetTestDatabase } from "./database";
+import { configureTestEnvironment, resetTestDatabase, setWorkshopConfig } from "./database";
 
 describe("orders send api", () => {
   let app: NestFastifyApplication;
@@ -212,6 +212,36 @@ describe("orders send api", () => {
 
     expect(second.statusCode).toBe(409);
     expect(JSON.parse(second.body).error.code).toBe("IDEMPOTENCY_KEY_CONFLICT");
+  });
+
+  it("respektuje labDelayMs skonfigurowany w /admin: estimatedCompletionAt i lab_job.executeAt ≈ now + labDelayMs", async () => {
+    await setWorkshopConfig(app, { labScenario: "SUCCESS", labDelayMs: 5000 });
+
+    const { token, patientId, tests } = await setupDefaultOrderData();
+    const order = await createOrderAndParse(token, {
+      patientId,
+      priority: "ROUTINE",
+      tests: [{ medicalTestId: tests.CRP.id }]
+    });
+    await registerSample(token, order.id, {
+      materialType: "SERUM",
+      barcode: "SMP-SEND-DELAY-0001",
+      collectedAt: nowIso()
+    });
+
+    const beforeSend = Date.now();
+    const response = await sendOrder(token, order.id);
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+
+    const expectedAt = beforeSend + 5000;
+    const toleranceMs = 2000;
+
+    const estimatedCompletionAt = new Date(body.estimatedCompletionAt).getTime();
+    expect(Math.abs(estimatedCompletionAt - expectedAt)).toBeLessThan(toleranceMs);
+
+    const job = await prisma.labJob.findFirstOrThrow({ where: { orderId: order.id } });
+    expect(Math.abs(job.executeAt.getTime() - expectedAt)).toBeLessThan(toleranceMs);
   });
 
   it("publikuje endpoint wysyłki w OpenAPI", async () => {

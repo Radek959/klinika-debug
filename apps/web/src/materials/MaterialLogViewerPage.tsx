@@ -13,7 +13,7 @@ export function MaterialLogViewerPage() {
       <>
         <PageHeader title="Materiał nie istnieje" />
         <p>Nie znaleziono materiału o podanym identyfikatorze.</p>
-        <Link className="secondary-link" to="/materials">
+        <Link className="secondary-link" to="/materials?tab=logs">
           Wróć do materiałów
         </Link>
       </>
@@ -87,7 +87,7 @@ function LoadedMaterialLogViewer({
   return (
     <>
       <p className="breadcrumbs">
-        <Link to="/materials">Materiały</Link> &gt; {title}
+        <Link to="/materials?tab=logs">Materiały</Link> &gt; {title}
       </p>
       <PageHeader title={title} />
 
@@ -96,7 +96,7 @@ function LoadedMaterialLogViewer({
       {error ? (
         <>
           <p className="form-error">Nie udało się załadować materiału.</p>
-          <Link className="secondary-link" to="/materials">
+          <Link className="secondary-link" to="/materials?tab=logs">
             Wróć do materiałów
           </Link>
         </>
@@ -129,7 +129,7 @@ function LoadedMaterialLogViewer({
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Fragment tekstu, np. correlationId"
+              placeholder="Wpisz szukany tekst"
             />
             {search ? (
               <button
