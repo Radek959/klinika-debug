@@ -3,15 +3,17 @@ import { useEffect, useState } from "react";
 const CONFIRMATION_MS = 2000;
 
 /**
- * Reużywalny przycisk kopiujący `value` do schowka (`navigator.clipboard`).
- * Po sukcesie etykieta zmienia się na „Skopiowano” i po chwili wraca do
- * oryginalnej treści.
+ * Reużywalny przycisk kopiujący do schowka (`navigator.clipboard`). `value`
+ * może być gotowym tekstem albo funkcją pobierającą go leniwie (np. treść
+ * dokumentu pobrana dopiero po kliknięciu) — w obu przypadkach po sukcesie
+ * etykieta zmienia się na „Skopiowano” i po chwili wraca do oryginalnej
+ * treści.
  */
 export function CopyButton({
   value,
   label = "Kopiuj"
 }: {
-  value: string;
+  value: string | (() => Promise<string>);
   label?: string;
 }) {
   const [copied, setCopied] = useState(false);
@@ -26,11 +28,13 @@ export function CopyButton({
 
   async function handleClick() {
     try {
-      await navigator.clipboard.writeText(value);
+      const text = typeof value === "function" ? await value() : value;
+      await navigator.clipboard.writeText(text);
       setCopied(true);
     } catch {
-      // Schowek może być niedostępny (np. brak uprawnień przeglądarki) —
-      // przycisk po prostu nie pokaże potwierdzenia.
+      // Schowek może być niedostępny (np. brak uprawnień przeglądarki) albo
+      // pobranie treści mogło się nie powieść — przycisk po prostu nie
+      // pokaże potwierdzenia.
     }
   }
 

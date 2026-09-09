@@ -626,6 +626,9 @@ describe("interfejs pacjentów", () => {
     await userEvent.click(screen.getByRole("button", { name: "Zaloguj" }));
 
     expect(await screen.findByRole("heading", { name: "Panel główny" })).toBeInTheDocument();
+    // Login uczestnika (np. "tester07") jest widoczny w topbarze, żeby prowadzący
+    // mógł szybko powiązać zgłoszenie z workspace'em.
+    expect(screen.getByText("staff.demo")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Wyloguj" }));
     expect(await screen.findByRole("heading", { name: "Logowanie" })).toBeInTheDocument();
     expect(sessionStorage.getItem("klinika-debug-token")).toBeNull();

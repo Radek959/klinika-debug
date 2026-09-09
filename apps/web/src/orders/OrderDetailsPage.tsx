@@ -4,6 +4,7 @@ import type {
   MaterialType,
   OrderDetailsResponse,
   OrderSampleResponse,
+  OrderStatus,
   OrderTestStatus
 } from "@klinika/api-contracts";
 import type { ApiFieldError } from "../api/client";
@@ -22,41 +23,68 @@ import {
 import { OrderHistorySection } from "./OrderHistorySection";
 import { OrderProgressStepper } from "./OrderProgressStepper";
 
+/**
+ * Statusy, w których zlecenie oczekuje na laboratorium — proces jest
+ * asynchroniczny, więc uczestnik może chcieć ręcznie sprawdzić, czy wynik już
+ * nadszedł, zamiast odświeżać całą stronę.
+ */
+const LAB_WAITING_STATUSES = new Set<OrderStatus>(["SENT_TO_LAB", "PROCESSING", "PARTIAL"]);
+
 export function OrderDetailsPage({ token }: { token: string }) {
   const { orderId } = useParams();
   const location = useLocation();
   const [order, setOrder] = useState<OrderDetailsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<ApiErrorInfo | null>(null);
+  const [refreshError, setRefreshError] = useState<ApiErrorInfo | null>(null);
   const [success, setSuccess] = useState<string | null>(
     (location.state as { message?: string } | null)?.message ?? null
   );
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const requestId = useRef(0);
 
-  const reload = useCallback(() => {
+  const reload = useCallback((options?: { silent?: boolean }) => {
     if (!orderId) {
       return;
     }
     const currentRequest = requestId.current + 1;
     requestId.current = currentRequest;
-    setIsLoading(true);
-    setLoadError(null);
+    if (options?.silent) {
+      setIsRefreshing(true);
+      setRefreshError(null);
+    } else {
+      setIsLoading(true);
+      setLoadError(null);
+    }
     void getOrder(token, orderId)
       .then((response) => {
         if (requestId.current === currentRequest) {
           setOrder(response);
           setHistoryRefreshKey((current) => current + 1);
+          setRefreshError(null);
         }
       })
       .catch((caught) => {
         if (requestId.current === currentRequest) {
-          setLoadError(toApiErrorInfo(caught, "Nie udało się pobrać danych zlecenia."));
+          if (options?.silent) {
+            // Ręczny refresh zachowuje dotychczasowe dane zlecenia na ekranie —
+            // błąd pokazujemy jako komunikat obok przycisku, bez przejścia do
+            // pełnego ekranu błędu (ten jest tylko dla nieudanego pierwszego
+            // wczytania, gdy nie ma jeszcze żadnych danych do pokazania).
+            setRefreshError(toApiErrorInfo(caught, "Nie udało się odświeżyć statusu zlecenia."));
+          } else {
+            setLoadError(toApiErrorInfo(caught, "Nie udało się pobrać danych zlecenia."));
+          }
         }
       })
       .finally(() => {
         if (requestId.current === currentRequest) {
-          setIsLoading(false);
+          if (options?.silent) {
+            setIsRefreshing(false);
+          } else {
+            setIsLoading(false);
+          }
         }
       });
   }, [orderId, token]);
@@ -108,6 +136,16 @@ export function OrderDetailsPage({ token }: { token: string }) {
                 Edytuj zlecenie
               </Link>
             ) : null}
+            {LAB_WAITING_STATUSES.has(order.status) ? (
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={isRefreshing}
+                onClick={() => reload({ silent: true })}
+              >
+                {isRefreshing ? "Odświeżanie..." : "Odśwież status"}
+              </button>
+            ) : null}
             <Link className="secondary-link" to="/orders">
               Wróć do listy
             </Link>
@@ -119,6 +157,12 @@ export function OrderDetailsPage({ token }: { token: string }) {
           · Priorytet: {orderPriorityLabels[order.priority]}
         </p>
       </PageHeader>
+
+      {refreshError ? (
+        <p className="form-error" role="alert">
+          {refreshError.message}
+        </p>
+      ) : null}
 
       <OrderProgressStepper status={order.status} />
 
