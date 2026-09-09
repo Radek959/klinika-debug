@@ -185,6 +185,7 @@ const REPORT_STEP_ORDER = [
   "Health",
   "Admin login",
   "Reset",
+  "Lab delay setup",
   "Participant login",
   "Workspace isolation",
   "Patient flow",

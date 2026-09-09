@@ -45,7 +45,8 @@
     "workshop:seed": "ts-node --project tsconfig.base.json prisma/workshop-seed.ts",
     "workshop:prepare": "ts-node --project tsconfig.base.json prisma/workshop-prepare.ts",
     "workshop:reset": "ts-node --project tsconfig.base.json prisma/workshop-reset.ts",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "verify:pr": "npm run check && npm run test:workshop-browser"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

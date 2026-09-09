@@ -15,7 +15,17 @@ Użyj tego playbooka przy realizacji kompletnego zadania, funkcji albo PR-a, nie
 7. Uruchom wymagane bramki jakości i zapisz dokładne komendy.
 8. Zaktualizuj dokumentację, jeśli zmienia się zachowanie produktu, API, proces albo status planu.
 9. Zaktualizuj status planu zgodnie z Definition of Done.
-10. Przygotuj opis PR-a z zakresem, elementem planu i dowodami weryfikacji.
+10. Przed utworzeniem PR-a uruchom lokalną bramkę `npm run verify:pr` (patrz niżej).
+11. Przygotuj opis PR-a z zakresem, elementem planu i dowodami weryfikacji.
+
+## `npm run verify:pr` — obowiązkowa lokalna bramka przed PR-em
+
+Definition of Done dla każdego PR-a obejmuje lokalne uruchomienie `npm run verify:pr` (lint, typecheck, testy, build i lokalny Playwright — `npm run test:workshop-browser`) PRZED utworzeniem PR-a.
+
+- PR nie powinien zostać utworzony, jeśli ta bramka nie przeszła.
+- `npm run verify:pr` obejmuje Playwright, ale WYŁĄCZNIE przeciwko lokalnemu środowisku Kliniki Debug (patrz `AGENTS.md`, README) — nigdy przeciwko CI ani przeciwko Hostingerowi.
+- Jeżeli Playwright nie może wystartować z powodu ograniczeń lokalnego środowiska (np. brak możliwości uruchomienia bazy albo pełnego stacka), NIE uznawaj tego kroku za PASS. Opisz blokadę wprost w opisie PR-a (np. „Local Playwright: NOT RUN — lokalne środowisko full-stack niedostępne”).
+- Nie zastępuj lokalnego Playwrighta wynikiem CI — CI nie uruchamia tego suite'u.
 
 ## Zakazy
 
@@ -40,3 +50,4 @@ Użyj tego playbooka przy realizacji kompletnego zadania, funkcji albo PR-a, nie
 - Status wdrożenia jest zgodny z faktycznym stanem.
 - UI pozostaje po polsku.
 - Dane są syntetyczne.
+- `npm run verify:pr` zostało uruchomione lokalnie z wynikiem PASS, albo opisano jawnie blokadę (np. brak możliwości uruchomienia lokalnego Playwrighta w danym środowisku).

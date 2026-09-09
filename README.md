@@ -161,14 +161,26 @@ Testy samego runnera (bez sieci, mock HTTP server): `npm run test:workshop-smoke
 
 Pełny techniczny runbook przygotowania warsztatu (audit zgodności ze szkoleniem, checklisty, recovery, emergency clean state): [`docs/warsztat/workshop-readiness.md`](docs/warsztat/workshop-readiness.md).
 
-## Browser journeys wdrożonego środowiska (Playwright)
+## Lokalne browser smoke tests (Playwright) — obowiązkowa bramka przed PR-em
 
-`npm run test:workshop-browser` uruchamia mały, ręczny (nie jest bramką CI) suite Playwright przeciwko RZECZYWIŚCIE WDROŻONEJ Klinice Debug — chroni flow, które właściciel testuje manualnie przed warsztatem (logowanie, dashboard, pacjent → zlecenie, próbki → laboratorium → wynik, Materiały/dokumentacja/log, investigation z `correlationId`).
+`npm run test:workshop-browser` (albo zbiorczo `npm run verify:pr`) uruchamia mały suite Playwright — lokalne browser smoke tests uruchamiane przed utworzeniem PR-a (AGENTS.md), chroniący flow testowane manualnie przed warsztatem (logowanie, dashboard, pacjent → zlecenie, próbki → laboratorium → wynik, Materiały/dokumentacja/log, investigation z `correlationId`). Suite:
+
+- jest OBOWIĄZKOWĄ LOKALNĄ bramką przed każdym PR-em;
+- NIE jest wymaganym checkiem GitHub Actions i NIE jest uruchamiany w CI;
+- NIE jest uruchamiany przeciwko Hostingerowi ani żadnemu innemu publicznemu hostowi — działa wyłącznie przeciwko lokalnemu środowisku Kliniki Debug (`WORKSHOP_BASE_URL` musi wskazywać `localhost`/`127.0.0.1`/`::1`, inaczej suite kończy się jasnym błędem przed wysłaniem jakiegokolwiek requestu).
+
+Wymaga lokalnego, production-like środowiska, pod którym dostępne są jednocześnie frontend, `/api`, `/admin` i `/materials` — najprościej przez istniejący lokalny build:
+
+```powershell
+npm run build
+npm run db:migrate
+npm start
+```
 
 Konfiguracja — te same trzy zmienne co `workshop:smoke`, plus jawne potwierdzenie (suite zawsze tworzy dane i resetuje środowisko):
 
 ```text
-WORKSHOP_BASE_URL=https://klinikadebug.rwasik.pl
+WORKSHOP_BASE_URL=http://localhost:3000
 WORKSHOP_STAFF_PASSWORD=...
 WORKSHOP_ADMIN_PASSWORD=...
 WORKSHOP_E2E_CONFIRM=RUN
@@ -178,7 +190,7 @@ WORKSHOP_E2E_CONFIRM=RUN
 WORKSHOP_E2E_CONFIRM=RUN npm run test:workshop-browser
 ```
 
-Suite jest serial (globalny config `/admin` nie nadaje się do równoległych testów). Przed testami ustawia `SUCCESS` + `CLEAN` + `labDelay=5s` i resetuje środowisko; po testach przywraca `SUCCESS` + `CLEAN` + `labDelay=5min` i resetuje ponownie — jeśli sprzątanie się nie powiedzie, suite jasno kończy się komunikatem „Środowisko wymaga ręcznego resetu.”. Przy niepowodzeniu zapisuje zrzut ekranu i trace (`retain-on-failure`); artefakty nie są commitowane.
+Suite jest serial (globalny config `/admin` nie nadaje się do równoległych testów). Setup: resetuje środowisko, a DOPIERO POTEM ustawia `SUCCESS` + `CLEAN` + `labDelay=5s` (reset przywraca domyślne 5 minut, więc konfiguracja testowa musi nastąpić po resecie) i sprawdza, że `/admin/api/config` rzeczywiście to potwierdza. Cleanup: reset, a potem `SUCCESS` + `CLEAN` + `labDelay=5min` — jeśli sprzątanie się nie powiedzie, suite jasno kończy się komunikatem „Środowisko wymaga ręcznego resetu.”. Przy niepowodzeniu zapisuje zrzut ekranu i trace (`retain-on-failure`); artefakty nie są commitowane.
 
 ## Testy i build
 
@@ -209,6 +221,14 @@ npm run test:production-start
 ```
 
 Jeżeli lokalnie nie ma MySQL albo Dockera, testy integracyjne i smoke test produkcyjny uruchamia workflow GitHub Actions z usługą MySQL.
+
+Obowiązkowa lokalna bramka przed KAŻDYM PR-em (lint, typecheck, testy, build i lokalny Playwright — patrz sekcja wyżej):
+
+```powershell
+npm run verify:pr
+```
+
+`verify:pr` NIE jest uruchamiane w CI — to niezależna, lokalna bramka developera/agenta.
 
 ## Status
 

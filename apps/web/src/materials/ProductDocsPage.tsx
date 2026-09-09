@@ -53,7 +53,7 @@ export function ProductDocsPage() {
   return (
     <>
       <p className="breadcrumbs">
-        <Link to="/materials">Materiały</Link> &gt; Dokumentacja produktowa
+        <Link to="/materials?tab=documentation">Materiały</Link> &gt; Dokumentacja produktowa
       </p>
       <PageHeader
         title="Dokumentacja produktowa"

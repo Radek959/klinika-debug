@@ -1042,6 +1042,33 @@ th {
   color: #52635b;
 }
 
+.materials-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #d8e2db;
+  margin: 18px 0 0;
+}
+
+.materials-tab {
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: #52635b;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.materials-tab:hover {
+  color: #17211c;
+}
+
+.materials-tab.active {
+  color: #17211c;
+  background: #ffffff;
+  border-color: #d8e2db;
+}
+
 .materials-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));

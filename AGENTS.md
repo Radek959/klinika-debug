@@ -58,7 +58,13 @@ Poprawny tryb bazowy jest obowiązkowy. Celowe błędy mogą być aktywowane wy�
 
 - Implementuj małe, pionowe fragmenty działające od UI do bazy i API.
 - Dodawaj testy jednostkowe i integracyjne do reguł biznesowych oraz kontraktów API.
-- Testy Playwright i k6 są opcjonalne; nie są warunkiem ukończenia MVP ani obowiązkową bramką CI.
+- Testy k6 są opcjonalne.
+- Playwright (`npm run test:workshop-browser`, uruchamiany przez `npm run verify:pr`) jest OBOWIĄZKOWĄ LOKALNĄ bramką przed KAŻDYM PR-em (patrz `docs/ai/feature-delivery-playbook.md`). Playwright:
+  - NIE jest wymaganym checkiem GitHub Actions;
+  - NIE jest uruchamiany w CI;
+  - NIE jest uruchamiany przeciwko Hostingerowi ani żadnemu innemu publicznemu hostowi;
+  - działa wyłącznie przeciwko lokalnemu środowisku Kliniki Debug.
+  Nie wpisuj w opisie PR-a „Playwright PASS", jeżeli test faktycznie nie został lokalnie uruchomiony — jeśli lokalne środowisko full-stack jest niedostępne, opisz tę blokadę wprost.
 - Nie zmieniaj zachowania produktu bez aktualizacji odpowiedniej dokumentacji.
 - Nie oznaczaj elementu jako zweryfikowanego lub wdrożonego bez dowodu: wykonanej komendy, wyniku CI, review albo sprawdzonego środowiska.
 - Celowe defekty warsztatowe muszą być oddzielone od prawidłowej implementacji i jasno identyfikowalne w kodzie.
