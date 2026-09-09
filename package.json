@@ -16,7 +16,7 @@
     "dev:web": "npm run dev --workspace=@klinika/web",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test:safety && npm run test --workspaces --if-present && npm run test:workshop-logs && npm run test:workshop-logs-web-copy && npm run test:workshop-docs-web-copy && npm run test:workshop-smoke && npm run test:workshop-browser-config",
+    "test": "npm run test:safety && npm run test --workspaces --if-present && npm run test:workshop-logs && npm run test:workshop-logs-web-copy && npm run test:workshop-docs-web-copy && npm run test:workshop-smoke && npm run test:workshop-browser-config && npm run test:workshop-local-config",
     "test:safety": "node scripts/test-database-safety.spec.cjs",
     "test:workshop-logs": "node scripts/validate-workshop-logs.cjs",
     "test:workshop-logs-web-copy": "node --test scripts/workshop-logs-web-copy.test.cjs",
@@ -46,6 +46,9 @@
     "workshop:seed": "ts-node --project tsconfig.base.json prisma/workshop-seed.ts",
     "workshop:prepare": "ts-node --project tsconfig.base.json prisma/workshop-prepare.ts",
     "workshop:reset": "ts-node --project tsconfig.base.json prisma/workshop-reset.ts",
+    "workshop:local:prepare": "node scripts/workshop-local-prepare.cjs",
+    "workshop:local:start": "npm run build && npm start",
+    "test:workshop-local-config": "node --test scripts/workshop-local/config.test.cjs",
     "check": "npm run lint && npm run typecheck && npm test && npm run build",
     "verify:pr": "npm run check && npm run test:workshop-browser"
   },

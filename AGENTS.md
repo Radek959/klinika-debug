@@ -65,7 +65,8 @@ Poprawny tryb bazowy jest obowiązkowy. Celowe błędy mogą być aktywowane wy�
   - NIE jest uruchamiany przeciwko Hostingerowi ani żadnemu innemu publicznemu hostowi;
   - działa wyłącznie przeciwko lokalnemu full-stackowi Kliniki Debug pod adresem `WORKSHOP_BROWSER_BASE_URL` (opcjonalny — domyślnie `http://localhost:3000`), NIGDY `WORKSHOP_BASE_URL` (ta zmienna jest wyłącznie dla `workshop:smoke` przeciwko wdrożonemu środowisku);
   - bez `WORKSHOP_E2E_CONFIRM=RUN` kończy się błędem (non-zero exit code) — samo "X skipped" NIE jest przejściem tej bramki.
-  Nie wpisuj w opisie PR-a „Playwright PASS", jeżeli test faktycznie nie został lokalnie uruchomiony — jeśli lokalne środowisko full-stack jest niedostępne, opisz tę blokadę wprost.
+  Jeżeli lokalne środowisko nie jest jeszcze przygotowane: `npm run workshop:local:prepare` (env, migracje, provisioning `tester01`/`warsztat-01`, Chromium — bez ręcznego generowania hashy Argon2 ani zgadywania kolejności). Aplikacja lokalnie działa przez `npm run workshop:local:start` (production-like build pod `http://localhost:3000`), a przed PR-em: `npm run verify:pr` (z `WORKSHOP_E2E_CONFIRM=RUN`).
+  **Jeżeli `npm run verify:pr` NIE przeszło, PR nie jest gotowy do merge'a.** Jeżeli sandbox agenta nie umożliwia uruchomienia lokalnego full-stacka (np. brak Dockera/MySQL): jawnie oznacz „Local Playwright: NOT RUN" w opisie PR-a, NIE zastępuj tego wynikiem CI i NIE uruchamiaj Playwrighta przeciwko Hostingerowi — właściciel/developer musi wykonać lokalne `verify:pr` przed finalnym mergem. Nie wymagaj od AI uruchamiania Dockera, jeśli sandbox go nie zapewnia.
 - Nie zmieniaj zachowania produktu bez aktualizacji odpowiedniej dokumentacji.
 - Nie oznaczaj elementu jako zweryfikowanego lub wdrożonego bez dowodu: wykonanej komendy, wyniku CI, review albo sprawdzonego środowiska.
 - Celowe defekty warsztatowe muszą być oddzielone od prawidłowej implementacji i jasno identyfikowalne w kodzie.

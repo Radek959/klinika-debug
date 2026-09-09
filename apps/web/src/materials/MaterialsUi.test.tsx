@@ -240,6 +240,50 @@ describe("materiały warsztatowe", () => {
     expect(downloadLink).toHaveAttribute("href", "/materials/docs/dokumentacja-produktowa.md");
   });
 
+  it("dokumentacja z wiodącym H1 ma tylko JEDEN H1 (użyty jako PageHeader, nie zdublowany w treści)", async () => {
+    const docsContent = "# Tytuł Testowy\n\nAkapit po H1.\n";
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === "/materials/docs/dokumentacja-produktowa.md") {
+        return new Response(docsContent, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/materials/product-docs");
+    render(<App />);
+
+    // getByRole rzuci błąd, gdyby na stronie było więcej niż jedno
+    // dopasowanie — to jest dowód na brak zdublowanego H1.
+    expect(
+      await screen.findByRole("heading", { name: "Tytuł Testowy", level: 1 })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Akapit po H1.")).toBeInTheDocument();
+  });
+
+  it("dokumentacja bez wiodącego H1 pokazuje fallbackowy tytuł 'Dokumentacja produktowa'", async () => {
+    const docsContent = "Treść bez nagłówka.\n";
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === "/materials/docs/dokumentacja-produktowa.md") {
+        return new Response(docsContent, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/materials/product-docs");
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Dokumentacja produktowa", level: 1 })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Treść bez nagłówka.")).toBeInTheDocument();
+  });
+
   it("pokazuje komunikat błędu po polsku, a link 'Wróć do materiałów' wraca do /materials?tab=documentation, gdy pobranie dokumentacji się nie powiedzie", async () => {
     mockFetch((request) => {
       if (request.url === "/api/v1/auth/me") {

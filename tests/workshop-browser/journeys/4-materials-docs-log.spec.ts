@@ -28,11 +28,13 @@ test.describe("Journey 4 — Materiały: dokumentacja i log", () => {
       .getByRole("heading", { name: "Dokumentacja produktowa" })
       .locator("xpath=ancestor::article");
     await docsCard.getByRole("link", { name: "Podgląd" }).click();
-    await expect(page.getByRole("heading", { name: "Dokumentacja produktowa" })).toBeVisible();
 
     // Dokumentacja jest renderowana jako sformatowana strona (react-markdown),
-    // nie surowy Markdown — sprawdzamy h1 z samej treści dokumentu oraz jedną
-    // charakterystyczną sekcję z tabelą (## 5. Użytkownicy systemu).
+    // nie surowy Markdown — h1 strony pochodzi z pierwszego "# ..." samego
+    // dokumentu (PageHeader nie dubluje go osobnym, statycznym h1), a jedną
+    // charakterystyczną sekcję z tabelą sprawdzamy przez ## 5. Użytkownicy systemu.
+    // getByRole z domyślnym dopasowaniem rzuciłby błąd przy więcej niż jednym
+    // trafieniu, więc to jest jednocześnie dowód na brak zdublowanego h1.
     await expect(
       page.getByRole("heading", { name: "Klinika Debug — dokumentacja produktowa", level: 1 })
     ).toBeVisible();

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -6,6 +6,24 @@ import remarkGfm from "remark-gfm";
 import { PageHeader } from "../layout/AppLayout";
 
 const PRODUCT_DOCS_URL = "/materials/docs/dokumentacja-produktowa.md";
+const FALLBACK_TITLE = "Dokumentacja produktowa";
+
+/**
+ * Dokument zaczyna się od własnego `# ...` (H1), a strona ma już własny
+ * nagłówek `PageHeader` — bez tego dwa H1 wyświetlałyby się jeden pod
+ * drugim. To CELOWO nie jest parser Markdown: tylko bardzo małe, bezpieczne
+ * wykrycie wiodącej linii `# ...` (z dopuszczalnymi wiodącymi pustymi
+ * liniami), które staje się tytułem `PageHeader`, a reszta treści nadal
+ * trafia w całości do `react-markdown`. Brak wiodącego H1 → fallback
+ * `FALLBACK_TITLE`, treść renderowana bez zmian.
+ */
+function extractLeadingHeading(markdown: string): { title: string; rest: string } {
+  const match = markdown.match(/^\s*#\s+(.+?)\s*\r?\n/);
+  if (!match) {
+    return { title: FALLBACK_TITLE, rest: markdown };
+  }
+  return { title: match[1].trim() || FALLBACK_TITLE, rest: markdown.slice(match[0].length) };
+}
 
 /** Tabela w osobnym, poziomo przewijalnym kontenerze — nie rozwala layoutu na wąskich ekranach. */
 const MARKDOWN_COMPONENTS = {
@@ -63,13 +81,18 @@ export function ProductDocsPage() {
     return () => controller.abort();
   }, []);
 
+  const { title, rest } = useMemo(
+    () => (content !== null ? extractLeadingHeading(content) : { title: FALLBACK_TITLE, rest: "" }),
+    [content]
+  );
+
   return (
     <>
       <p className="breadcrumbs">
         <Link to="/materials?tab=documentation">Materiały</Link> &gt; Dokumentacja produktowa
       </p>
       <PageHeader
-        title="Dokumentacja produktowa"
+        title={title}
         actions={
           <a className="secondary-link" href={PRODUCT_DOCS_URL} download>
             Pobierz .md
@@ -91,7 +114,7 @@ export function ProductDocsPage() {
       {!isLoading && !error && content !== null ? (
         <div className="product-docs-content">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-            {content}
+            {rest}
           </ReactMarkdown>
         </div>
       ) : null}

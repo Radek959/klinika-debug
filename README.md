@@ -152,7 +152,8 @@ npm run workshop:smoke
 Pełny smoke (logowanie uczestników, reset, główna ścieżka, kontrolowane błędy) wymaga jawnego potwierdzenia:
 
 ```powershell
-WORKSHOP_SMOKE_CONFIRM=RUN npm run workshop:smoke
+$env:WORKSHOP_SMOKE_CONFIRM = "RUN"
+npm run workshop:smoke
 ```
 
 Smoke drukuje host przed startem, nigdy nie loguje haseł/tokenów/cookies, na końcu (także po błędzie w trakcie testu) próbuje przywrócić `SUCCESS` + `CLEAN` i zresetować środowisko, oraz kończy się kodem `0` (PASS) albo `1` (co najmniej jeden krok FAIL).
@@ -172,13 +173,7 @@ Pełny techniczny runbook przygotowania warsztatu (audit zgodności ze szkolenie
 
 **Adres jest CELOWO osobny od `workshop:smoke`.** `WORKSHOP_BASE_URL` (sekcja wyżej) wskazuje wdrożone środowisko i jest używany WYŁĄCZNIE przez `workshop:smoke`. Playwright czyta `WORKSHOP_BROWSER_BASE_URL`, domyślnie `http://localhost:3000` — przy standardowym porcie nie trzeba go w ogóle ustawiać.
 
-Wymaga lokalnego, production-like środowiska, pod którym dostępne są jednocześnie frontend, `/api`, `/admin` i `/materials` — najprościej przez istniejący lokalny build:
-
-```powershell
-npm run build
-npm run db:migrate
-npm start
-```
+Wymaga lokalnego, production-like środowiska, pod którym dostępne są jednocześnie frontend, `/api`, `/admin` i `/materials` — patrz [„Lokalna weryfikacja przed PR"](#lokalna-weryfikacja-przed-pr) niżej po gotowe komendy (`workshop:local:prepare` + `workshop:local:start`).
 
 Konfiguracja — hasła co `workshop:smoke`, plus jawne potwierdzenie (suite zawsze tworzy dane i resetuje środowisko); `WORKSHOP_BROWSER_BASE_URL` podaj tylko, jeśli lokalna aplikacja nie działa na standardowym `localhost:3000`:
 
@@ -191,10 +186,41 @@ WORKSHOP_E2E_CONFIRM=RUN
 ```
 
 ```powershell
-WORKSHOP_E2E_CONFIRM=RUN npm run test:workshop-browser
+$env:WORKSHOP_E2E_CONFIRM = "RUN"
+npm run test:workshop-browser
 ```
 
 Suite jest serial (globalny config `/admin` nie nadaje się do równoległych testów). Setup: resetuje środowisko, a DOPIERO POTEM ustawia `SUCCESS` + `CLEAN` + `labDelay=5s` (reset przywraca domyślne 5 minut, więc konfiguracja testowa musi nastąpić po resecie) i sprawdza, że `/admin/api/config` rzeczywiście to potwierdza. Cleanup: reset, a potem `SUCCESS` + `CLEAN` + `labDelay=5min` — jeśli sprzątanie się nie powiedzie, suite jasno kończy się komunikatem „Środowisko wymaga ręcznego resetu.”. Przy niepowodzeniu zapisuje zrzut ekranu i trace (`retain-on-failure`); artefakty nie są commitowane.
+
+## Lokalna weryfikacja przed PR
+
+Trzy komendy, bez ręcznego generowania hashy Argon2, seedowania `tester01`, zgadywania kolejności migracji ani instalowania Chromium ręcznie:
+
+**Terminal 1** — jednorazowo (albo gdy lokalne środowisko jest nieaktualne) `workshop:local:prepare`, potem zawsze `workshop:local:start`:
+
+```powershell
+npm run workshop:local:prepare
+npm run workshop:local:start
+```
+
+`workshop:local:prepare`:
+
+- odmawia działania przy `NODE_ENV=production` albo gdy `DATABASE_URL` nie wskazuje na `localhost`/`127.0.0.1`/`::1` — nigdy nie dotyka zdalnej bazy;
+- sprawdza wymagane lokalne env (w tym że `WORKSHOP_ADMIN_PASSWORD` faktycznie pasuje do `ADMIN_PASSWORD_HASH` — `.env.example` ma gotową, działającą lokalną parę);
+- sprawdza połączenie z lokalnym MySQL (kończy czytelnym błędem z podpowiedzią `docker compose up -d mysql`, jeśli baza nie odpowiada — NIE uruchamia Dockera automatycznie);
+- uruchamia `db:generate` + `db:migrate` i istniejący `workshop:prepare` (provisioning `tester01`/`warsztat-01`), a potem weryfikuje w bazie, że rzeczywiście istnieją;
+- instaluje Chromium dla Playwrighta (`npx playwright install chromium`).
+
+`workshop:local:start` to `npm run build && npm start` — production-like serwer pod `http://localhost:3000` (backend serwuje już zbudowany frontend; dokładnie ten model wykorzystuje browser suite).
+
+**Terminal 2** — po starcie serwera z Terminala 1:
+
+```powershell
+$env:WORKSHOP_E2E_CONFIRM = "RUN"
+npm run verify:pr
+```
+
+Jeżeli `WORKSHOP_BROWSER_BASE_URL` nie jest ustawione, Playwright używa `http://localhost:3000` — nie trzeba ręcznie ustawiać URL-a dla standardowego przypadku. `WORKSHOP_E2E_CONFIRM=RUN` zostaje jawnym, ręcznym potwierdzeniem: `verify:pr` bez niego zawsze kończy się błędem (chroni lokalne dane przed przypadkowym resetem).
 
 ## Testy i build
 

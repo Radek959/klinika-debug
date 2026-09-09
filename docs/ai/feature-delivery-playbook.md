@@ -22,6 +22,17 @@ Użyj tego playbooka przy realizacji kompletnego zadania, funkcji albo PR-a, nie
 
 Definition of Done dla każdego PR-a obejmuje lokalne uruchomienie `npm run verify:pr` (lint, typecheck, testy, build i lokalny Playwright — `npm run test:workshop-browser`) PRZED utworzeniem PR-a.
 
+Standardowa ścieżka przed PR-em:
+
+```powershell
+npm run workshop:local:prepare
+npm run workshop:local:start
+$env:WORKSHOP_E2E_CONFIRM = "RUN"
+npm run verify:pr
+```
+
+`workshop:local:prepare` nie musi być uruchamiane przed każdym PR-em, jeśli lokalne środowisko jest już aktualne (baza zmigrowana, `tester01`/`warsztat-01` istnieją, Chromium zainstalowany). `verify:pr` — zawsze przed PR-em/mergem.
+
 - PR nie powinien zostać utworzony, jeśli ta bramka nie przeszła.
 - `npm run verify:pr` obejmuje Playwright, ale WYŁĄCZNIE przeciwko lokalnemu środowisku Kliniki Debug (patrz `AGENTS.md`, README) — nigdy przeciwko CI ani przeciwko Hostingerowi. Adres jest `WORKSHOP_BROWSER_BASE_URL` (opcjonalny, domyślnie `http://localhost:3000`) — NIGDY `WORKSHOP_BASE_URL` (ta zmienna jest wyłącznie dla `workshop:smoke`).
 - Bez `WORKSHOP_E2E_CONFIRM=RUN` `npm run test:workshop-browser` kończy się błędem, a nie "skipped" — to NIE jest przejście bramki.
