@@ -79,6 +79,12 @@ describe("panel /admin", () => {
         method: "POST",
         url: "/admin/api/reset",
         payload: { confirm: true }
+      }),
+      app.inject({ method: "GET", url: "/admin/api/workspaces" }),
+      app.inject({
+        method: "POST",
+        url: "/admin/api/workspaces/warsztat-01/reset",
+        payload: { confirm: true }
       })
     ]);
 
@@ -373,6 +379,134 @@ describe("panel /admin", () => {
     await expect(
       prisma.patient.findUnique({ where: { id: patientBefore.id } })
     ).resolves.not.toBeNull();
+  });
+
+  it("GET /admin/api/workspaces zwraca tylko slug, name i login uczestników warsztatowych", async () => {
+    const cookie = await loginAsAdmin();
+    await provisionWorkshopWorkspaces(prisma, 2);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/api/workspaces",
+      headers: { cookie }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body).toEqual([
+      { slug: "warsztat-01", name: "Klinika Warsztatowa 01", login: "tester01" },
+      { slug: "warsztat-02", name: "Klinika Warsztatowa 02", login: "tester02" }
+    ]);
+    expect(response.body).not.toContain("passwordHash");
+    expect(response.body).not.toContain("Testowy");
+  });
+
+  it("reset uczestnika resetuje wyłącznie wskazany workspace, unieważnia jego sesję i nie zmienia globalnej konfiguracji", async () => {
+    const cookie = await loginAsAdmin();
+    await provisionWorkshopWorkspaces(prisma, 2);
+
+    await app.inject({
+      method: "PUT",
+      url: "/admin/api/config",
+      headers: { cookie },
+      payload: { labScenario: "TIMEOUT", controlledBug: "API_DIAGNOSTICS", labDelayMs: 5000 }
+    });
+
+    const loginParticipant1 = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { login: "tester01", password: "WarsztatTestowe123!" }
+    });
+    const { token: token1 } = JSON.parse(loginParticipant1.body) as { token: string };
+
+    const loginParticipant2 = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { login: "tester02", password: "WarsztatTestowe123!" }
+    });
+    const { token: token2 } = JSON.parse(loginParticipant2.body) as { token: string };
+
+    const workspace1 = await prisma.workspace.findUniqueOrThrow({ where: { slug: "warsztat-01" } });
+    const patientsBefore = await prisma.patient.findMany({ where: { workspaceId: workspace1.id } });
+    expect(patientsBefore.length).toBeGreaterThan(0);
+    await prisma.patient.updateMany({
+      where: { workspaceId: workspace1.id },
+      data: { firstName: "Zmodyfikowany" }
+    });
+
+    const workspace2 = await prisma.workspace.findUniqueOrThrow({ where: { slug: "warsztat-02" } });
+    const patient2Before = await prisma.patient.findFirstOrThrow({
+      where: { workspaceId: workspace2.id }
+    });
+
+    const resetResponse = await app.inject({
+      method: "POST",
+      url: "/admin/api/workspaces/warsztat-01/reset",
+      headers: { cookie },
+      payload: { confirm: true }
+    });
+
+    expect(resetResponse.statusCode).toBe(200);
+    expect(JSON.parse(resetResponse.body)).toEqual({ resetWorkspaceSlug: "warsztat-01" });
+
+    // workspace-01: dane przywrócone do stanu startowego.
+    const patientsAfter = await prisma.patient.findMany({ where: { workspaceId: workspace1.id } });
+    expect(patientsAfter.every((patient) => patient.firstName !== "Zmodyfikowany")).toBe(true);
+
+    // workspace-02: dane bez zmian.
+    const patient2After = await prisma.patient.findUniqueOrThrow({
+      where: { id: patient2Before.id }
+    });
+    expect(patient2After.firstName).toBe(patient2Before.firstName);
+
+    // Sesja uczestnika 01 unieważniona, uczestnika 02 nadal aktywna.
+    const meAfterReset1 = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/me",
+      headers: { authorization: `Bearer ${token1}` }
+    });
+    expect(meAfterReset1.statusCode).toBe(401);
+
+    const meAfterReset2 = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/me",
+      headers: { authorization: `Bearer ${token2}` }
+    });
+    expect(meAfterReset2.statusCode).toBe(200);
+
+    // Globalna konfiguracja nie jest dotknięta przez reset jednego uczestnika.
+    const configAfter = await app.inject({
+      method: "GET",
+      url: "/admin/api/config",
+      headers: { cookie }
+    });
+    const configBody = JSON.parse(configAfter.body);
+    expect(configBody.labScenario).toBe("TIMEOUT");
+    expect(configBody.controlledBug).toBe("API_DIAGNOSTICS");
+    expect(configBody.labDelayMs).toBe(5000);
+  });
+
+  it("reset uczestnika odrzuca nieprawidłowy slug (400) i nieistniejący workspace warsztatowy (404)", async () => {
+    const cookie = await loginAsAdmin();
+    await provisionWorkshopWorkspaces(prisma, 1);
+
+    const invalidSlug = await app.inject({
+      method: "POST",
+      url: "/admin/api/workspaces/klinika-pokazowa/reset",
+      headers: { cookie },
+      payload: { confirm: true }
+    });
+    expect(invalidSlug.statusCode).toBe(400);
+    expect(JSON.parse(invalidSlug.body).error.code).toBe("ADMIN_INVALID_WORKSPACE_SLUG");
+
+    const unknownWorkspace = await app.inject({
+      method: "POST",
+      url: "/admin/api/workspaces/warsztat-99/reset",
+      headers: { cookie },
+      payload: { confirm: true }
+    });
+    expect(unknownWorkspace.statusCode).toBe(404);
+    expect(JSON.parse(unknownWorkspace.body).error.code).toBe("ADMIN_WORKSPACE_NOT_FOUND");
   });
 
   it("odpowiedzi API uczestnika nie ujawniają konfiguracji panelu /admin", async () => {

@@ -45,8 +45,9 @@ Wymagania:
 
 ### Status: `workshop-participant-workspaces` (zaimplementowane)
 
-Provisioning i reset są zaimplementowane jako mechanizmy CLI (fundament pod
-przyszły endpoint `/admin`, nie jego zamiennik):
+Provisioning i reset są zaimplementowane jako mechanizmy CLI. Panel `/admin`
+(sekcja "Minimalny Trainer Panel" niżej) wywołuje tę samą funkcję resetu
+bezpośrednio — nie ma drugiej, równoległej implementacji:
 
 - `npm run workshop:seed -- --participants=15` — tworzy (albo aktualizuje)
   deterministyczne workspace'y `warsztat-01`…`warsztat-NN` (widoczna nazwa
@@ -69,17 +70,21 @@ przyszły endpoint `/admin`, nie jego zamiennik):
   `WORKSHOP_RESET_CONFIRM=RESET` polecenie zawsze się zatrzymuje — to
   celowy dodatkowy bezpiecznik przed przypadkowym uruchomieniem. Funkcja
   resetu wymaga też programistycznego potwierdzenia (`confirm: true`) na
-  poziomie wywołania, więc przyszły endpoint `/admin` będzie mógł ją wywołać
+  poziomie wywołania — panel `/admin` (`POST /admin/api/reset`) wywołuje ją
   bezpośrednio, bez kopiowania logiki i bez polegania na zmiennej
-  środowiskowej CLI.
+  środowiskowej CLI. Panel udostępnia też analogiczny reset WYŁĄCZNIE
+  jednego workspace'u (`resetSingleWorkshopWorkspace(...)`,
+  `POST /admin/api/workspaces/:slug/reset`) — patrz sekcja "Minimalny
+  Trainer Panel" niżej.
 - Decyzja o sesjach: reset unieważnia (`revokedAt`) wszystkie aktywne sesje
   kont z resetowanych workspace'ów. Uczestnik musi zalogować się ponownie po
   reset — to akceptowalny, przewidywalny efekt uboczny, pokryty testem.
 - Izolacja danych między workspace'ami warsztatowymi korzysta z tego samego,
   istniejącego mechanizmu `workspaceId`, co reszta aplikacji — nie
   wprowadzono żadnego nowego, osobnego mechanizmu izolacji.
-- Panel `/admin` (wybór scenariusza, wybór błędu, UI resetu) pozostaje poza
-  zakresem tego PR-a i zostanie dodany w `workshop-trainer-controls`.
+- Panel `/admin` (wybór scenariusza, wybór błędu, UI resetu) był w tym PR-ze
+  jeszcze poza zakresem — powstał w `workshop-trainer-controls` i został
+  rozbudowany w `workshop-trainer-controls-recovery` (patrz status niżej).
 
 ## Pozostały zakres Workshop MVP
 
@@ -103,14 +108,18 @@ Nie budujemy pełnego panelu administracyjnego. Monitoring aplikacji, dashboard 
   (`apps/api/src/admin/admin-view.controller.ts`). Nie jest zarejestrowany w
   routingu SPA uczestnika i nie jest nigdzie linkowany — jest osiągalny
   wyłącznie dla kogoś, kto zna adres `/admin`.
-- Globalna konfiguracja (`labScenario`, `controlledBug`, `updatedAt`) jest
-  jednym wierszem w nowej tabeli `workshop_config`
+- Globalna konfiguracja (`labScenario`, `controlledBug`, `labDelayMs`,
+  `updatedAt`) jest jednym wierszem w tabeli `workshop_config`
   (migracja addytywna `prisma/migrations/20260908090000_workshop_config`) i
   jest odczytywana/zapisywana przez `WorkshopConfigService`
   (`apps/api/src/workshop-config/workshop-config.service.ts`), z prostym
   cache'em w procesie — aplikacja działa jako pojedynczy proces Node, więc nie
   jest potrzebna żadna dodatkowa warstwa (Redis, pub/sub itd.). Nowa instancja
   serwisu (np. po restarcie procesu) zawsze odczytuje bieżący stan z bazy.
+  `labDelayMs` (czas generowania wyników po przyjęciu zlecenia przez
+  laboratorium) jest ograniczony do zamkniętej listy presetów
+  (`LAB_DELAY_PRESETS_MS` w `apps/api/src/workshop-config/lab-delay.ts`) i NIE
+  zmienia harmonogramu automatycznych retry (nadal 15/30/60 s).
 - `OrdersService.sendOrder` czyta scenariusz NOWEJ wysyłki z
   `WorkshopConfigService`, zamiast bezpośrednio z `LAB_SIMULATOR_SCENARIO`.
   Automatyczne ponowienie wysyłki (`executeSendRetry`) nadal używa wyłącznie
@@ -119,19 +128,22 @@ Nie budujemy pełnego panelu administracyjnego. Monitoring aplikacji, dashboard 
   zaplanowanego ponowienia w inny scenariusz. `LAB_SIMULATOR_SCENARIO`
   pozostaje tylko jako wartość STARTOWA (bootstrap) dla świeżo zmigrowanej
   bazy, odczytywana raz przy pierwszym utworzeniu wiersza `workshop_config`.
-- Kontrolowany błąd: w tym PR-ze dozwolona jest wyłącznie wartość `CLEAN`
-  (`apps/api/src/workshop-config/controlled-bug.ts`). Panel przygotowuje pole
-  wyboru na przyszłe defekty (`workshop-controlled-bugs`), ale nie pozwala
-  aktywować niczego, co jeszcze nie istnieje — backend odrzuca każdą inną
-  wartość (HTTP 400).
-- Przycisk „Resetuj środowisko” w panelu wymaga jawnego potwierdzenia
-  (natywny `window.confirm` w UI + pole `confirm: true` w kontrakcie API) i
-  wywołuje WYŁĄCZNIE istniejący `resetWorkshopWorkspaces(...)`
-  (`apps/api/src/common/prisma/reset-workshop.ts`) — nie ma drugiej,
-  równoległej implementacji resetu. Po resecie konfiguracja panelu wraca do
-  `SUCCESS` + `CLEAN`. Reset nigdy nie dotyka `klinika-pokazowa` ani innych
-  workspace'ów spoza wzorca `warsztat-NN` — to zachowanie istniejącej funkcji
-  z PR-a `workshop-participant-workspaces`, bez zmian.
+- Kontrolowany błąd: dozwolone wartości to `CLEAN` oraz trzy zaimplementowane
+  defekty — `PATIENT_GUARDIAN`, `ORDER_FLOW`, `API_DIAGNOSTICS` (lista w
+  `apps/api/src/workshop-config/controlled-bug.ts`, szczegóły implementacji w
+  sekcji "Kontrolowane błędy" niżej). Aktywny może być co najwyżej jeden
+  defekt naraz; backend odrzuca każdą wartość spoza tej listy (HTTP 400).
+- Panel udostępnia DWA tryby resetu, oba przez istniejące funkcje w
+  `apps/api/src/common/prisma/reset-workshop.ts` (bez drugiej, równoległej
+  implementacji): „Resetuj środowisko” wywołuje `resetWorkshopWorkspaces(...)`
+  — resetuje WSZYSTKIE workspace'y `warsztat-NN`, unieważnia sesje wszystkich
+  uczestników i przywraca konfigurację do `SUCCESS` + `CLEAN` + `300000` ms;
+  „Reset uczestnika” wywołuje `resetSingleWorkshopWorkspace(...)` — resetuje
+  WYŁĄCZNIE jeden wskazany `warsztat-NN`, unieważnia sesję tylko tego
+  uczestnika i NIE zmienia globalnej konfiguracji. Oba tryby wymagają jawnego
+  potwierdzenia (natywny `window.confirm` w UI + pole `confirm: true` w
+  kontrakcie API) i nigdy nie dotykają `klinika-pokazowa` ani innych
+  workspace'ów spoza wzorca `warsztat-NN`.
 - Uwierzytelnienie panelu jest CELOWO osobne od sesji `STAFF`
   (`apps/api/src/admin/admin-session.service.ts`,
   `apps/api/src/admin/admin-auth.guard.ts`): hasło porównywane jest przez
@@ -141,10 +153,21 @@ Nie budujemy pełnego panelu administracyjnego. Monitoring aplikacji, dashboard 
   nowej tabeli kont admina, ról ani RBAC — jest tylko ważne/nieważne
   ciasteczko sesji prowadzącego.
 - API panelu (`/admin/api/login`, `/admin/api/logout`, `/admin/api/config`,
-  `/admin/api/reset`) jest wyłączone z prefiksu `/api/v1`
+  `/admin/api/reset`, `/admin/api/workspaces`,
+  `/admin/api/workspaces/:slug/reset`) jest wyłączone z prefiksu `/api/v1`
   (`app.setGlobalPrefix` w `apps/api/src/app.setup.ts`) i z publicznego
   OpenAPI (`@ApiExcludeController()`), więc nie pojawia się w dokumentacji
   API dla uczestnika ani w API produktu/uprawnieniach `STAFF`.
+  `GET /admin/api/workspaces` zwraca WYŁĄCZNIE `slug`/`name`/login
+  workspace'ów `warsztat-NN`, bez danych pacjentów, haszy czy sesji — służy
+  do wyboru uczestnika w sekcji "Reset uczestnika".
+- Panel (`workshop-trainer-controls-recovery`) zawiera dodatkowo: badge
+  podsumowujący aktualną konfigurację (scenariusz/defekt/czas wyników),
+  maksymalnie 4 szybkie presety zapisujące `labScenario`+`controlledBug`+
+  `labDelayMs` jednym kliknięciem przez istniejący `PUT /admin/api/config`
+  (bez osobnego backendu presetów) oraz dynamiczne opisy pod selectami
+  scenariusza laboratorium i kontrolowanego błędu — szczegóły w
+  `docs/implementation/README.md` ("Workshop MVP — trainer controls").
 - Testy: `apps/api/src/workshop-config/workshop-config.service.spec.ts`
   (bootstrap, cache w procesie, przeżycie restartu, walidacja, reset do
   domyślnych wartości), `apps/api/src/admin/admin-session.service.spec.ts`
@@ -152,9 +175,15 @@ Nie budujemy pełnego panelu administracyjnego. Monitoring aplikacji, dashboard 
   `apps/api/src/config/env.validation.spec.ts` (wymagane
   `ADMIN_PASSWORD_HASH`/`ADMIN_SESSION_SECRET`),
   `apps/api/test/admin.e2e-spec.ts` (uwierzytelnienie, zapis konfiguracji,
-  wpływ na nową wysyłkę vs. zapisany scenariusz ponowienia, reset,
-  izolacja `klinika-pokazowa`, brak wycieku konfiguracji do API uczestnika i
-  do OpenAPI), `scripts/test-workshop-config-migration.cjs`
+  wpływ na nową wysyłkę vs. zapisany scenariusz ponowienia, pełny reset,
+  reset jednego uczestnika i izolacja pozostałych workspace'ów, lista
+  `GET /admin/api/workspaces`, izolacja `klinika-pokazowa`, brak wycieku
+  konfiguracji do API uczestnika i do OpenAPI),
+  `apps/api/src/common/prisma/reset-workshop.spec.ts` i
+  `apps/api/src/admin/admin.controller.spec.ts` (błąd DB/transakcji przy
+  resecie uczestnika propaguje jako normalny błąd serwera — NIE jest
+  maskowany jako 404; 404 dotyczy wyłącznie faktycznie nieistniejącego,
+  poprawnego sluga `warsztat-NN`), `scripts/test-workshop-config-migration.cjs`
   (`npm run test:migration:workshop-config`, uruchamiany w
   `.github/workflows/ci.yml`).
 

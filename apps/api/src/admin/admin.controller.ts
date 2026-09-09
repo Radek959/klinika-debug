@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Put,
   Res,
@@ -13,8 +14,14 @@ import { ConfigService } from "@nestjs/config";
 import { ApiExcludeController } from "@nestjs/swagger";
 import type { FastifyReply } from "fastify";
 import { ApiErrorException } from "../common/errors/api-error.exception";
+import { listWorkshopWorkspaces } from "../common/prisma/list-workshop-workspaces";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { resetWorkshopWorkspaces } from "../common/prisma/reset-workshop";
+import {
+  resetSingleWorkshopWorkspace,
+  resetWorkshopWorkspaces,
+  WorkshopWorkspaceNotFoundError
+} from "../common/prisma/reset-workshop";
+import { isWorkshopWorkspaceSlug } from "../common/prisma/workshop-workspaces";
 import { PasswordService } from "../auth/password.service";
 import { LAB_SIMULATOR_SCENARIOS } from "../lab-simulator/lab-simulator-scenario";
 import { CONTROLLED_BUGS } from "../workshop-config/controlled-bug";
@@ -110,6 +117,61 @@ export class AdminController {
       resetWorkspaceSlugs: result.resetWorkspaceSlugs,
       config: this.toConfigResponse(config)
     };
+  }
+
+  /**
+   * Workspace'y warsztatowe dostępne do resetu jednego uczestnika (sekcja
+   * "Reset uczestnika" w panelu `/admin`). Zwraca WYŁĄCZNIE `slug`, `name` i
+   * login konta uczestnika — bez danych pacjentów, haszy czy sesji.
+   */
+  @Get("workspaces")
+  @UseGuards(AdminAuthGuard)
+  async listWorkspaces() {
+    return listWorkshopWorkspaces(this.prisma);
+  }
+
+  /**
+   * Reset danych WYŁĄCZNIE JEDNEGO workspace'u warsztatowego (`slug`
+   * `warsztat-NN`) — pozostali uczestnicy nie są dotknięci i globalna
+   * konfiguracja (`labScenario`/`controlledBug`/`labDelayMs`) nie jest
+   * zmieniana. Sesja uczestnika tego workspace'u jest unieważniana tak samo
+   * jak przy pełnym resecie środowiska (`resetWorkshopWorkspaces`).
+   */
+  @Post("workspaces/:slug/reset")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AdminAuthGuard)
+  async resetParticipant(
+    @Param("slug") slug: string,
+    @Body() dto: AdminResetDto
+  ) {
+    if (!isWorkshopWorkspaceSlug(slug)) {
+      throw new ApiErrorException(
+        HttpStatus.BAD_REQUEST,
+        "ADMIN_INVALID_WORKSPACE_SLUG",
+        "Nieprawidłowy identyfikator workspace'u warsztatowego."
+      );
+    }
+
+    try {
+      const result = await resetSingleWorkshopWorkspace(this.prisma, {
+        confirm: dto.confirm,
+        workspaceSlug: slug
+      });
+      return { resetWorkspaceSlug: result.resetWorkspaceSlug };
+    } catch (error) {
+      if (error instanceof WorkshopWorkspaceNotFoundError) {
+        // Workspace o poprawnym formacie sluga, ale nieistniejący (np.
+        // usunięty albo z innej liczby uczestników) — bezpieczny 404 zamiast
+        // 500. Każdy INNY błąd (DB, transakcja, revoke sesji, reseeding)
+        // propaguje dalej — nie jest maskowany jako "nie istnieje".
+        throw new ApiErrorException(
+          HttpStatus.NOT_FOUND,
+          "ADMIN_WORKSPACE_NOT_FOUND",
+          "Workspace warsztatowy nie istnieje."
+        );
+      }
+      throw error;
+    }
   }
 
   private async verifyAdminPassword(hash: string, password: string): Promise<boolean> {

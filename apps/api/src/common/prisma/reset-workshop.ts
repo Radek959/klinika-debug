@@ -5,14 +5,40 @@ import { seedWorkspacePatients } from "./seed-database";
 export interface ResetWorkshopOptions {
   /**
    * Bezpiecznik programistyczny: musi być jawnie ustawiony na `true` przez
-   * wywołującego (CLI albo przyszły endpoint `/admin`). Sama funkcja nigdy
-   * nie zgaduje potwierdzenia — brak jawnej zgody jest błędem.
+   * wywołującego (CLI albo endpoint `/admin`). Sama funkcja nigdy nie
+   * zgaduje potwierdzenia — brak jawnej zgody jest błędem.
    */
   confirm: boolean;
 }
 
 export interface ResetWorkshopResult {
   resetWorkspaceSlugs: string[];
+}
+
+export interface ResetSingleWorkshopWorkspaceOptions {
+  /** Ten sam bezpiecznik jak w {@link ResetWorkshopOptions.confirm}. */
+  confirm: boolean;
+  /** Musi pasować do wzorca `warsztat-NN` ({@link isWorkshopWorkspaceSlug}). */
+  workspaceSlug: string;
+}
+
+export interface ResetSingleWorkshopWorkspaceResult {
+  resetWorkspaceSlug: string;
+}
+
+/**
+ * Rzucany WYŁĄCZNIE wtedy, gdy `workspaceSlug` ma poprawny format `warsztat-NN`,
+ * ale taki workspace faktycznie nie istnieje w bazie. Odróżnia ten jeden,
+ * bezpieczny do zmapowania na HTTP 404 przypadek od każdego innego błędu
+ * (DB, transakcja, revoke sesji, reseeding) — te pozostałe mają propagować
+ * jako normalne błędy serwera, a nie zostać cicho zamaskowane jako "nie
+ * istnieje".
+ */
+export class WorkshopWorkspaceNotFoundError extends Error {
+  constructor(readonly workspaceSlug: string) {
+    super(`Workspace warsztatowy "${workspaceSlug}" nie istnieje.`);
+    this.name = "WorkshopWorkspaceNotFoundError";
+  }
 }
 
 /**
@@ -54,14 +80,65 @@ export async function resetWorkshopWorkspaces(
     where: { slug: { startsWith: WORKSHOP_SLUG_PREFIX } },
     select: { id: true, slug: true }
   });
-  const workspaceIds = workshopWorkspaces
-    .filter((workspace) => isWorkshopWorkspaceSlug(workspace.slug))
-    .map((workspace) => workspace.id);
-
-  if (workspaceIds.length === 0) {
+  const targetWorkspaces = workshopWorkspaces.filter((workspace) =>
+    isWorkshopWorkspaceSlug(workspace.slug)
+  );
+  if (targetWorkspaces.length === 0) {
     return { resetWorkspaceSlugs: [] };
   }
 
+  await resetWorkspacesData(client, targetWorkspaces);
+
+  return {
+    resetWorkspaceSlugs: targetWorkspaces.map((workspace) => workspace.slug)
+  };
+}
+
+/**
+ * Resetuje dane WYŁĄCZNIE JEDNEGO workspace'u warsztatowego wskazanego przez
+ * `workspaceSlug`, do tego samego deterministycznego stanu początkowego jak
+ * {@link resetWorkshopWorkspaces}. Pozostałe workspace'y warsztatowe (i
+ * `klinika-pokazowa`) nie są w żaden sposób dotknięte — przydatne do
+ * przywrócenia jednego uczestnika bez resetowania całej grupy.
+ *
+ * Te same zasady bezpieczeństwa jak {@link resetWorkshopWorkspaces}: wymaga
+ * `options.confirm === true`, `workspaceSlug` musi pasować do wzorca
+ * `warsztat-NN` ({@link isWorkshopWorkspaceSlug}), a workspace i konto
+ * `testerXX` nie są usuwane — tylko ich dane zależne.
+ */
+export async function resetSingleWorkshopWorkspace(
+  client: PrismaClient,
+  options: ResetSingleWorkshopWorkspaceOptions
+): Promise<ResetSingleWorkshopWorkspaceResult> {
+  if (options.confirm !== true) {
+    throw new Error(
+      "Reset danych warsztatowych wymaga jawnego potwierdzenia (confirm: true)."
+    );
+  }
+  if (!isWorkshopWorkspaceSlug(options.workspaceSlug)) {
+    throw new Error(
+      `Nieprawidłowy slug workspace'u warsztatowego: "${options.workspaceSlug}".`
+    );
+  }
+
+  const workspace = await client.workspace.findUnique({
+    where: { slug: options.workspaceSlug },
+    select: { id: true, slug: true }
+  });
+  if (!workspace) {
+    throw new WorkshopWorkspaceNotFoundError(options.workspaceSlug);
+  }
+
+  await resetWorkspacesData(client, [workspace]);
+
+  return { resetWorkspaceSlug: workspace.slug };
+}
+
+async function resetWorkspacesData(
+  client: PrismaClient,
+  workspaces: Array<{ id: string; slug: string }>
+): Promise<void> {
+  const workspaceIds = workspaces.map((workspace) => workspace.id);
   const workspaceScope = { workspaceId: { in: workspaceIds } };
 
   await client.$transaction(async (tx) => {
@@ -88,17 +165,8 @@ export async function resetWorkshopWorkspaces(
     await tx.guardian.deleteMany({ where: workspaceScope });
     await tx.patient.deleteMany({ where: workspaceScope });
 
-    for (const workspace of workshopWorkspaces) {
-      if (!isWorkshopWorkspaceSlug(workspace.slug)) {
-        continue;
-      }
+    for (const workspace of workspaces) {
       await seedWorkspacePatients(tx, workspace.id);
     }
   });
-
-  return {
-    resetWorkspaceSlugs: workshopWorkspaces
-      .filter((workspace) => isWorkshopWorkspaceSlug(workspace.slug))
-      .map((workspace) => workspace.slug)
-  };
 }
