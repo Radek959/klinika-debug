@@ -210,6 +210,8 @@ Wymagania wobec aplikacji:
 - REST API dostępne dla konta uczestnika;
 - brak potrzeby implementowania osobnego `/docs`, jeśli dokumentacja produktowa może być przekazana jako plik.
 
+W `Materiały → Dokumentacja` uczestnik może skopiować surowy Markdown dokumentacji produktowej do schowka (przycisk „Kopiuj dokumentację”) i pobrać kontrakt API jako plik OpenAPI JSON (przycisk „Pobierz OpenAPI JSON”) — oba są gotowym kontekstem do wklejenia do ChatGPT/Claude/Gemini.
+
 ### Etap I — tworzenie własnych narzędzi z AI
 
 Uczestnik może stworzyć np.:

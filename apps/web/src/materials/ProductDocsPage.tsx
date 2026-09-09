@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PageHeader } from "../layout/AppLayout";
 
-const PRODUCT_DOCS_URL = "/materials/docs/dokumentacja-produktowa.md";
+export const PRODUCT_DOCS_URL = "/materials/docs/dokumentacja-produktowa.md";
 const FALLBACK_TITLE = "Dokumentacja produktowa";
 
 /**

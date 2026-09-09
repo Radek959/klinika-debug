@@ -101,6 +101,35 @@ describe("materiały warsztatowe", () => {
     const openApiLink = within(apiCard).getByRole("link", { name: "Otwórz OpenAPI" });
     expect(openApiLink).toHaveAttribute("href", "/api/docs");
     expect(openApiLink).toHaveAttribute("target", "_blank");
+
+    const openApiJsonLink = within(apiCard).getByRole("link", { name: "Pobierz OpenAPI JSON" });
+    expect(openApiJsonLink).toHaveAttribute("href", "/api/docs-json");
+  });
+
+  it("kopiuje surowy Markdown dokumentacji produktowej do schowka, nie wyrenderowany tekst", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    const rawMarkdown = "# Dokumentacja produktowa\n\n- **Punkt** z `kodem`\n";
+    mockFetch((request) => {
+      if (request.url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (request.url === "/materials/docs/dokumentacja-produktowa.md") {
+        return new Response(rawMarkdown, { status: 200 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    window.history.pushState({}, "", "/materials?tab=documentation");
+    render(<App />);
+
+    const heading = await screen.findByRole("heading", { name: "Dokumentacja produktowa" });
+    const card = heading.closest("article") as HTMLElement;
+    await userEvent.click(within(card).getByRole("button", { name: "Kopiuj dokumentację" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(rawMarkdown));
+    expect(await within(card).findByRole("button", { name: "Skopiowano" })).toBeInTheDocument();
   });
 
   it("nieprawidłowa wartość parametru tab bezpiecznie pokazuje domyślną zakładkę Logi aplikacji", async () => {

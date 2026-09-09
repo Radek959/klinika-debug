@@ -1,6 +1,18 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../layout/AppLayout";
+import { CopyButton } from "../ui/CopyButton";
+import { PRODUCT_DOCS_URL } from "./ProductDocsPage";
 import { workshopLogs } from "./workshopLogs";
+
+const OPENAPI_JSON_URL = "/api/docs-json";
+
+async function fetchProductDocsMarkdown() {
+  const response = await fetch(PRODUCT_DOCS_URL);
+  if (!response.ok) {
+    throw new Error("Nie udało się pobrać dokumentacji.");
+  }
+  return response.text();
+}
 
 type MaterialsTab = "logs" | "documentation";
 
@@ -93,6 +105,7 @@ function DocumentationTab() {
           >
             Pobierz .md
           </a>
+          <CopyButton value={fetchProductDocsMarkdown} label="Kopiuj dokumentację" />
         </div>
       </article>
 
@@ -102,6 +115,9 @@ function DocumentationTab() {
         <div className="material-card-actions">
           <a className="button-link" href="/api/docs" target="_blank" rel="noreferrer">
             Otwórz OpenAPI
+          </a>
+          <a className="secondary-link" href={OPENAPI_JSON_URL} target="_blank" rel="noreferrer">
+            Pobierz OpenAPI JSON
           </a>
         </div>
       </article>

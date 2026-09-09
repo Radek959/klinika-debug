@@ -108,9 +108,7 @@ export function PatientListPage({ token }: { token: string }) {
             Dodaj pacjenta
           </Link>
         }
-      >
-        <p>Lista korzysta z wyszukiwania, filtrów i sortowania po stronie API.</p>
-      </PageHeader>
+      />
 
       <section className="filters-panel" aria-label="Filtry pacjentów">
         <label>

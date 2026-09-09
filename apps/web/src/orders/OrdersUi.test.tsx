@@ -921,6 +921,108 @@ describe("interfejs zleceń", () => {
     expect(screen.queryByRole("link", { name: "Edytuj zlecenie" })).not.toBeInTheDocument();
   });
 
+  it.each(["SENT_TO_LAB", "PROCESSING", "PARTIAL"] as const)(
+    "pokazuje przycisk 'Odśwież status' dla statusu %s i pozwala ręcznie pobrać nowe dane bez przeładowania strony",
+    async (status) => {
+      window.history.pushState({}, "", "/orders/order-1");
+      let orderRequests = 0;
+      const deferredSecondResponse = createDeferred<Response>();
+
+      mockFetch(({ url }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/orders/order-1/history")) {
+          return json(historyListResponse([]));
+        }
+        if (url === "/api/v1/orders/order-1") {
+          orderRequests += 1;
+          if (orderRequests === 1) {
+            return json(orderDetails({ status }));
+          }
+          return deferredSecondResponse.promise;
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+
+      const refreshButton = await screen.findByRole("button", { name: "Odśwież status" });
+      expect(orderRequests).toBe(1);
+
+      await userEvent.click(refreshButton);
+      expect(orderRequests).toBe(2);
+      expect(await screen.findByRole("button", { name: "Odświeżanie..." })).toBeDisabled();
+      // Treść zlecenia pozostaje na ekranie w trakcie odświeżania — brak
+      // przeładowania całej strony.
+      expect(screen.getByRole("heading", { name: "Zlecenie: Anna Nowak" })).toBeInTheDocument();
+
+      deferredSecondResponse.resolve(json(orderDetails({ status: "COMPLETED" })));
+
+      // Po odświeżeniu status się zmienił na zakończony — przycisk znika,
+      // bo zlecenie nie oczekuje już na laboratorium.
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: "Odśwież status" })).not.toBeInTheDocument();
+      });
+      expect(screen.queryByRole("button", { name: "Odświeżanie..." })).not.toBeInTheDocument();
+    }
+  );
+
+  it("aktualizuje status po kliknięciu 'Odśwież status' i nie dodaje żadnego automatycznego pollingu", async () => {
+    window.history.pushState({}, "", "/orders/order-1");
+    let orderRequests = 0;
+
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url.startsWith("/api/v1/orders/order-1/history")) {
+        return json(historyListResponse([]));
+      }
+      if (url === "/api/v1/orders/order-1") {
+        orderRequests += 1;
+        return json(orderDetails({ status: orderRequests === 1 ? "SENT_TO_LAB" : "PARTIAL" }));
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "Odśwież status" });
+    expect(screen.getByText("Wysłane do laboratorium")).toBeInTheDocument();
+    expect(orderRequests).toBe(1);
+
+    // Upływ czasu bez kliknięcia nie wywołuje żadnego dodatkowego pobrania —
+    // odświeżenie jest wyłącznie manualne (bez setInterval/pollingu).
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(orderRequests).toBe(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Odśwież status" }));
+
+    expect(await screen.findByText("Wynik częściowy")).toBeInTheDocument();
+    expect(orderRequests).toBe(2);
+    // Przycisk wraca do stanu spoczynku, bez śladu ukrytego pollingu.
+    expect(screen.getByRole("button", { name: "Odśwież status" })).toBeEnabled();
+  });
+
+  it("nie pokazuje przycisku 'Odśwież status' dla zlecenia niewymagającego odświeżenia", async () => {
+    window.history.pushState({}, "", "/orders/order-1");
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/orders/order-1") {
+        return json(orderDetails({ status: "COMPLETED" }));
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Odśwież status" })).not.toBeInTheDocument();
+  });
+
   it("pobiera i wypełnia formularz edycji zlecenia", async () => {
     window.history.pushState({}, "", "/orders/order-1/edit");
     mockFetch(({ url }) => {
