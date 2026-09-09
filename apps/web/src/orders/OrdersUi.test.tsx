@@ -1005,6 +1005,59 @@ describe("interfejs zleceń", () => {
     expect(screen.getByRole("button", { name: "Odśwież status" })).toBeEnabled();
   });
 
+  it("pokazuje komunikat błędu po nieudanym ręcznym odświeżeniu, zachowując stare dane zlecenia", async () => {
+    window.history.pushState({}, "", "/orders/order-1");
+    let orderRequests = 0;
+
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url.startsWith("/api/v1/orders/order-1/history")) {
+        return json(historyListResponse([]));
+      }
+      if (url === "/api/v1/orders/order-1") {
+        orderRequests += 1;
+        if (orderRequests === 2) {
+          return jsonError(
+            503,
+            "ORDER_FETCH_ERROR",
+            "Nie udało się odświeżyć statusu zlecenia.",
+            "corr-refresh"
+          );
+        }
+        return json(orderDetails({ status: "SENT_TO_LAB" }));
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "Odśwież status" });
+    expect(screen.getByText("Wysłane do laboratorium")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Odśwież status" }));
+
+    expect(await screen.findByText("Nie udało się odświeżyć statusu zlecenia.")).toBeInTheDocument();
+    // Nie ma pełnego ekranu błędu — reszta strony i dotychczasowy status
+    // zlecenia pozostają widoczne.
+    expect(screen.getByRole("heading", { name: "Zlecenie: Anna Nowak" })).toBeInTheDocument();
+    expect(screen.getByText("Wysłane do laboratorium")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Nie udało się wczytać zlecenia" })
+    ).not.toBeInTheDocument();
+    expect(orderRequests).toBe(2);
+
+    // Kolejny, tym razem udany refresh czyści komunikat błędu.
+    await userEvent.click(screen.getByRole("button", { name: "Odśwież status" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Nie udało się odświeżyć statusu zlecenia.")
+      ).not.toBeInTheDocument();
+    });
+    expect(orderRequests).toBe(3);
+  });
+
   it("nie pokazuje przycisku 'Odśwież status' dla zlecenia niewymagającego odświeżenia", async () => {
     window.history.pushState({}, "", "/orders/order-1");
     mockFetch(({ url }) => {

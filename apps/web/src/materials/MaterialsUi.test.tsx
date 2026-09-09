@@ -104,6 +104,7 @@ describe("materiały warsztatowe", () => {
 
     const openApiJsonLink = within(apiCard).getByRole("link", { name: "Pobierz OpenAPI JSON" });
     expect(openApiJsonLink).toHaveAttribute("href", "/api/docs-json");
+    expect(openApiJsonLink).toHaveAttribute("download");
   });
 
   it("kopiuje surowy Markdown dokumentacji produktowej do schowka, nie wyrenderowany tekst", async () => {

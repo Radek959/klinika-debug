@@ -37,6 +37,7 @@ export function OrderDetailsPage({ token }: { token: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<ApiErrorInfo | null>(null);
+  const [refreshError, setRefreshError] = useState<ApiErrorInfo | null>(null);
   const [success, setSuccess] = useState<string | null>(
     (location.state as { message?: string } | null)?.message ?? null
   );
@@ -51,20 +52,30 @@ export function OrderDetailsPage({ token }: { token: string }) {
     requestId.current = currentRequest;
     if (options?.silent) {
       setIsRefreshing(true);
+      setRefreshError(null);
     } else {
       setIsLoading(true);
+      setLoadError(null);
     }
-    setLoadError(null);
     void getOrder(token, orderId)
       .then((response) => {
         if (requestId.current === currentRequest) {
           setOrder(response);
           setHistoryRefreshKey((current) => current + 1);
+          setRefreshError(null);
         }
       })
       .catch((caught) => {
         if (requestId.current === currentRequest) {
-          setLoadError(toApiErrorInfo(caught, "Nie udało się pobrać danych zlecenia."));
+          if (options?.silent) {
+            // Ręczny refresh zachowuje dotychczasowe dane zlecenia na ekranie —
+            // błąd pokazujemy jako komunikat obok przycisku, bez przejścia do
+            // pełnego ekranu błędu (ten jest tylko dla nieudanego pierwszego
+            // wczytania, gdy nie ma jeszcze żadnych danych do pokazania).
+            setRefreshError(toApiErrorInfo(caught, "Nie udało się odświeżyć statusu zlecenia."));
+          } else {
+            setLoadError(toApiErrorInfo(caught, "Nie udało się pobrać danych zlecenia."));
+          }
         }
       })
       .finally(() => {
@@ -146,6 +157,12 @@ export function OrderDetailsPage({ token }: { token: string }) {
           · Priorytet: {orderPriorityLabels[order.priority]}
         </p>
       </PageHeader>
+
+      {refreshError ? (
+        <p className="form-error" role="alert">
+          {refreshError.message}
+        </p>
+      ) : null}
 
       <OrderProgressStepper status={order.status} />
 

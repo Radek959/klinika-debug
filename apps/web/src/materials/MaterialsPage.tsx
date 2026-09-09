@@ -116,7 +116,11 @@ function DocumentationTab() {
           <a className="button-link" href="/api/docs" target="_blank" rel="noreferrer">
             Otwórz OpenAPI
           </a>
-          <a className="secondary-link" href={OPENAPI_JSON_URL} target="_blank" rel="noreferrer">
+          <a
+            className="secondary-link"
+            href={OPENAPI_JSON_URL}
+            download="klinika-debug-openapi.json"
+          >
             Pobierz OpenAPI JSON
           </a>
         </div>
