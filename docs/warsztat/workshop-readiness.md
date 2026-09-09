@@ -135,36 +135,35 @@ Krótka checklista do wykonania przez człowieka na finalnym, wdrożonym
 `IMPLEMENTED`, `VERIFIED` i `DEPLOYED` mają różne znaczenie (patrz
 `docs/implementation/README.md`, sekcja "Definicje statusów").
 
-Na moment tworzenia tego dokumentu (PR `workshop-final-readiness`):
-
-- kod Workshop MVP (uczestnicy, trainer controls, kontrolowane defekty, log
-  fixture'y, production prepare, smoke runner) jest **`IMPLEMENTED`**;
-- lokalne bramki jakości (`lint`, `typecheck`, jednostkowe i e2e testy
-  `apps/api`, `npm run test:workshop-logs`, `npm run test:workshop-smoke`,
-  `npm run build`, `npm audit --omit=dev`, `git diff --check`) zostały
-  wykonane i przeszły — patrz commit tego PR-a;
-- `npm run test:integration`, migracje bazy i `npm run test:production-start`
-  wymagają lokalnej/CI bazy MySQL, niedostępnej w środowisku, w którym
-  przygotowano ten PR — NIE zostały tu wykonane (nie oznaczono ich jako PASS);
-- GitHub Actions nie przydzieliło runnera dla PR-ów tej serii (ten sam
-  problem platformowy co przy #29–#31) — CI pozostaje **`CI NOT AVAILABLE`**,
-  nie `PASS`;
+- kod Workshop MVP (uczestnicy, trainer controls i recovery, kontrolowane
+  defekty, log fixture'y, production prepare, smoke runner) jest
+  **`IMPLEMENTED`**;
+- aktualne CI dla Workshop MVP wykonuje i przechodzi testy migracji testowej
+  bazy, `npm run check` (lint, typecheck, testy jednostkowe, build),
+  `npm run test:integration` oraz build produkcyjny i
+  `npm run test:production-start` — patrz status CI aktualnego PR-a w GitHub
+  Actions tego repozytorium;
+- brak przydzielonego runnera GitHub Actions NIE jest już aktualnym
+  blockerem — problem platformowy opisywany wcześniej w tym dokumencie
+  (analogiczny do #29–#31) został rozwiązany;
 - **rzeczywisty `npm run workshop:smoke` przeciwko wdrożonemu środowisku
   Hostinger NIE został tu wykonany** (brak dostępu do produkcyjnego/warsztatowego
-  wdrożenia z tego środowiska).
+  wdrożenia z tego środowiska) — to odrębny krok od zielonego CI repozytorium.
 
-Workshop MVP pozostaje więc na statusie **`IMPLEMENTED`**, NIE `VERIFIED` ani
-`DEPLOYED`, dopóki właściciel projektu nie wykona (i nie potwierdzi wyniku):
+Zielone CI pozwala uznać warstwę kodową/techniczną Workshop MVP za
+**`VERIFIED`** w rozumieniu definicji z `docs/implementation/README.md`
+("Wymagane testy, CI i review zakończyły się powodzeniem"). To NIE jest
+jednak `DEPLOYED` — status wdrożonego, gotowego na warsztat środowiska nadal
+wymaga wykonania (i potwierdzenia wyniku) przez właściciela projektu:
 
-1. `npm run test:integration` oraz testów migracji na realnej bazie MySQL
-   (lokalnie albo przez GitHub Actions, gdy runner znów będzie dostępny);
-2. `npm run test:production-start` na realnym buildzie;
-3. deploymentu na Hostinger;
-4. `npm run workshop:prepare` na wdrożonym środowisku;
-5. `WORKSHOP_SMOKE_CONFIRM=RUN npm run workshop:smoke` przeciwko wdrożonemu
+1. deploymentu na Hostinger;
+2. `npm run workshop:prepare` na wdrożonym środowisku;
+3. `WORKSHOP_SMOKE_CONFIRM=RUN npm run workshop:smoke` przeciwko wdrożonemu
    środowisku, z wynikiem `RESULT: PASS`;
-6. manualnego UI smoke z sekcji 6;
-7. resetu środowiska (sekcja 2, krok 6) przed wejściem uczestników.
+4. manualnego UI smoke z sekcji 6;
+5. resetu środowiska (sekcja 2, krok 6) przed wejściem uczestników.
 
-Dopiero po pozytywnym wykonaniu punktów 1–2 status może przejść na
-`VERIFIED`, a po punktach 3–7 — na `DEPLOYED`.
+Dopiero po pozytywnym wykonaniu punktów 1–5 status może przejść na
+`DEPLOYED`. Nie oznaczaj `DEPLOYED` bez faktycznego wykonania tych kroków —
+zielone CI repozytorium potwierdza gotowość kodu, nie gotowość wdrożonego
+środowiska warsztatowego.
