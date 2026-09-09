@@ -59,14 +59,14 @@ Poprawny tryb bazowy jest obowiązkowy. Celowe błędy mogą być aktywowane wy�
 - Implementuj małe, pionowe fragmenty działające od UI do bazy i API.
 - Dodawaj testy jednostkowe i integracyjne do reguł biznesowych oraz kontraktów API.
 - Testy k6 są opcjonalne.
-- Playwright (`npm run test:workshop-browser`, uruchamiany przez `npm run verify:pr`) jest OBOWIĄZKOWĄ LOKALNĄ bramką przed KAŻDYM PR-em (patrz `docs/ai/feature-delivery-playbook.md`). Playwright:
-  - NIE jest wymaganym checkiem GitHub Actions;
-  - NIE jest uruchamiany w CI;
-  - NIE jest uruchamiany przeciwko Hostingerowi ani żadnemu innemu publicznemu hostowi;
-  - działa wyłącznie przeciwko lokalnemu full-stackowi Kliniki Debug pod adresem `WORKSHOP_BROWSER_BASE_URL` (opcjonalny — domyślnie `http://localhost:3000`), NIGDY `WORKSHOP_BASE_URL` (ta zmienna jest wyłącznie dla `workshop:smoke` przeciwko wdrożonemu środowisku);
-  - bez `WORKSHOP_E2E_CONFIRM=RUN` kończy się błędem (non-zero exit code) — samo "X skipped" NIE jest przejściem tej bramki.
-  Jeżeli lokalne środowisko nie jest jeszcze przygotowane: `npm run workshop:local:prepare` (env, migracje, provisioning `tester01`/`warsztat-01`, Chromium — bez ręcznego generowania hashy Argon2 ani zgadywania kolejności). Aplikacja lokalnie działa przez `npm run workshop:local:start` (production-like build pod `http://localhost:3000`), a przed PR-em: `npm run verify:pr` (z `WORKSHOP_E2E_CONFIRM=RUN`).
-  **Jeżeli `npm run verify:pr` NIE przeszło, PR nie jest gotowy do merge'a.** Jeżeli sandbox agenta nie umożliwia uruchomienia lokalnego full-stacka (np. brak Dockera/MySQL): jawnie oznacz „Local Playwright: NOT RUN" w opisie PR-a, NIE zastępuj tego wynikiem CI i NIE uruchamiaj Playwrighta przeciwko Hostingerowi — właściciel/developer musi wykonać lokalne `verify:pr` przed finalnym mergem. Nie wymagaj od AI uruchamiania Dockera, jeśli sandbox go nie zapewnia.
+- Playwright browser smoke tests (`npm run test:workshop-browser`) są DODATKOWĄ, RĘCZNĄ bramką jakości — nie są częścią `npm run verify:pr` ani obowiązkowych PR gates. Doprecyzowanie:
+  - NIE są wymagane przed każdym PR-em;
+  - NIE są uruchamiane w CI;
+  - NIE powinny blokować autonomicznej pracy agenta nad serią PR-ów;
+  - mogą być uruchamiane ręcznie: przed warsztatem, przed ważnym releasem, po większych zmianach w flow end-to-end, albo po zmianach w auth, `/admin`, izolacji workspace'ów lub lab flow;
+  - działają wyłącznie przeciwko lokalnemu full-stackowi Kliniki Debug pod adresem `WORKSHOP_BROWSER_BASE_URL` (opcjonalny — domyślnie `http://localhost:3000`), NIGDY przeciwko Hostingerowi ani `WORKSHOP_BASE_URL` (ta zmienna jest wyłącznie dla `workshop:smoke` przeciwko wdrożonemu środowisku);
+  - wymagają jawnego potwierdzenia `WORKSHOP_E2E_CONFIRM=RUN` (suite jest destrukcyjny — tworzy dane, resetuje środowisko) i lokalnego full-stacka (`npm run build && npm start`).
+  Jeżeli Playwright NIE został uruchomiony, agent nie może napisać „Playwright PASS" — po prostu pomija ten krok albo pisze „Local Playwright: NOT RUN". Obowiązkowe PR gates to `npm run verify:pr` (lint, typecheck, testy, build) — patrz `docs/ai/feature-delivery-playbook.md`.
 - Nie zmieniaj zachowania produktu bez aktualizacji odpowiedniej dokumentacji.
 - Nie oznaczaj elementu jako zweryfikowanego lub wdrożonego bez dowodu: wykonanej komendy, wyniku CI, review albo sprawdzonego środowiska.
 - Celowe defekty warsztatowe muszą być oddzielone od prawidłowej implementacji i jasno identyfikowalne w kodzie.

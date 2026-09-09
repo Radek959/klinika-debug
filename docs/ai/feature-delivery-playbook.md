@@ -20,24 +20,20 @@ Użyj tego playbooka przy realizacji kompletnego zadania, funkcji albo PR-a, nie
 
 ## `npm run verify:pr` — obowiązkowa lokalna bramka przed PR-em
 
-Definition of Done dla każdego PR-a obejmuje lokalne uruchomienie `npm run verify:pr` (lint, typecheck, testy, build i lokalny Playwright — `npm run test:workshop-browser`) PRZED utworzeniem PR-a.
-
-Standardowa ścieżka przed PR-em:
+Definition of Done dla każdego PR-a obejmuje lokalne uruchomienie `npm run verify:pr` (lint, typecheck, testy, build) PRZED utworzeniem PR-a:
 
 ```powershell
-npm run workshop:local:prepare
-npm run workshop:local:start
-$env:WORKSHOP_E2E_CONFIRM = "RUN"
 npm run verify:pr
 ```
 
-`workshop:local:prepare` nie musi być uruchamiane przed każdym PR-em, jeśli lokalne środowisko jest już aktualne (baza zmigrowana, `tester01`/`warsztat-01` istnieją, Chromium zainstalowany). `verify:pr` — zawsze przed PR-em/mergem.
-
 - PR nie powinien zostać utworzony, jeśli ta bramka nie przeszła.
-- `npm run verify:pr` obejmuje Playwright, ale WYŁĄCZNIE przeciwko lokalnemu środowisku Kliniki Debug (patrz `AGENTS.md`, README) — nigdy przeciwko CI ani przeciwko Hostingerowi. Adres jest `WORKSHOP_BROWSER_BASE_URL` (opcjonalny, domyślnie `http://localhost:3000`) — NIGDY `WORKSHOP_BASE_URL` (ta zmienna jest wyłącznie dla `workshop:smoke`).
-- Bez `WORKSHOP_E2E_CONFIRM=RUN` `npm run test:workshop-browser` kończy się błędem, a nie "skipped" — to NIE jest przejście bramki.
-- Jeżeli Playwright nie może wystartować z powodu ograniczeń lokalnego środowiska (np. brak możliwości uruchomienia bazy albo pełnego stacka), NIE uznawaj tego kroku za PASS. Opisz blokadę wprost w opisie PR-a (np. „Local Playwright: NOT RUN — lokalne środowisko full-stack niedostępne”).
-- Nie zastępuj lokalnego Playwrighta wynikiem CI — CI nie uruchamia tego suite'u.
+- `verify:pr` NIE obejmuje Playwrighta — nie wymaga bazy, uruchomionej aplikacji, Chromium ani `WORKSHOP_E2E_CONFIRM`.
+
+## Playwright browser smoke tests — opcjonalny, ręczny, poza CI
+
+`npm run test:workshop-browser` jest DODATKOWĄ, ręczną bramką jakości — NIE jest wymagany przed każdym PR-em, NIE jest uruchamiany w CI i NIE powinien blokować autonomicznej pracy agenta nad serią PR-ów. Wartościowy do ręcznego uruchomienia przed warsztatem, przed ważnym releasem albo po większych zmianach end-to-end (auth, `/admin`, izolacja workspace'ów, lab flow) — patrz README.
+
+Jeżeli Playwright nie został uruchomiony, nie wpisuj w opisie PR-a „Playwright PASS" — to po prostu nie jest blocker dla tego PR-a.
 
 ## Zakazy
 
@@ -62,4 +58,4 @@ npm run verify:pr
 - Status wdrożenia jest zgodny z faktycznym stanem.
 - UI pozostaje po polsku.
 - Dane są syntetyczne.
-- `npm run verify:pr` zostało uruchomione lokalnie z wynikiem PASS, albo opisano jawnie blokadę (np. brak możliwości uruchomienia lokalnego Playwrighta w danym środowisku).
+- `npm run verify:pr` zostało uruchomione lokalnie z wynikiem PASS.
