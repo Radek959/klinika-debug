@@ -182,4 +182,13 @@ export interface OrderPatientDetails {
 export interface OrderDetailsResponse extends OrderResponse {
   patient: OrderPatientDetails;
   results: OrderResultItem[];
+  /**
+   * `true`, gdy dla tego zlecenia trwa automatyczne ponowienie wysyłki do
+   * laboratorium (zaplanowane po 429/503/504) — zlecenie zostaje w statusie
+   * `SAMPLE_COLLECTED`, ale nie jest to już "zwykłe, nigdy niewysłane"
+   * `SAMPLE_COLLECTED`. Przeżywa odświeżenie strony i ponowne wejście w
+   * szczegóły zlecenia, bo pochodzi z bazy, a nie z lokalnego stanu UI.
+   * Nie ujawnia nazwy scenariusza symulatora ani numeru wewnętrznego zadania.
+   */
+  labSendRetryPending: boolean;
 }

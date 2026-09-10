@@ -32,8 +32,10 @@ import { OrderProgressStepper } from "./OrderProgressStepper";
  * przed pierwszą wysyłką nie oznacza oczekiwania na laboratorium. Gdy backend
  * zwróci retryowalny błąd wysyłki (429/503/504) i zaplanuje automatyczne
  * ponowienie, zlecenie ZOSTAJE w `SAMPLE_COLLECTED` — ten przypadek jest
- * rozpoznawany osobno przez lokalny stan `hasActiveLabRetry`, patrz
- * `OrderDetailsPage`.
+ * rozpoznawany przez `order.labSendRetryPending` (trwałe, przeżywa F5 i
+ * ponowne wejście w zlecenie) oraz lokalny stan `hasActiveLabRetry` (natychmiastowa
+ * reakcja UI zaraz po nieudanej wysyłce, zanim zlecenie zostanie ponownie
+ * pobrane), patrz `OrderDetailsPage`.
  */
 const LAB_WAITING_STATUSES = new Set<OrderStatus>(["SENT_TO_LAB", "PROCESSING", "PARTIAL"]);
 
@@ -50,10 +52,12 @@ export function OrderDetailsPage({ token }: { token: string }) {
   );
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   /**
-   * Ustawiane wyłącznie po retryowalnym błędzie wysyłki (429/503/504), gdy
-   * backend zaplanował automatyczne ponowienie, a zlecenie zostało w
-   * `SAMPLE_COLLECTED`. Pozwala pokazać „Odśwież status” dla TEGO przypadku,
-   * bez rozszerzania widoczności przycisku na każde `SAMPLE_COLLECTED`.
+   * Ustawiane wyłącznie po retryowalnym błędzie wysyłki (429/503/504) w TEJ
+   * instancji strony, zanim zdążymy ponownie pobrać zlecenie — pozwala pokazać
+   * „Odśwież status” natychmiast po błędzie, bez czekania na kolejny fetch.
+   * Po F5 albo ponownym wejściu w zlecenie ten lokalny stan wraca do `false`
+   * i wtedy liczy się WYŁĄCZNIE trwałe `order.labSendRetryPending` z API —
+   * dzięki temu informacja o trwającym retry nie ginie po opuszczeniu strony.
    */
   const [hasActiveLabRetry, setHasActiveLabRetry] = useState(false);
   const requestId = useRef(0);
@@ -155,7 +159,8 @@ export function OrderDetailsPage({ token }: { token: string }) {
               </Link>
             ) : null}
             {LAB_WAITING_STATUSES.has(order.status) ||
-            (order.status === "SAMPLE_COLLECTED" && hasActiveLabRetry) ? (
+            (order.status === "SAMPLE_COLLECTED" &&
+              (hasActiveLabRetry || order.labSendRetryPending)) ? (
               <button
                 type="button"
                 className="secondary-button"

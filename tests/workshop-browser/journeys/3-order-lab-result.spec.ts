@@ -48,11 +48,13 @@ test.describe("Journey 3 — zlecenie → próbki → laboratorium → wynik", (
     await expect(page.getByText("Zlecenie zostało wysłane do laboratorium.")).toBeVisible();
 
     // labDelay=5s (Setup globalny) — wynik powinien nadejść w rozsądnym czasie
-    // bez stałych sleepów: odpytujemy status, reloadując stronę.
+    // bez stałych sleepów. Odzwierciedlamy realne zachowanie uczestnika: nie ma
+    // pollingu ani przeładowania całej strony — uczestnik klika ręcznie
+    // "Odśwież status", tak jak zrobiłby to na warsztacie.
     await expect
       .poll(
         async () => {
-          await page.reload();
+          await page.getByRole("button", { name: "Odśwież status" }).click();
           return page.locator(".status-badge").first().textContent();
         },
         { timeout: 30000, intervals: [1000, 2000] }

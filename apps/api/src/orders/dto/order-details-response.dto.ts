@@ -112,4 +112,10 @@ export class OrderDetailsResponseDto extends OrderResponseDto {
     isArray: true
   })
   results!: OrderResultItemDto[];
+
+  @ApiProperty({
+    description:
+      "Czy dla tego zlecenia trwa automatyczne ponowienie wysyłki do laboratorium (po błędzie 429/503/504). Pozwala odróżnić zwykłe SAMPLE_COLLECTED (jeszcze niewysłane) od SAMPLE_COLLECTED z trwającym ponowieniem w tle — również po odświeżeniu strony."
+  })
+  labSendRetryPending!: boolean;
 }

@@ -283,7 +283,12 @@ export class OrdersService {
             materialType: "asc"
           }
         },
-        results: true
+        results: true,
+        // Jedno zlecenie ma co najwyżej jeden wiersz ponowienia (unikalność
+        // workspaceId+orderId) — potrzebny wyłącznie jego status, żeby
+        // odróżnić "zwykłe SAMPLE_COLLECTED" od "trwa automatyczne ponowienie
+        // wysyłki" trwale, niezależnie od F5 czy nawigacji.
+        labSendRetryJobs: { select: { status: true } }
       }
     });
 
