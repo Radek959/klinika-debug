@@ -73,6 +73,42 @@ describe("stan formularza zlecenia", () => {
     });
   });
 
+  it("[ORDER_PRIORITY_MAPPING nieaktywny] zachowuje wybrany priorytet URGENT", () => {
+    expect(
+      buildCreateOrderPayload({
+        patientId: "patient-1",
+        priority: "URGENT",
+        catalog,
+        selectedTests: { "test-crp": { additionalData: {} } },
+        invertUrgentPriority: false
+      })
+    ).toMatchObject({ priority: "URGENT" });
+  });
+
+  it("[ORDER_PRIORITY_MAPPING aktywny] zamienia URGENT na ROUTINE w payloadzie", () => {
+    expect(
+      buildCreateOrderPayload({
+        patientId: "patient-1",
+        priority: "URGENT",
+        catalog,
+        selectedTests: { "test-crp": { additionalData: {} } },
+        invertUrgentPriority: true
+      })
+    ).toMatchObject({ priority: "ROUTINE" });
+  });
+
+  it("[ORDER_PRIORITY_MAPPING aktywny] nie zmienia normalnego ROUTINE", () => {
+    expect(
+      buildCreateOrderPayload({
+        patientId: "patient-1",
+        priority: "ROUTINE",
+        catalog,
+        selectedTests: { "test-crp": { additionalData: {} } },
+        invertUrgentPriority: true
+      })
+    ).toMatchObject({ priority: "ROUTINE" });
+  });
+
   it("usuwa puste tekstowe dane dodatkowe z payloadu", () => {
     expect(sanitizeAdditionalData({ note: "   ", fastingConfirmed: true })).toEqual({
       fastingConfirmed: true

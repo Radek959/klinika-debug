@@ -60,6 +60,14 @@ export interface MedicalTestsListResponse {
   pageSize: number;
   total: number;
   totalPages: number;
+  /**
+   * Techniczny sygnał warsztatowy odczytywany przez formularz nowego
+   * zlecenia tuż przed wysłaniem żądania. `true` tylko przy jednym,
+   * konkretnym kontrolowanym defekcie sterowanym z `/admin` — pole nigdy nie
+   * ujawnia nazwy defektu ani pełnej konfiguracji prowadzącego. W trybie
+   * `CLEAN` i przy każdym innym defekcie zawsze `false`.
+   */
+  orderPriorityRoutingActive: boolean;
 }
 
 export interface MedicalTestsListParams {

@@ -15,7 +15,13 @@ export type LabScenario =
   | "SERVER_ERROR"
   | "TIMEOUT";
 
-export type ControlledBug = "CLEAN" | "PATIENT_GUARDIAN" | "ORDER_FLOW" | "API_DIAGNOSTICS";
+export type ControlledBug =
+  | "CLEAN"
+  | "PATIENT_GUARDIAN"
+  | "ORDER_FLOW"
+  | "API_DIAGNOSTICS"
+  | "PATIENT_EDIT_NOT_SAVED"
+  | "ORDER_PRIORITY_MAPPING";
 
 export async function adminLogin(request: APIRequestContext, adminPassword: string): Promise<void> {
   const response = await request.post("/admin/api/login", { data: { password: adminPassword } });

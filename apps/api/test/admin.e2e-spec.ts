@@ -155,7 +155,9 @@ describe("panel /admin", () => {
       "CLEAN",
       "PATIENT_GUARDIAN",
       "ORDER_FLOW",
-      "API_DIAGNOSTICS"
+      "API_DIAGNOSTICS",
+      "PATIENT_EDIT_NOT_SAVED",
+      "ORDER_PRIORITY_MAPPING"
     ]);
     expect(body.availableLabDelaysMs).toEqual([5000, 15000, 30000, 60000, 300000]);
   });

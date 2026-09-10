@@ -12,12 +12,16 @@ import {
 } from "./database";
 
 /**
- * End-to-end coverage for the three workshop controlled defects
- * (`PATIENT_GUARDIAN`, `ORDER_FLOW`, `API_DIAGNOSTICS`) wired through the
- * `/admin` panel from `workshop-trainer-controls`. Per-rule unit coverage
- * lives in `apps/api/src/patients/patient-write-domain.spec.ts` and
- * `packages/domain/src/orders/sample-collection.spec.ts` — this file checks
- * the integration: reading the globally configured controlled bug at
+ * End-to-end coverage for the workshop controlled defects
+ * (`PATIENT_GUARDIAN`, `ORDER_FLOW`, `API_DIAGNOSTICS`, `PATIENT_EDIT_NOT_SAVED`)
+ * wired through the `/admin` panel from `workshop-trainer-controls`.
+ * `ORDER_PRIORITY_MAPPING` is a purely frontend defect (see
+ * `apps/web/src/orders/orderFormState.test.ts` and
+ * `apps/web/src/orders/OrdersUi.test.tsx`); this file only covers its one
+ * backend contribution, the `orderPriorityRoutingActive` signal. Per-rule
+ * unit coverage lives in `apps/api/src/patients/patient-write-domain.spec.ts`
+ * and `packages/domain/src/orders/sample-collection.spec.ts` — this file
+ * checks the integration: reading the globally configured controlled bug at
  * runtime, toggling without restart, one bug not activating another, no
  * leak of the defect name to a public response, and reset restoring CLEAN.
  */
@@ -351,6 +355,186 @@ describe("workshop controlled bugs", () => {
     });
   });
 
+  describe("PATIENT_EDIT_NOT_SAVED", () => {
+    it("[CLEAN] zapisuje nowy numer telefonu", async () => {
+      const { token, patientId } = await setupPatientWithPhone("500600700");
+
+      const response = await updatePatient(token, patientId, { phone: "600700800" });
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body).phone).toBe("600700800");
+
+      const fetched = await getPatient(token, patientId);
+      expect(JSON.parse(fetched.body).phone).toBe("600700800");
+    });
+
+    it("[DEFEKT AKTYWNY] zgłasza sukces, ale nie zapisuje nowego telefonu", async () => {
+      const { token, patientId } = await setupPatientWithPhone("500600700");
+      await setControlledBug("PATIENT_EDIT_NOT_SAVED");
+
+      const response = await updatePatient(token, patientId, { phone: "600700800" });
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body).phone).toBe("500600700");
+
+      const fetched = await getPatient(token, patientId);
+      expect(JSON.parse(fetched.body).phone).toBe("500600700");
+    });
+
+    it("[DEFEKT AKTYWNY] pozostałe pola z tego samego PATCH nadal się zapisują", async () => {
+      const { token, patientId } = await setupPatientWithPhone("500600700");
+      await setControlledBug("PATIENT_EDIT_NOT_SAVED");
+
+      const response = await updatePatient(token, patientId, {
+        phone: "600700800",
+        lastName: "Kowalska"
+      });
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.phone).toBe("500600700");
+      expect(body.lastName).toBe("Kowalska");
+
+      const fetched = await getPatient(token, patientId);
+      const fetchedBody = JSON.parse(fetched.body);
+      expect(fetchedBody.phone).toBe("500600700");
+      expect(fetchedBody.lastName).toBe("Kowalska");
+    });
+
+    it("nie wpływa na tworzenie pacjenta", async () => {
+      const { token } = await login();
+      await setControlledBug("PATIENT_EDIT_NOT_SAVED");
+
+      const response = await createPatient(token, {
+        firstName: "Nowy",
+        lastName: "Pacjent",
+        identifierType: "PESEL",
+        pesel: "44112900115",
+        birthDate: "1944-11-29",
+        gender: "MALE",
+        phone: "500111222"
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(JSON.parse(response.body).phone).toBe("500111222");
+    });
+
+    it("przełącza się CLEAN -> BUG -> CLEAN bez restartu aplikacji", async () => {
+      const { token, patientId } = await setupPatientWithPhone("500600700");
+
+      await updatePatient(token, patientId, { phone: "111111111" });
+      expect(JSON.parse((await getPatient(token, patientId)).body).phone).toBe("111111111");
+
+      await setControlledBug("PATIENT_EDIT_NOT_SAVED");
+      await updatePatient(token, patientId, { phone: "222222222" });
+      expect(JSON.parse((await getPatient(token, patientId)).body).phone).toBe("111111111");
+
+      await setControlledBug("CLEAN");
+      await updatePatient(token, patientId, { phone: "333333333" });
+      expect(JSON.parse((await getPatient(token, patientId)).body).phone).toBe("333333333");
+    });
+
+    it("nie ujawnia nazwy defektu w publicznej odpowiedzi", async () => {
+      const { token, patientId } = await setupPatientWithPhone("500600700");
+      await setControlledBug("PATIENT_EDIT_NOT_SAVED");
+
+      const response = await updatePatient(token, patientId, { phone: "600700800" });
+
+      expect(response.body).not.toContain("PATIENT_EDIT_NOT_SAVED");
+    });
+
+    async function setupPatientWithPhone(phone: string) {
+      const { token } = await login();
+      const created = await createPatient(token, {
+        firstName: "Testowy",
+        lastName: "Nowak",
+        identifierType: "PESEL",
+        pesel: "90010100115",
+        birthDate: "1990-01-01",
+        gender: "MALE",
+        phone
+      });
+      expect(created.statusCode).toBe(201);
+      return { token, patientId: JSON.parse(created.body).id as string };
+    }
+  });
+
+  describe("ORDER_PRIORITY_MAPPING", () => {
+    // Ten kontrolowany defekt jest celowo frontendowy — backend zawsze
+    // zapisuje dokładnie to, co dostał w requeście (patrz `orders.service.ts`
+    // `create`). Tu sprawdzamy jedyny udział backendu: neutralny sygnał
+    // `orderPriorityRoutingActive` w katalogu badań, czytany na świeżo przy
+    // każdym żądaniu. Właściwe zachowanie UI (CITO -> ROUTINE w requeście)
+    // jest pokryte testami frontendowymi w `orderFormState.test.ts` i
+    // `OrdersUi.test.tsx`.
+    it("[CLEAN] sygnał jest wyłączony", async () => {
+      const { token } = await login();
+
+      const response = await getMedicalTests(token);
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body).orderPriorityRoutingActive).toBe(false);
+    });
+
+    it("[DEFEKT AKTYWNY] sygnał jest włączony", async () => {
+      const { token } = await login();
+      await setControlledBug("ORDER_PRIORITY_MAPPING");
+
+      const response = await getMedicalTests(token);
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body).orderPriorityRoutingActive).toBe(true);
+    });
+
+    it("nie zmienia się dla innych defektów", async () => {
+      const { token } = await login();
+      await setControlledBug("API_DIAGNOSTICS");
+
+      const response = await getMedicalTests(token);
+
+      expect(JSON.parse(response.body).orderPriorityRoutingActive).toBe(false);
+    });
+
+    it("backend zapisuje zlecenie z priorytetem ROUTINE dokładnie tak, jak dostał w requeście", async () => {
+      const { token, patientId, tests } = await setupDefaultOrderData();
+      await setControlledBug("ORDER_PRIORITY_MAPPING");
+
+      const order = await createOrderAndParse(token, {
+        patientId,
+        priority: "ROUTINE",
+        tests: [{ medicalTestId: tests.CRP.id }]
+      });
+
+      expect(order.priority).toBe("ROUTINE");
+    });
+
+    it("przełącza się CLEAN -> BUG -> CLEAN bez restartu aplikacji", async () => {
+      const { token } = await login();
+
+      expect(JSON.parse((await getMedicalTests(token)).body).orderPriorityRoutingActive).toBe(false);
+
+      await setControlledBug("ORDER_PRIORITY_MAPPING");
+      expect(JSON.parse((await getMedicalTests(token)).body).orderPriorityRoutingActive).toBe(true);
+
+      await setControlledBug("CLEAN");
+      expect(JSON.parse((await getMedicalTests(token)).body).orderPriorityRoutingActive).toBe(false);
+    });
+
+    it("nie ujawnia nazwy defektu w publicznej odpowiedzi", async () => {
+      const { token } = await login();
+      await setControlledBug("ORDER_PRIORITY_MAPPING");
+
+      const response = await getMedicalTests(token);
+
+      expect(response.body).not.toContain("ORDER_PRIORITY_MAPPING");
+    });
+
+    async function getMedicalTests(token: string) {
+      return app.inject({
+        method: "GET",
+        url: "/api/v1/tests",
+        headers: { authorization: `Bearer ${token}` }
+      });
+    }
+  });
+
   describe("zachowania współdzielone", () => {
     it("aktywny jeden defekt nie aktywuje zachowania innego defektu", async () => {
       const { token, patientId, tests } = await setupDefaultOrderData();
@@ -518,6 +702,27 @@ describe("workshop controlled bugs", () => {
       url: "/api/v1/patients",
       headers: { authorization: `Bearer ${token}` },
       payload
+    });
+  }
+
+  async function updatePatient(
+    token: string,
+    patientId: string,
+    payload: Record<string, unknown>
+  ) {
+    return app.inject({
+      method: "PATCH",
+      url: `/api/v1/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload
+    });
+  }
+
+  async function getPatient(token: string, patientId: string) {
+    return app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` }
     });
   }
 

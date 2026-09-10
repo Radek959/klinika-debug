@@ -126,4 +126,11 @@ export class MedicalTestsListResponseDto {
 
   @ApiProperty({ description: "Łączna liczba stron.", example: 1 })
   totalPages!: number;
+
+  @ApiProperty({
+    description:
+      "Techniczna flaga warsztatowa sterowana konfiguracją prowadzącego. Nie ujawnia szczegółów tej konfiguracji.",
+    example: false
+  })
+  orderPriorityRoutingActive!: boolean;
 }

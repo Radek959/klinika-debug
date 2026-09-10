@@ -150,11 +150,16 @@ export class PatientsService {
 
     await this.ensureIdentifierIsUnique(workspaceId, validation.value, patientId);
 
+    const patientToPersist = await this.applyPatientEditNotSavedDefect(
+      existing,
+      validation.value
+    );
+
     try {
       const patient = await this.prisma.$transaction(async (tx) => {
         await tx.patient.update({
           where: { workspaceId_id: { workspaceId, id: patientId } },
-          data: this.toPatientUpdateData(validation.value)
+          data: this.toPatientUpdateData(patientToPersist)
         });
 
         if (input.guardian === null) {
@@ -194,6 +199,29 @@ export class PatientsService {
   private async guardianRuleOptions(): Promise<{ disableGuardianRequiredRule: boolean }> {
     const controlledBug = await this.workshopConfig.getControlledBug();
     return { disableGuardianRequiredRule: controlledBug === "PATIENT_GUARDIAN" };
+  }
+
+  /**
+   * WORKSHOP CONTROLLED DEFECT (PATIENT_EDIT_NOT_SAVED): reads the globally
+   * configured controlled bug and, ONLY when it is `PATIENT_EDIT_NOT_SAVED`,
+   * silently discards the new `phone` value right before the update is
+   * persisted, keeping the previously stored value instead. `phone` has
+   * already passed normal validation at this point (the request is formally
+   * correct and the API still answers with success), and every other field
+   * of `candidate` (already merged with the existing patient by
+   * `mergePatientUpdate`) is left untouched, so unrelated changes in the
+   * same PATCH still save normally. CLEAN (any other value) returns
+   * `candidate` unchanged.
+   */
+  private async applyPatientEditNotSavedDefect(
+    existing: PatientWithGuardian,
+    candidate: NormalizedPatientWriteState
+  ): Promise<NormalizedPatientWriteState> {
+    const controlledBug = await this.workshopConfig.getControlledBug();
+    if (controlledBug !== "PATIENT_EDIT_NOT_SAVED") {
+      return candidate;
+    }
+    return { ...candidate, phone: existing.phone };
   }
 
   private buildWhere(

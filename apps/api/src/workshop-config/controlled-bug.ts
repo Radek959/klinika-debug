@@ -17,13 +17,26 @@
  *   (`OrderStatusAfterSampleCollectionOptions.forceCollectedAfterFirstSample`),
  *   wołane z `apps/api/src/orders/orders.service.ts` (`registerSample`);
  * - `API_DIAGNOSTICS` — `apps/api/src/orders/orders.service.ts`
- *   (`sendOrder`), przed wywołaniem symulatora laboratorium.
+ *   (`sendOrder`), przed wywołaniem symulatora laboratorium;
+ * - `PATIENT_EDIT_NOT_SAVED` — `apps/api/src/patients/patients.service.ts`
+ *   (`update`), tuż przed zapisem: pole `phone` zapisywane do bazy jest
+ *   cofane do poprzedniej wartości, mimo że odpowiedź nadal zgłasza sukces;
+ * - `ORDER_PRIORITY_MAPPING` — czysto frontendowy defekt. Backend jedynie
+ *   udostępnia neutralny sygnał `orderPriorityRoutingActive` w odpowiedzi
+ *   katalogu badań (`apps/api/src/tests-catalog/tests-catalog.service.ts`),
+ *   a właściwe (błędne) mapowanie priorytetu `URGENT` → `ROUTINE` w
+ *   requeście tworzenia zlecenia wykonuje `apps/web/src/orders/NewOrderPage.tsx`
+ *   razem z `apps/web/src/orders/orderFormState.ts`
+ *   (`buildCreateOrderPayload`). Backend `POST /api/v1/orders` zawsze zapisuje
+ *   dokładnie to, co dostał w requeście.
  */
 export const CONTROLLED_BUGS = [
   "CLEAN",
   "PATIENT_GUARDIAN",
   "ORDER_FLOW",
-  "API_DIAGNOSTICS"
+  "API_DIAGNOSTICS",
+  "PATIENT_EDIT_NOT_SAVED",
+  "ORDER_PRIORITY_MAPPING"
 ] as const;
 
 export type ControlledBug = (typeof CONTROLLED_BUGS)[number];

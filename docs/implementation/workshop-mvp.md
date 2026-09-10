@@ -128,8 +128,9 @@ Nie budujemy pełnego panelu administracyjnego. Monitoring aplikacji, dashboard 
   zaplanowanego ponowienia w inny scenariusz. `LAB_SIMULATOR_SCENARIO`
   pozostaje tylko jako wartość STARTOWA (bootstrap) dla świeżo zmigrowanej
   bazy, odczytywana raz przy pierwszym utworzeniu wiersza `workshop_config`.
-- Kontrolowany błąd: dozwolone wartości to `CLEAN` oraz trzy zaimplementowane
-  defekty — `PATIENT_GUARDIAN`, `ORDER_FLOW`, `API_DIAGNOSTICS` (lista w
+- Kontrolowany błąd: dozwolone wartości to `CLEAN` oraz pięć zaimplementowanych
+  defektów — `PATIENT_GUARDIAN`, `ORDER_FLOW`, `API_DIAGNOSTICS`,
+  `PATIENT_EDIT_NOT_SAVED`, `ORDER_PRIORITY_MAPPING` (lista w
   `apps/api/src/workshop-config/controlled-bug.ts`, szczegóły implementacji w
   sekcji "Kontrolowane błędy" niżej). Aktywny może być co najwyżej jeden
   defekt naraz; backend odrzuca każdą wartość spoza tej listy (HTTP 400).
@@ -189,13 +190,15 @@ Nie budujemy pełnego panelu administracyjnego. Monitoring aplikacji, dashboard 
 
 ### 2. Kontrolowane błędy
 
-Zamiast ogólnego frameworka pakietów błędów implementujemy 2–3 deterministyczne defekty potrzebne w ćwiczeniach.
+Zamiast ogólnego frameworka pakietów błędów implementujemy deterministyczne defekty potrzebne w ćwiczeniach.
 
 Rekomendowane kategorie:
 
 - `PATIENT_GUARDIAN` — błąd związany z walidacją pacjenta niepełnoletniego/opiekuna;
 - `ORDER_FLOW` — błąd w procesie zlecenia, próbek albo statusów;
-- `API_DIAGNOSTICS` — zachowanie, które wymaga sprawdzenia DevTools/API/correlationId i może być użyte do raportu błędu.
+- `API_DIAGNOSTICS` — zachowanie, które wymaga sprawdzenia DevTools/API/correlationId i może być użyte do raportu błędu;
+- `PATIENT_EDIT_NOT_SAVED` — prosty, oczywisty błąd na wstęp do bug reportingu (edycja pacjenta nie zapisuje telefonu mimo komunikatu sukcesu);
+- `ORDER_PRIORITY_MAPPING` — błąd wymagający investigation przez DevTools (request/response) i rozmowy z AI (błędne mapowanie priorytetu zlecenia po stronie frontendu).
 
 Zasady:
 
@@ -207,7 +210,7 @@ Zasady:
 
 #### Status: `workshop-controlled-bugs` (zaimplementowane)
 
-Wszystkie trzy defekty są aktywowane wyłącznie przez `controlledBug` w
+Wszystkie pięć defektów jest aktywowanych wyłącznie przez `controlledBug` w
 globalnej konfiguracji panelu `/admin` (`WorkshopConfigService`, patrz sekcja
 1. powyżej) — dozwolone wartości są zdefiniowane w jednym miejscu:
 `apps/api/src/workshop-config/controlled-bug.ts`. Aktywny może być co
@@ -249,6 +252,29 @@ komentarzem `WORKSHOP CONTROLLED DEFECT`.
   wysyłka dla tego samego zlecenia. Zgodnie z zakresem tego PR-a runtime'owe
   logowanie tego zdarzenia NIE zostało dodane — statyczne fixture'y logów
   powstaną w `workshop-log-fixtures`.
+- `PATIENT_EDIT_NOT_SAVED` — dotyczy WYŁĄCZNIE pola `phone` przy edycji
+  istniejącego pacjenta (`apps/api/src/patients/patients.service.ts`,
+  `update` → `applyPatientEditNotSavedDefect`). Request jest formalnie
+  poprawny (nowa wartość `phone` przechodzi normalną walidację), API
+  odpowiada sukcesem (200), ale tuż przed zapisem wartość `phone` jest
+  cofana do poprzedniej — po ponownym `GET` pacjenta nadal widoczna jest
+  stara wartość. Pozostałe pola tego samego PATCH (np. `lastName`) zapisują
+  się normalnie. Nie dotyczy tworzenia pacjenta ani żadnego innego pola.
+- `ORDER_PRIORITY_MAPPING` — jedyny defekt czysto frontendowy: backend
+  zawsze zapisuje w `POST /api/v1/orders` dokładnie to, co dostał w
+  requeście. Jedyny udział backendu to neutralny sygnał
+  `orderPriorityRoutingActive` w odpowiedzi katalogu badań
+  (`apps/api/src/tests-catalog/tests-catalog.service.ts`, `GET /api/v1/tests`)
+  — `true` wyłącznie przy tym jednym defekcie, nigdy nazwa defektu ani
+  pełna konfiguracja `/admin`. Formularz nowego zlecenia
+  (`apps/web/src/orders/NewOrderPage.tsx`) odczytuje ten sygnał na świeżo
+  tuż przed wysłaniem `POST` (nie z katalogu wczytanego przy montowaniu
+  formularza), więc przełączenie defektu z `/admin` działa na kolejnym
+  kliknięciu „Utwórz zlecenie” bez odświeżenia strony. Gdy sygnał jest
+  aktywny, `buildCreateOrderPayload` w
+  `apps/web/src/orders/orderFormState.ts` zamienia wybrany priorytet
+  `URGENT` („Pilne”) na `ROUTINE` w requeście — wybór `ROUTINE` nigdy nie
+  jest zmieniany. Dotyczy wyłącznie tworzenia zlecenia, nie edycji.
 - Testy: `apps/api/src/patients/patient-write-domain.spec.ts` i
   `packages/domain/src/orders/sample-collection.spec.ts` (reguła CLEAN i
   aktywnego defektu na poziomie domeny), `apps/api/test/workshop-controlled-bugs.e2e-spec.ts`
@@ -256,7 +282,12 @@ komentarzem `WORKSHOP CONTROLLED DEFECT`.
   aplikacji, brak wzajemnej aktywacji defektów, brak ujawnienia nazwy
   defektu w publicznej odpowiedzi, reset przywracający `CLEAN`, izolacja
   workspace'ów przy aktywnym defekcie, brak efektów ubocznych integracji dla
-  `API_DIAGNOSTICS`).
+  `API_DIAGNOSTICS`, `PATIENT_EDIT_NOT_SAVED` na poziomie API i
+  `orderPriorityRoutingActive` na poziomie `GET /api/v1/tests`),
+  `apps/api/test/tests-catalog.e2e-spec.ts` (domyślny `false` sygnału),
+  `apps/web/src/orders/orderFormState.test.ts` i
+  `apps/web/src/orders/OrdersUi.test.tsx` (mapowanie priorytetu przez UI,
+  w tym scenariusz przełączenia defektu przy już otwartym formularzu).
 
 ### 3. Realistyczne syntetyczne logi warsztatowe
 

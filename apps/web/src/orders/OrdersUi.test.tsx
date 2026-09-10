@@ -69,7 +69,8 @@ const medicalTestsResponse: MedicalTestsListResponse = {
   page: 1,
   pageSize: 100,
   total: catalogItems.length,
-  totalPages: 1
+  totalPages: 1,
+  orderPriorityRoutingActive: false
 };
 
 const orderListItem: OrderListItem = {
@@ -1712,6 +1713,103 @@ describe("interfejs zleceń", () => {
     expect(await screen.findByText(/corr-save/)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Wybrany pacjent" })).toHaveTextContent("Nowak Anna");
     expect(screen.getByLabelText(/CRP/)).toBeChecked();
+  });
+
+  describe("ORDER_PRIORITY_MAPPING (kontrolowany defekt frontendowy)", () => {
+    it("[sygnał nieaktywny] wysyła priorytet Pilne tak, jak wybrany", async () => {
+      let createdPayload: unknown;
+      renderNewOrder(({ url, init }) => {
+        if (url === "/api/v1/orders" && init?.method === "POST") {
+          createdPayload = JSON.parse(String(init.body));
+          return json(orderDetails({ id: "order-2" }), 201);
+        }
+        if (url === "/api/v1/orders/order-2") {
+          return json(orderDetails({ id: "order-2" }));
+        }
+        return undefined;
+      });
+
+      await selectAnna();
+      await userEvent.selectOptions(screen.getByLabelText("Priorytet"), "URGENT");
+      await userEvent.click(await screen.findByLabelText(/CRP/));
+      await userEvent.click(screen.getByRole("button", { name: "Utwórz zlecenie" }));
+
+      await waitFor(() => {
+        expect(createdPayload).toMatchObject({ priority: "URGENT" });
+      });
+    });
+
+    it("[sygnał aktywny] wysyła ROUTINE mimo wybranego Pilne, mimo że formularz był już otwarty przed przełączeniem sygnału", async () => {
+      let orderPriorityRoutingActive = false;
+      let createdPayload: unknown;
+      renderNewOrder(({ url, init }) => {
+        if (url === "/api/v1/tests?pageSize=100") {
+          return json({ ...medicalTestsResponse, orderPriorityRoutingActive });
+        }
+        if (url === "/api/v1/orders" && init?.method === "POST") {
+          createdPayload = JSON.parse(String(init.body));
+          return json(orderDetails({ id: "order-2" }), 201);
+        }
+        if (url === "/api/v1/orders/order-2") {
+          return json(orderDetails({ id: "order-2" }));
+        }
+        return undefined;
+      });
+
+      await selectAnna();
+      await userEvent.selectOptions(screen.getByLabelText("Priorytet"), "URGENT");
+      await userEvent.click(await screen.findByLabelText(/CRP/));
+
+      // Symuluje prowadzącego przełączającego kontrolowany defekt w /admin,
+      // podczas gdy uczestnik ma formularz już otwarty — bez odświeżenia
+      // strony kolejne "Utwórz zlecenie" musi odczytać nowy stan sygnału.
+      orderPriorityRoutingActive = true;
+
+      await userEvent.click(screen.getByRole("button", { name: "Utwórz zlecenie" }));
+
+      await waitFor(() => {
+        expect(createdPayload).toMatchObject({ priority: "ROUTINE" });
+      });
+    });
+
+    it("[sygnał aktywny] nie zmienia normalnego wyboru Rutynowe", async () => {
+      let createdPayload: unknown;
+      renderNewOrder(({ url, init }) => {
+        if (url === "/api/v1/tests?pageSize=100") {
+          return json({ ...medicalTestsResponse, orderPriorityRoutingActive: true });
+        }
+        if (url === "/api/v1/orders" && init?.method === "POST") {
+          createdPayload = JSON.parse(String(init.body));
+          return json(orderDetails({ id: "order-2" }), 201);
+        }
+        if (url === "/api/v1/orders/order-2") {
+          return json(orderDetails({ id: "order-2" }));
+        }
+        return undefined;
+      });
+
+      await selectAnna();
+      await userEvent.click(await screen.findByLabelText(/CRP/));
+      await userEvent.click(screen.getByRole("button", { name: "Utwórz zlecenie" }));
+
+      await waitFor(() => {
+        expect(createdPayload).toMatchObject({ priority: "ROUTINE" });
+      });
+    });
+
+    it("nie ujawnia nazwy defektu w interfejsie uczestnika", async () => {
+      renderNewOrder(({ url }) => {
+        if (url === "/api/v1/tests?pageSize=100") {
+          return json({ ...medicalTestsResponse, orderPriorityRoutingActive: true });
+        }
+        return undefined;
+      });
+
+      await selectAnna();
+      const pageText = document.body.textContent ?? "";
+      expect(pageText).not.toContain("ORDER_PRIORITY_MAPPING");
+      expect(pageText.toLowerCase()).not.toContain("controlled bug");
+    });
   });
 });
 

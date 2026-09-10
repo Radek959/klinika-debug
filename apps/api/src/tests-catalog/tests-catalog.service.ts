@@ -2,12 +2,16 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { MedicalTestsListResponse } from "@klinika/api-contracts";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { WorkshopConfigService } from "../workshop-config/workshop-config.service";
 import type { MedicalTestListQueryDto } from "./dto/medical-test-list-query.dto";
 import { toMedicalTestCatalogItem } from "./tests-catalog.mapper";
 
 @Injectable()
 export class TestsCatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly workshopConfig: WorkshopConfigService
+  ) {}
 
   async list(query: MedicalTestListQueryDto): Promise<MedicalTestsListResponse> {
     const where = this.buildWhere(query);
@@ -28,12 +32,22 @@ export class TestsCatalogService {
       this.prisma.medicalTest.count({ where })
     ]);
 
+    // WORKSHOP CONTROLLED DEFECT (ORDER_PRIORITY_MAPPING): this is the only
+    // signal the participant frontend gets about the globally configured
+    // controlled bug — a plain boolean, read fresh on every catalog request
+    // (no F5 needed once the trainer flips it in /admin), never the bug name
+    // or the rest of the admin config. The actual (wrong) priority mapping
+    // happens in apps/web/src/orders/NewOrderPage.tsx and orderFormState.ts;
+    // this backend endpoint and `POST /api/v1/orders` stay fully correct.
+    const controlledBug = await this.workshopConfig.getControlledBug();
+
     return {
       items: items.map(toMedicalTestCatalogItem),
       page: query.page,
       pageSize: query.pageSize,
       total,
-      totalPages: Math.ceil(total / query.pageSize)
+      totalPages: Math.ceil(total / query.pageSize),
+      orderPriorityRoutingActive: controlledBug === "ORDER_PRIORITY_MAPPING"
     };
   }
 
