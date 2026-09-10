@@ -563,14 +563,14 @@ describe("interfejs zleceń", () => {
     expect(screen.queryByText(/LAB_RATE_LIMITED/)).not.toBeInTheDocument();
     expect(screen.queryByText(/RATE_LIMIT/)).not.toBeInTheDocument();
 
-    // Ręczne ponowne kliknięcie w trakcie oczekiwania jest bezpieczne.
-    await userEvent.click(screen.getByRole("button", { name: "Wyślij do laboratorium" }));
-    await waitFor(() => {
-      expect(sendAttempts).toBe(2);
-    });
+    // Automatyczne ponowienie jest już zaplanowane — pokazywanie "Wyślij do
+    // laboratorium" obok tego komunikatu byłoby mylące, więc przycisk znika.
+    // Jedyną dostępną akcją zostaje ręczne "Odśwież status".
     expect(
-      screen.queryByText("Zlecenie zostało wysłane do laboratorium.")
+      screen.queryByRole("button", { name: "Wyślij do laboratorium" })
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Odśwież status" })).toBeInTheDocument();
+    expect(sendAttempts).toBe(1);
   });
 
   it("odświeża historię po zapisanym ograniczeniu przepustowości (429)", async () => {
@@ -786,6 +786,70 @@ describe("interfejs zleceń", () => {
         await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
       ).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Odśwież status" })).not.toBeInTheDocument();
+    }
+  );
+
+  it(
+    "pokazuje 'Odśwież status' od razu po wejściu w zlecenie (F5 / nawigacja), " +
+      "gdy backend zgłasza trwające ponowienie wysyłki (labSendRetryPending)",
+    async () => {
+      // Bez żadnego kliknięcia „Wyślij do laboratorium” w TEJ instancji strony —
+      // informacja o trwającym retry musi pochodzić WYŁĄCZNIE z odpowiedzi API,
+      // symulując ponowne wejście w szczegóły zlecenia (F5 / powrót z listy) po
+      // wcześniejszym 429/503/504 w innej instancji strony.
+      window.history.pushState({}, "", "/orders/order-1");
+      mockFetch(({ url }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/orders/order-1/history")) {
+          return json(historyListResponse([]));
+        }
+        if (url === "/api/v1/orders/order-1") {
+          return json(sendableOrderDetails({ labSendRetryPending: true }));
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+
+      expect(
+        await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Odśwież status" })).toBeInTheDocument();
+      // Pokazywanie "Wyślij do laboratorium" obok "Odśwież status" byłoby
+      // mylące — backend już ponawia wysyłkę w tle.
+      expect(
+        screen.queryByRole("button", { name: "Wyślij do laboratorium" })
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it(
+    "nie pokazuje 'Odśwież status' dla zwykłego SAMPLE_COLLECTED bez trwającego " +
+      "retry (labSendRetryPending: false), mimo że zlecenie było już kiedyś wysyłane",
+    async () => {
+      window.history.pushState({}, "", "/orders/order-1");
+      mockFetch(({ url }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/orders/order-1/history")) {
+          return json(historyListResponse([]));
+        }
+        if (url === "/api/v1/orders/order-1") {
+          return json(sendableOrderDetails({ labSendRetryPending: false }));
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+
+      expect(
+        await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Odśwież status" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Wyślij do laboratorium" })).toBeInTheDocument();
     }
   );
 
@@ -1720,6 +1784,7 @@ function orderDetails(overrides: Partial<OrderDetailsResponse> = {}): OrderDetai
     createdAt: "2026-09-01T10:00:00.000Z",
     updatedAt: "2026-09-01T10:00:00.000Z",
     results: [],
+    labSendRetryPending: false,
     ...overrides
   };
 }
@@ -1791,7 +1856,7 @@ function mockFetch(
 }
 
 /** Zlecenie w statusie `SAMPLE_COLLECTED`, gotowe do wysyłki do laboratorium. */
-function sendableOrderDetails() {
+function sendableOrderDetails(overrides: Partial<OrderDetailsResponse> = {}) {
   return orderDetails({
     status: "SAMPLE_COLLECTED",
     samples: [
@@ -1805,7 +1870,8 @@ function sendableOrderDetails() {
         rejectionCode: null,
         rejectionReason: null
       }
-    ]
+    ],
+    ...overrides
   });
 }
 

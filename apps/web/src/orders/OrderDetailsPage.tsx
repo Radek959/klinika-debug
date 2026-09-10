@@ -32,8 +32,10 @@ import { OrderProgressStepper } from "./OrderProgressStepper";
  * przed pierwszą wysyłką nie oznacza oczekiwania na laboratorium. Gdy backend
  * zwróci retryowalny błąd wysyłki (429/503/504) i zaplanuje automatyczne
  * ponowienie, zlecenie ZOSTAJE w `SAMPLE_COLLECTED` — ten przypadek jest
- * rozpoznawany osobno przez lokalny stan `hasActiveLabRetry`, patrz
- * `OrderDetailsPage`.
+ * rozpoznawany przez `order.labSendRetryPending` (trwałe, przeżywa F5 i
+ * ponowne wejście w zlecenie) oraz lokalny stan `hasActiveLabRetry` (natychmiastowa
+ * reakcja UI zaraz po nieudanej wysyłce, zanim zlecenie zostanie ponownie
+ * pobrane), patrz `OrderDetailsPage`.
  */
 const LAB_WAITING_STATUSES = new Set<OrderStatus>(["SENT_TO_LAB", "PROCESSING", "PARTIAL"]);
 
@@ -50,10 +52,12 @@ export function OrderDetailsPage({ token }: { token: string }) {
   );
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   /**
-   * Ustawiane wyłącznie po retryowalnym błędzie wysyłki (429/503/504), gdy
-   * backend zaplanował automatyczne ponowienie, a zlecenie zostało w
-   * `SAMPLE_COLLECTED`. Pozwala pokazać „Odśwież status” dla TEGO przypadku,
-   * bez rozszerzania widoczności przycisku na każde `SAMPLE_COLLECTED`.
+   * Ustawiane wyłącznie po retryowalnym błędzie wysyłki (429/503/504) w TEJ
+   * instancji strony, zanim zdążymy ponownie pobrać zlecenie — pozwala pokazać
+   * „Odśwież status” natychmiast po błędzie, bez czekania na kolejny fetch.
+   * Po F5 albo ponownym wejściu w zlecenie ten lokalny stan wraca do `false`
+   * i wtedy liczy się WYŁĄCZNIE trwałe `order.labSendRetryPending` z API —
+   * dzięki temu informacja o trwającym retry nie ginie po opuszczeniu strony.
    */
   const [hasActiveLabRetry, setHasActiveLabRetry] = useState(false);
   const requestId = useRef(0);
@@ -155,7 +159,8 @@ export function OrderDetailsPage({ token }: { token: string }) {
               </Link>
             ) : null}
             {LAB_WAITING_STATUSES.has(order.status) ||
-            (order.status === "SAMPLE_COLLECTED" && hasActiveLabRetry) ? (
+            (order.status === "SAMPLE_COLLECTED" &&
+              (hasActiveLabRetry || order.labSendRetryPending)) ? (
               <button
                 type="button"
                 className="secondary-button"
@@ -237,6 +242,13 @@ export function OrderDetailsPage({ token }: { token: string }) {
         <SendToLabAction
           token={token}
           orderId={order.id}
+          // Zlecenie z aktywnym automatycznym ponowieniem (429/503/504) nie
+          // może jednocześnie pokazywać „Wyślij do laboratorium” — kolejna
+          // ręczna wysyłka byłaby myląca, skoro backend i tak już ponawia w
+          // tle. Komponent zostaje zamontowany (nie znika), żeby ewentualny
+          // komunikat błędu/retry z WŁAŚNIE zakończonej próby nie zniknął w
+          // tym samym renderze, w którym ustawiamy `hasActiveLabRetry`.
+          hideSendButton={hasActiveLabRetry || order.labSendRetryPending}
           onSent={() => {
             setSuccess("Zlecenie zostało wysłane do laboratorium.");
             setHasActiveLabRetry(false);
@@ -453,12 +465,23 @@ function recordsSendHistory(caught: unknown): boolean {
 function SendToLabAction({
   token,
   orderId,
+  hideSendButton,
   onSent,
   onHistoryRecorded,
   onRetryScheduled
 }: {
   token: string;
   orderId: string;
+  /**
+   * `true`, gdy dla tego zlecenia trwa już automatyczne ponowienie wysyłki
+   * (lokalnie po 429/503/504 w tej instancji strony, albo trwale —
+   * `order.labSendRetryPending` po F5/ponownym wejściu). Ukrywa WYŁĄCZNIE
+   * przycisk „Wyślij do laboratorium” — pokazywanie go obok „Odśwież status”
+   * byłoby mylące, skoro backend już ponawia wysyłkę w tle. Komponent nadal
+   * pozostaje zamontowany, żeby komunikat błędu/retry z poprzedniej próby nie
+   * zniknął.
+   */
+  hideSendButton: boolean;
   onSent: () => void;
   onHistoryRecorded: () => void;
   /**
@@ -506,11 +529,20 @@ function SendToLabAction({
     }
   }
 
+  if (hideSendButton && !error && !retryNotice && !fieldErrors.length) {
+    // Świeże SAMPLE_COLLECTED z trwającym retry (np. po F5) — nic z tego
+    // komponentu jeszcze nie było pokazane, więc nie ma sensu renderować
+    // pustej sekcji.
+    return null;
+  }
+
   return (
     <section className="data-section">
-      <button type="button" className="primary-button" disabled={isSending} onClick={send}>
-        {isSending ? "Wysyłanie..." : "Wyślij do laboratorium"}
-      </button>
+      {hideSendButton ? null : (
+        <button type="button" className="primary-button" disabled={isSending} onClick={send}>
+          {isSending ? "Wysyłanie..." : "Wyślij do laboratorium"}
+        </button>
+      )}
       {error ? (
         <p className="form-error" role="alert">
           {error.message}

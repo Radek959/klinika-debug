@@ -38,3 +38,28 @@ export function generateSyntheticAdultPesel(serial: number): string {
 export function nextPeselSerial(): number {
   return Date.now() % 1000;
 }
+
+/**
+ * Rocznik 2018 (niepełnoletni pacjent, z dużym marginesem, przez wiele lat
+ * warsztatu), `serial` 0-999 dobrany tak, by numery kolejnych uruchomień się
+ * nie powtarzały. Używany przez browser regression PATIENT_GUARDIAN.
+ */
+export function generateSyntheticMinorPesel(serial: number): string {
+  if (!Number.isInteger(serial) || serial < 0 || serial > 999) {
+    throw new Error("serial musi być liczbą całkowitą z zakresu 0-999.");
+  }
+
+  const yearPart = pad(18, 2); // 2018 - 2000
+  const encodedMonth = pad(21, 2); // styczeń, offset +20 dla roczników 2000-2099
+  const day = "15";
+  const genderDigit = "4"; // parzysta -> kobieta
+  const serialDigits = pad(serial, 3);
+  const base = `${yearPart}${encodedMonth}${day}${serialDigits}${genderDigit}`;
+
+  const sum = PESEL_WEIGHTS.reduce(
+    (total, weight, index) => total + Number(base[index]) * weight,
+    0
+  );
+  const checksum = (10 - (sum % 10)) % 10;
+  return `${base}${checksum}`;
+}

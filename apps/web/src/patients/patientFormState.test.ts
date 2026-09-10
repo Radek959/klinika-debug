@@ -111,6 +111,63 @@ describe("patientFormState", () => {
   it("nie wysyła workspaceId w payloadzie tworzenia", () => {
     expect(toCreatePatientPayload(baseForm())).not.toHaveProperty("workspaceId");
   });
+
+  describe("opiekun niepełnoletniego pacjenta — semantyka pustego formularza", () => {
+    it("nie wysyła guardian, gdy wszystkie pola opiekuna są puste (PATIENT_GUARDIAN / GUARDIAN_REQUIRED zależą od backendu)", () => {
+      const minorWithEmptyGuardian = minorForm();
+
+      expect(toCreatePatientPayload(minorWithEmptyGuardian)).not.toHaveProperty(
+        "guardian"
+      );
+    });
+
+    it("nie wysyła guardian, gdy pola opiekuna zawierają tylko białe znaki", () => {
+      const minorWithBlankGuardian = {
+        ...minorForm(),
+        guardianFirstName: "   ",
+        guardianPhone: "   "
+      };
+
+      expect(toCreatePatientPayload(minorWithBlankGuardian)).not.toHaveProperty(
+        "guardian"
+      );
+    });
+
+    it("wysyła pełny guardian, gdy dane opiekuna niepełnoletniego są wypełnione", () => {
+      const minorWithGuardian = {
+        ...minorForm(),
+        guardianFirstName: "Anna",
+        guardianLastName: "Kowalska",
+        guardianPhone: "500600700",
+        guardianEmail: "anna@example.test"
+      };
+
+      expect(toCreatePatientPayload(minorWithGuardian)).toMatchObject({
+        guardian: {
+          firstName: "Anna",
+          lastName: "Kowalska",
+          phone: "500600700",
+          email: "anna@example.test"
+        }
+      });
+    });
+
+    it("wysyła guardian z częściowymi danymi, gdy uzupełniono tylko część pól (normalna walidacja opiekuna nadal obowiązuje)", () => {
+      const minorWithPartialGuardian = {
+        ...minorForm(),
+        guardianFirstName: "Anna"
+      };
+
+      expect(toCreatePatientPayload(minorWithPartialGuardian)).toMatchObject({
+        guardian: {
+          firstName: "Anna",
+          lastName: null,
+          phone: null,
+          email: null
+        }
+      });
+    });
+  });
 });
 
 function baseForm(): PatientFormState {
@@ -133,5 +190,17 @@ function formWithGuardian(): PatientFormState {
     guardianLastName: "Nowak",
     guardianPhone: "500600700",
     guardianEmail: "marta@example.test"
+  };
+}
+
+function minorForm(): PatientFormState {
+  return {
+    ...emptyPatientForm,
+    firstName: "Maja",
+    lastName: "Nowak",
+    pesel: "18210199982",
+    birthDate: "2018-01-01",
+    gender: "FEMALE",
+    phone: "500600700"
   };
 }

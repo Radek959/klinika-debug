@@ -95,6 +95,33 @@ describe("orders send api — scenariusz SERVER_ERROR", () => {
     });
   });
 
+  it(
+    "GET szczegółów zlecenia zgłasza labSendRetryPending=true, gdy ponowienie " +
+      "jest zaplanowane, i false po wyczerpaniu prób (TECHNICAL_ERROR) — " +
+      "trwałe, więc przeżywa F5 / ponowne wejście w zlecenie",
+    async () => {
+      const { token, orderId } = await createSendableOrder("SMP-SE-0011");
+
+      // Zwykłe SAMPLE_COLLECTED przed jakąkolwiek wysyłką nie ma jeszcze
+      // żadnego zadania ponowienia.
+      expect((await getOrder(token, orderId)).body.labSendRetryPending).toBe(false);
+
+      expect((await sendOrder(token, orderId)).statusCode).toBe(503);
+
+      // Symuluje F5 / ponowne wejście w zlecenie: osobny GET, bez żadnego
+      // lokalnego stanu frontendu — informacja musi pochodzić z bazy.
+      const pending = await getOrder(token, orderId);
+      expect(pending.body.status).toBe("SAMPLE_COLLECTED");
+      expect(pending.body.labSendRetryPending).toBe(true);
+
+      await runAllRetries(orderId);
+
+      const exhausted = await getOrder(token, orderId);
+      expect(exhausted.body.status).toBe("TECHNICAL_ERROR");
+      expect(exhausted.body.labSendRetryPending).toBe(false);
+    }
+  );
+
   it("wykonuje trzy automatyczne ponowienia 15/30/60 na tym samym zadaniu i kończy TECHNICAL_ERROR", async () => {
     const { token, orderId } = await createSendableOrder("SMP-SE-0003");
     expect((await sendOrder(token, orderId)).statusCode).toBe(503);
@@ -384,5 +411,15 @@ describe("orders send api — scenariusz SERVER_ERROR", () => {
       url: `/api/v1/orders/${orderId}/send`,
       headers
     });
+  }
+
+  async function getOrder(token: string, orderId: string) {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/orders/${orderId}`,
+      headers: { authorization: `Bearer ${token}` }
+    });
+    expect(response.statusCode).toBe(200);
+    return { ...response, body: JSON.parse(response.body) };
   }
 });

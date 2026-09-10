@@ -97,6 +97,56 @@ describe("workshop controlled bugs", () => {
 
       expect(response.body).not.toContain("PATIENT_GUARDIAN");
     });
+
+    // Regresja: frontend kiedyś budował dla niepełnoletniego pacjenta payload z
+    // pustym obiektem `guardian` (wszystkie pola null) zamiast pomijać `guardian`
+    // w ogóle. Backend traktuje jawnie podany obiekt guardian jako "opiekun
+    // został podany" i uruchamia zwykłą walidację jego pól — nawet gdy
+    // PATIENT_GUARDIAN jest aktywny. Fix żyje we frontendowym budowaniu payloadu
+    // (`patientFormState.ts`), ten test dokumentuje oczekiwane zachowanie API dla
+    // takiego (już niewysyłanego przez naprawiony frontend) payloadu.
+    const minorWithExplicitEmptyGuardian = {
+      ...minorWithoutGuardian,
+      guardian: { firstName: null, lastName: null, phone: null, email: null }
+    };
+
+    it("[CLEAN] jawnie pusty obiekt guardian nadal skutkuje 422 (walidacja pól opiekuna)", async () => {
+      const { token } = await login();
+
+      const response = await createPatient(token, minorWithExplicitEmptyGuardian);
+
+      expect(response.statusCode).toBe(422);
+    });
+
+    it("[DEFEKT AKTYWNY] jawnie pusty obiekt guardian nadal skutkuje 422, mimo że PATIENT_GUARDIAN jest aktywny — dowód, że naprawiony frontend musi POMIJAĆ guardian, a nie wysyłać go pusty", async () => {
+      const { token } = await login();
+      await setControlledBug("PATIENT_GUARDIAN");
+
+      const response = await createPatient(token, minorWithExplicitEmptyGuardian);
+
+      expect(response.statusCode).toBe(422);
+      expect(extractFieldErrors(response)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ field: "guardian.firstName" }),
+          expect.objectContaining({ field: "guardian.lastName" })
+        ])
+      );
+    });
+
+    it("[DEFEKT AKTYWNY] częściowo uzupełniony opiekun nadal podlega normalnej walidacji danych opiekuna", async () => {
+      const { token } = await login();
+      await setControlledBug("PATIENT_GUARDIAN");
+
+      const response = await createPatient(token, {
+        ...minorWithoutGuardian,
+        guardian: { firstName: "Anna", lastName: null, phone: null, email: null }
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(extractFieldErrors(response)).toContainEqual(
+        expect.objectContaining({ field: "guardian.lastName", code: "REQUIRED" })
+      );
+    });
   });
 
   describe("ORDER_FLOW", () => {

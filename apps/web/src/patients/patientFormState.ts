@@ -187,7 +187,21 @@ function guardianPayload(state: PatientFormState): GuardianRequest {
 }
 
 function shouldSendGuardian(state: PatientFormState) {
-  return state.guardianEnabled || isMinorPatient(state);
+  // Semantycznie pusty formularz opiekuna (bez żadnych wypełnionych pól) dla
+  // niepełnoletniego pacjenta oznacza "brak opiekuna", a nie "opiekun z
+  // pustymi polami" — payload nie zawiera wtedy `guardian`, dzięki czemu
+  // backend stosuje normalną regułę GUARDIAN_REQUIRED (albo kontrolowany bug
+  // PATIENT_GUARDIAN, o którym frontend nic nie wie).
+  return state.guardianEnabled || (isMinorPatient(state) && hasGuardianData(state));
+}
+
+function hasGuardianData(state: PatientFormState) {
+  return (
+    Boolean(emptyAsNull(state.guardianFirstName)) ||
+    Boolean(emptyAsNull(state.guardianLastName)) ||
+    Boolean(emptyAsNull(state.guardianPhone)) ||
+    Boolean(emptyAsNull(state.guardianEmail))
+  );
 }
 
 function getGuardianDiff(

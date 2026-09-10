@@ -32,6 +32,7 @@ type OrderWithRelations = Order & {
 
 type OrderDetailsWithRelations = OrderWithRelations & {
   results: Result[];
+  labSendRetryJobs: Array<{ status: "PENDING" | "PROCESSING" | "DONE" | "FAILED" }>;
 };
 
 function toDateString(date: Date | null): string | null {
@@ -164,7 +165,10 @@ export function toOrderDetailsResponse(
   return {
     ...(toOrderResponse(order, order.tests, order.samples) as any),
     patient: toPatientDetails(order.patient),
-    results: toOrderResultItems(order.tests, order.results)
+    results: toOrderResultItems(order.tests, order.results),
+    labSendRetryPending: order.labSendRetryJobs.some(
+      (job) => job.status === "PENDING" || job.status === "PROCESSING"
+    )
   };
 }
 
