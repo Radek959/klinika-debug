@@ -14,12 +14,18 @@ import { CopyButton } from "../ui/CopyButton";
 import { formatDateTime } from "../ui/dates";
 import {
   materialTypeLabels,
+  orderPriorityBadgeVariants,
   orderPriorityLabels,
+  orderStatusBadgeVariants,
   orderStatusLabels,
+  orderTestStatusBadgeVariants,
   orderTestStatusLabels,
   resultFlagLabels,
-  sampleStatusLabels
+  sampleStatusBadgeVariants,
+  sampleStatusLabels,
+  statusBadgeClassName
 } from "../ui/labels";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 import { OrderHistorySection } from "./OrderHistorySection";
 import { OrderProgressStepper } from "./OrderProgressStepper";
 
@@ -43,6 +49,11 @@ export function OrderDetailsPage({ token }: { token: string }) {
   const { orderId } = useParams();
   const location = useLocation();
   const [order, setOrder] = useState<OrderDetailsResponse | null>(null);
+  useDocumentTitle(
+    order
+      ? `Zlecenie: ${order.patient.firstName} ${order.patient.lastName} • Klinika Debug`
+      : "Zlecenia • Klinika Debug"
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<ApiErrorInfo | null>(null);
@@ -177,8 +188,13 @@ export function OrderDetailsPage({ token }: { token: string }) {
         }
       >
         <p>
-          <span className="status-badge">{orderStatusLabels[order.status]}</span>{" "}
-          · Priorytet: {orderPriorityLabels[order.priority]}
+          <span className={statusBadgeClassName(orderStatusBadgeVariants[order.status])}>
+            {orderStatusLabels[order.status]}
+          </span>{" "}
+          · Priorytet:{" "}
+          <span className={statusBadgeClassName(orderPriorityBadgeVariants[order.priority])}>
+            {orderPriorityLabels[order.priority]}
+          </span>
         </p>
       </PageHeader>
 
@@ -202,7 +218,9 @@ export function OrderDetailsPage({ token }: { token: string }) {
           {order.tests.map((test) => (
             <li key={test.medicalTestId}>
               {test.name} ({test.code}) — {materialTypeLabels[test.materialType]} —{" "}
-              <span className="status-badge">{orderTestStatusLabels[test.status]}</span>
+              <span className={statusBadgeClassName(orderTestStatusBadgeVariants[test.status])}>
+                {orderTestStatusLabels[test.status]}
+              </span>
             </li>
           ))}
         </ul>
@@ -249,6 +267,7 @@ export function OrderDetailsPage({ token }: { token: string }) {
           // komunikat błędu/retry z WŁAŚNIE zakończonej próby nie zniknął w
           // tym samym renderze, w którym ustawiamy `hasActiveLabRetry`.
           hideSendButton={hasActiveLabRetry || order.labSendRetryPending}
+          persistentRetryPending={order.labSendRetryPending}
           onSent={() => {
             setSuccess("Zlecenie zostało wysłane do laboratorium.");
             setHasActiveLabRetry(false);
@@ -379,7 +398,12 @@ function SampleRow({
     <tr>
       <td>{materialTypeLabels[materialType]}</td>
       <td>
-        <span className="status-badge">
+        <span
+          className={statusBadgeClassName(
+            sampleStatusBadgeVariants[status as keyof typeof sampleStatusBadgeVariants] ??
+              "neutral"
+          )}
+        >
           {sampleStatusLabels[status as keyof typeof sampleStatusLabels] ?? status}
         </span>
       </td>
@@ -466,6 +490,7 @@ function SendToLabAction({
   token,
   orderId,
   hideSendButton,
+  persistentRetryPending,
   onSent,
   onHistoryRecorded,
   onRetryScheduled
@@ -482,6 +507,13 @@ function SendToLabAction({
    * zniknął.
    */
   hideSendButton: boolean;
+  /**
+   * Trwałe `order.labSendRetryPending` z API. Po F5/ponownym wejściu na
+   * stronę lokalny `retryNotice` jest pusty (świeży mount komponentu), więc
+   * bez tej flagi uczestnik nie zobaczyłby żadnej informacji o trwającym
+   * automatycznym ponowieniu — tylko sam przycisk „Odśwież status”.
+   */
+  persistentRetryPending: boolean;
   onSent: () => void;
   onHistoryRecorded: () => void;
   /**
@@ -529,10 +561,9 @@ function SendToLabAction({
     }
   }
 
-  if (hideSendButton && !error && !retryNotice && !fieldErrors.length) {
-    // Świeże SAMPLE_COLLECTED z trwającym retry (np. po F5) — nic z tego
-    // komponentu jeszcze nie było pokazane, więc nie ma sensu renderować
-    // pustej sekcji.
+  if (hideSendButton && !error && !retryNotice && !fieldErrors.length && !persistentRetryPending) {
+    // Świeże SAMPLE_COLLECTED bez żadnego retry — nic z tego komponentu
+    // jeszcze nie było pokazane, więc nie ma sensu renderować pustej sekcji.
     return null;
   }
 
@@ -543,6 +574,11 @@ function SendToLabAction({
           {isSending ? "Wysyłanie..." : "Wyślij do laboratorium"}
         </button>
       )}
+      {persistentRetryPending && !error && !retryNotice ? (
+        <p className="muted" role="status">
+          Trwa automatyczna ponowna próba wysyłki do laboratorium.
+        </p>
+      ) : null}
       {error ? (
         <p className="form-error" role="alert">
           {error.message}
@@ -632,7 +668,13 @@ function describeMissingResults(order: OrderDetailsResponse): string {
   if (order.status === "TECHNICAL_ERROR") {
     return "Brak wyników — komunikacja z laboratorium zakończyła się błędem technicznym po automatycznych ponowieniach.";
   }
-  return "Brak wyników. Wyniki pojawią się automatycznie po ich odebraniu.";
+  if (order.status === "SAMPLE_COLLECTED" && order.labSendRetryPending) {
+    return "Wyniki nie są jeszcze dostępne — trwa automatyczna ponowna próba wysyłki do laboratorium.";
+  }
+  if (LAB_WAITING_STATUSES.has(order.status)) {
+    return "Wyniki nie są jeszcze dostępne. Użyj „Odśwież status”, aby sprawdzić aktualny stan zlecenia.";
+  }
+  return "Wyniki będą dostępne po wysłaniu zlecenia do laboratorium.";
 }
 
 function toLocalDateTimeInputValue(date: Date) {

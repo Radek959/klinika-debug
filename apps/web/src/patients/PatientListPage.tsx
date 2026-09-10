@@ -10,8 +10,10 @@ import {
   genderLabels,
   identifierTypeLabels
 } from "../ui/labels";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 
 export function PatientListPage({ token }: { token: string }) {
+  useDocumentTitle("Pacjenci • Klinika Debug");
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<PatientsListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +29,53 @@ export function PatientListPage({ token }: { token: string }) {
     sort: searchParams.get("sort") ?? "lastName",
     order: searchParams.get("order") ?? "asc"
   };
+
+  const [searchInput, setSearchInput] = useState(filters.search);
+
+  // Zewnętrzna zmiana filtra (np. „Wyczyść filtry”, przycisk „wstecz”) ma
+  // natychmiast odzwierciedlić się w polu tekstowym.
+  useEffect(() => {
+    setSearchInput(filters.search);
+  }, [filters.search]);
+
+  // Debounce ~300 ms: aktualizujemy URL (a tym samym wywołujemy request)
+  // dopiero po chwili ciszy w pisaniu, żeby nie odpytywać API po każdym
+  // znaku. Filtry z selectów aktualizują URL od razu — debounce dotyczy
+  // wyłącznie tego pola tekstowego.
+  //
+  // Gdy `searchInput` już zgadza się z `filters.search` (np. zaraz po tym,
+  // jak poprzedni debounce właśnie zaktualizował URL, albo po „Wyczyść
+  // filtry”, które ustawia oba na raz) — nic nie robimy: żadnego timeoutu,
+  // żadnego zbędnego `setSearchParams`. To ma dodatkowy efekt uboczny: skoro
+  // „Wyczyść filtry” zmienia `searchInput` na `""` synchronicznie z resetem
+  // URL, ten efekt przeliczy się od razu i sprzątnie (cleanup) jakikolwiek
+  // WCZEŚNIEJSZY, jeszcze oczekujący timeout z pisania sprzed kliknięcia —
+  // dzięki temu spóźniony debounce nie przywróci starego wyszukiwania.
+  useEffect(() => {
+    if (searchInput === filters.search) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setSearchParams(
+        (current) => {
+          const currentSearch = current.get("search") ?? "";
+          if (currentSearch === searchInput) {
+            return current;
+          }
+          const next = new URLSearchParams(current);
+          if (searchInput) {
+            next.set("search", searchInput);
+          } else {
+            next.delete("search");
+          }
+          next.set("page", "1");
+          return next;
+        },
+        { replace: true }
+      );
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput, filters.search, setSearchParams]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -96,8 +145,13 @@ export function PatientListPage({ token }: { token: string }) {
   }
 
   function clearFilters() {
+    setSearchInput("");
     setSearchParams({ page: "1", pageSize: "20", sort: "lastName", order: "asc" });
   }
+
+  const hasActiveFilters = Boolean(
+    filters.search || filters.active || filters.identifierType
+  );
 
   return (
     <>
@@ -114,8 +168,8 @@ export function PatientListPage({ token }: { token: string }) {
         <label>
           Wyszukaj
           <input
-            value={filters.search}
-            onChange={(event) => updateFilter("search", event.target.value)}
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Imię, nazwisko, PESEL albo dokument"
           />
         </label>
@@ -180,7 +234,21 @@ export function PatientListPage({ token }: { token: string }) {
       {!isLoading && data?.items.length === 0 ? (
         <section className="empty-state">
           <h2>Brak pacjentów</h2>
-          <p>Nie znaleziono pacjentów dla bieżących filtrów.</p>
+          {hasActiveFilters ? (
+            <>
+              <p>Nie znaleziono pacjentów dla bieżących filtrów.</p>
+              <button type="button" className="secondary-button" onClick={clearFilters}>
+                Wyczyść filtry
+              </button>
+            </>
+          ) : (
+            <>
+              <p>W tym workspace nie ma jeszcze żadnych pacjentów.</p>
+              <Link className="button-link" to="/patients/new">
+                Dodaj pacjenta
+              </Link>
+            </>
+          )}
         </section>
       ) : null}
 

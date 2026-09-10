@@ -11,6 +11,7 @@ import {
   genderLabels,
   identifierTypeLabels
 } from "../ui/labels";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 
 interface LoadError {
   title: string;
@@ -21,6 +22,9 @@ export function PatientDetailsPage({ token }: { token: string }) {
   const { patientId } = useParams();
   const location = useLocation();
   const [patient, setPatient] = useState<PatientResponse | null>(null);
+  useDocumentTitle(
+    patient ? `${patient.firstName} ${patient.lastName} • Klinika Debug` : "Pacjenci • Klinika Debug"
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isDeactivating, setIsDeactivating] = useState(false);
   const [error, setError] = useState<LoadError | null>(null);

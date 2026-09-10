@@ -1,6 +1,7 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../layout/AppLayout";
 import { CopyButton } from "../ui/CopyButton";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 import { PRODUCT_DOCS_URL } from "./ProductDocsPage";
 import { workshopLogs } from "./workshopLogs";
 
@@ -17,10 +18,11 @@ async function fetchProductDocsMarkdown() {
 type MaterialsTab = "logs" | "documentation";
 
 function resolveMaterialsTab(rawTab: string | null): MaterialsTab {
-  return rawTab === "documentation" ? "documentation" : "logs";
+  return rawTab === "logs" ? "logs" : "documentation";
 }
 
 export function MaterialsPage() {
+  useDocumentTitle("Materiały • Klinika Debug");
   const [searchParams] = useSearchParams();
   const activeTab = resolveMaterialsTab(searchParams.get("tab"));
 
@@ -30,18 +32,18 @@ export function MaterialsPage() {
 
       <nav className="materials-tabs" aria-label="Sekcje materiałów">
         <Link
-          to="/materials?tab=logs"
-          className={`materials-tab${activeTab === "logs" ? " active" : ""}`}
-          aria-current={activeTab === "logs" ? "page" : undefined}
-        >
-          Logi aplikacji
-        </Link>
-        <Link
           to="/materials?tab=documentation"
           className={`materials-tab${activeTab === "documentation" ? " active" : ""}`}
           aria-current={activeTab === "documentation" ? "page" : undefined}
         >
           Dokumentacja
+        </Link>
+        <Link
+          to="/materials?tab=logs"
+          className={`materials-tab${activeTab === "logs" ? " active" : ""}`}
+          aria-current={activeTab === "logs" ? "page" : undefined}
+        >
+          Logi aplikacji
         </Link>
       </nav>
 

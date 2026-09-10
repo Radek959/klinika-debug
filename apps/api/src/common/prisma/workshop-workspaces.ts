@@ -19,6 +19,7 @@ export interface WorkshopParticipant {
   index: number;
   slug: string;
   name: string;
+  displayName: string;
   login: string;
 }
 
@@ -28,6 +29,15 @@ export function getWorkshopParticipantSlug(index: number): string {
 
 export function getWorkshopParticipantName(index: number): string {
   return `Klinika Warsztatowa ${formatParticipantNumber(index)}`;
+}
+
+/**
+ * Nazwa wyświetlana konta `STAFF` uczestnika — celowo inna niż nazwa
+ * workspace'u (`getWorkshopParticipantName`), żeby w topbarze dało się
+ * odróżnić placówkę od zalogowanej osoby.
+ */
+export function getWorkshopParticipantDisplayName(index: number): string {
+  return `Uczestnik ${formatParticipantNumber(index)}`;
 }
 
 export function getWorkshopParticipantLogin(index: number): string {
@@ -45,6 +55,7 @@ export function buildWorkshopParticipants(
       index,
       slug: getWorkshopParticipantSlug(index),
       name: getWorkshopParticipantName(index),
+      displayName: getWorkshopParticipantDisplayName(index),
       login: getWorkshopParticipantLogin(index)
     };
   });

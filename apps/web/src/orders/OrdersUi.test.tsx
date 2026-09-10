@@ -158,6 +158,105 @@ describe("interfejs zleceń", () => {
     });
   });
 
+  it(
+    "pusta lista bez aktywnych filtrów pokazuje 'Nowe zlecenie', a z aktywnym " +
+      "filtrem 'Wyczyść filtry' w pustym stanie",
+    async () => {
+      mockFetch(({ url }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/orders?")) {
+          return json({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 });
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+
+      const emptyState = (
+        await screen.findByRole("heading", { name: "Brak zleceń" })
+      ).closest("section") as HTMLElement;
+      expect(
+        within(emptyState).getByRole("link", { name: "Nowe zlecenie" })
+      ).toHaveAttribute("href", "/orders/new");
+      expect(
+        within(emptyState).queryByRole("button", { name: "Wyczyść filtry" })
+      ).not.toBeInTheDocument();
+
+      await userEvent.selectOptions(screen.getByLabelText("Priorytet"), "URGENT");
+
+      const filteredEmptyState = (
+        await screen.findByRole("heading", { name: "Brak zleceń" })
+      ).closest("section") as HTMLElement;
+      expect(
+        within(filteredEmptyState).getByRole("button", { name: "Wyczyść filtry" })
+      ).toBeInTheDocument();
+      expect(
+        within(filteredEmptyState).queryByRole("link", { name: "Nowe zlecenie" })
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it("debounce'uje wyszukiwanie tekstowe (~300 ms) zamiast odpytywać API po każdym znaku", async () => {
+    const requestedUrls: string[] = [];
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url.startsWith("/api/v1/orders?")) {
+        requestedUrls.push(url);
+        return json({ items: [orderListItem], page: 1, pageSize: 20, total: 1, totalPages: 1 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+    await screen.findByText("Anna Nowak");
+    const requestsBeforeTyping = requestedUrls.length;
+
+    await userEvent.type(screen.getByLabelText("Wyszukaj"), "Nowak");
+
+    expect(requestedUrls.length).toBe(requestsBeforeTyping);
+
+    await waitFor(() => {
+      expect(requestedUrls.some((url) => url.includes("search=Nowak"))).toBe(true);
+    });
+  });
+
+  it(
+    "'Wyczyść filtry' kliknięte przed upływem debounce czyści pole i URL na trwałe " +
+      "— spóźniony debounce nie przywraca starego wyszukiwania",
+    async () => {
+      const requestedUrls: string[] = [];
+      mockFetch(({ url }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/orders?")) {
+          requestedUrls.push(url);
+          return json({ items: [orderListItem], page: 1, pageSize: 20, total: 1, totalPages: 1 });
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+      await screen.findByText("Anna Nowak");
+
+      await userEvent.type(screen.getByLabelText("Wyszukaj"), "Nowak");
+      await userEvent.click(screen.getByRole("button", { name: "Wyczyść filtry" }));
+
+      expect(screen.getByLabelText("Wyszukaj")).toHaveValue("");
+      expect(window.location.search).not.toContain("search=");
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      expect(screen.getByLabelText("Wyszukaj")).toHaveValue("");
+      expect(window.location.search).not.toContain("search=");
+      expect(requestedUrls.some((url) => url.includes("search=Nowak"))).toBe(false);
+    }
+  );
+
   it("linkuje imię i nazwisko pacjenta w szczegółach zlecenia do jego profilu", async () => {
     window.history.pushState({}, "", "/orders/order-1");
     mockFetch(({ url }) => {
@@ -823,6 +922,9 @@ describe("interfejs zleceń", () => {
       expect(
         screen.queryByRole("button", { name: "Wyślij do laboratorium" })
       ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Trwa automatyczna ponowna próba wysyłki do laboratorium.")
+      ).toBeInTheDocument();
     }
   );
 
@@ -1281,7 +1383,7 @@ describe("interfejs zleceń", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "Edycja zlecenia: Anna Nowak" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Wybrany pacjent" })).toHaveTextContent("Nowak Anna");
+    expect(screen.getByRole("region", { name: "Wybrany pacjent" })).toHaveTextContent("Anna Nowak");
     expect(screen.getByLabelText("Priorytet")).toHaveValue("URGENT");
     expect(await screen.findByLabelText(/Glukoza/)).toBeChecked();
     expect(screen.getByLabelText("Potwierdzenie przygotowania pacjenta")).not.toBeChecked();
@@ -1413,7 +1515,7 @@ describe("interfejs zleceń", () => {
 
     expect(
       await screen.findByRole("region", { name: "Wybrany pacjent" })
-    ).toHaveTextContent("Nowak Anna");
+    ).toHaveTextContent("Anna Nowak");
     expect(
       screen.getByRole("button", { name: "Wróć do wyszukiwania" })
     ).toBeInTheDocument();
@@ -1501,7 +1603,7 @@ describe("interfejs zleceń", () => {
     await userEvent.type(await screen.findByRole("combobox", { name: "Pacjent" }), "Anna");
     expect(await screen.findByText(/corr-patients/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Ponów wyszukiwanie" }));
-    expect(await screen.findByText("Nowak Anna")).toBeInTheDocument();
+    expect(await screen.findByText("Anna Nowak")).toBeInTheDocument();
   });
 
   it("pozwala wybrać, wyczyścić i obsłużyć pacjenta klawiaturą bez ujawniania ID", async () => {
@@ -1514,11 +1616,11 @@ describe("interfejs zleceń", () => {
 
     const input = await screen.findByRole("combobox", { name: "Pacjent" });
     await userEvent.type(input, "Kow");
-    expect(await screen.findByText("Nowak Anna")).toBeInTheDocument();
+    expect(await screen.findByText("Anna Nowak")).toBeInTheDocument();
     await userEvent.keyboard("{ArrowDown}{Enter}");
 
     expect(screen.getByRole("region", { name: "Wybrany pacjent" })).toHaveTextContent(
-      "Kowalski-Bardzo-Długie-Nazwisko Jan"
+      "Jan Kowalski-Bardzo-Długie-Nazwisko"
     );
     expect(screen.getByText("Paszport / PL: końcówka 6789")).toBeInTheDocument();
     expect(screen.queryByText("patient-2")).not.toBeInTheDocument();
@@ -1547,10 +1649,10 @@ describe("interfejs zleceń", () => {
     await waitFor(() => expect(responses.has("Jan")).toBe(true));
 
     responses.get("Jan")?.resolve(json(patientsResponse([janPatient])));
-    expect(await screen.findByText("Kowalski-Bardzo-Długie-Nazwisko Jan")).toBeInTheDocument();
+    expect(await screen.findByText("Jan Kowalski-Bardzo-Długie-Nazwisko")).toBeInTheDocument();
 
     responses.get("Anna")?.resolve(json(patientsResponse([annaPatient])));
-    await waitFor(() => expect(screen.queryByText("Nowak Anna")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("Anna Nowak")).not.toBeInTheDocument());
   });
 
   it("wyświetla katalog badań, zaznaczenie i pola dodatkowe bez rozciągania checkboxa", async () => {
@@ -1653,7 +1755,7 @@ describe("interfejs zleceń", () => {
     await userEvent.click(screen.getByLabelText(/Morfologia krwi/));
 
     const summary = within(screen.getByRole("region", { name: "Podsumowanie zlecenia" }));
-    expect(summary.getByText("Nowak Anna")).toBeInTheDocument();
+    expect(summary.getByText("Anna Nowak")).toBeInTheDocument();
     expect(summary.getByText("Rutynowe")).toBeInTheDocument();
     expect(summary.getByText("Liczba badań: 3")).toBeInTheDocument();
     expect(summary.getByText("Morfologia krwi (MORF)")).toBeInTheDocument();
@@ -1711,7 +1813,7 @@ describe("interfejs zleceń", () => {
     await userEvent.click(screen.getByRole("button", { name: "Utwórz zlecenie" }));
 
     expect(await screen.findByText(/corr-save/)).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Wybrany pacjent" })).toHaveTextContent("Nowak Anna");
+    expect(screen.getByRole("region", { name: "Wybrany pacjent" })).toHaveTextContent("Anna Nowak");
     expect(screen.getByLabelText(/CRP/)).toBeChecked();
   });
 
@@ -1815,7 +1917,7 @@ describe("interfejs zleceń", () => {
 
 async function selectAnna() {
   await userEvent.type(await screen.findByRole("combobox", { name: "Pacjent" }), "Anna");
-  await userEvent.click(await screen.findByText("Nowak Anna"));
+  await userEvent.click(await screen.findByText("Anna Nowak"));
 }
 
 function renderNewOrder(

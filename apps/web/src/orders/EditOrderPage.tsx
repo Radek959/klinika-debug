@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import type { MedicalTestCatalogItem, OrderDetailsResponse } from "@klinika/api-contracts";
 import { ApiClientError, getOrder, updateOrder } from "../api/client";
 import { PageHeader } from "../layout/AppLayout";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 import { OrderForm, type OrderFormState } from "./OrderForm";
 import {
   buildPatientListItemFromOrder,
@@ -12,6 +13,7 @@ import {
 } from "./orderFormState";
 
 export function EditOrderPage({ token }: { token: string }) {
+  useDocumentTitle("Edytuj zlecenie • Klinika Debug");
   const { orderId } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState<OrderDetailsResponse | null>(null);

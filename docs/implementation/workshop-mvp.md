@@ -52,10 +52,12 @@ bezpośrednio — nie ma drugiej, równoległej implementacji:
 - `npm run workshop:seed -- --participants=15` — tworzy (albo aktualizuje)
   deterministyczne workspace'y `warsztat-01`…`warsztat-NN` (widoczna nazwa
   `Klinika Warsztatowa NN`), po jednym koncie `tester01`…`testerNN` (rola
-  `STAFF`, aktywne) w każdym, oraz zasiewa w nich te same syntetyczne dane
-  startowe co standardowy seed. Operacja jest idempotentna — ponowne
-  uruchomienie dla tej samej liczby uczestników nie tworzy duplikatów.
-  Domyślna liczba uczestników to 15.
+  `STAFF`, aktywne, `displayName` = `Uczestnik NN` — celowo INNY niż nazwa
+  workspace'u, żeby w topbarze dało się odróżnić placówkę od zalogowanej
+  osoby) w każdym, oraz zasiewa w nich te same syntetyczne dane startowe co
+  standardowy seed. Operacja jest idempotentna — ponowne uruchomienie dla
+  tej samej liczby uczestników nie tworzy duplikatów. Domyślna liczba
+  uczestników to 15.
 - Hasło kont `testerNN` pochodzi ze zmiennej środowiskowej
   `WORKSHOP_STAFF_PASSWORD` (wymagana w produkcji, bezpieczna wartość
   domyślna wyłącznie lokalnie/testowo — analogicznie do `SEED_STAFF_PASSWORD`

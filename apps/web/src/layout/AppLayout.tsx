@@ -16,8 +16,11 @@ export function AppLayout({ user, onLogout }: AppLayoutProps) {
           <p className="workspace-name">{user.workspace.name}</p>
         </div>
         <div className="user-box">
-          <span>{user.displayName}</span>
-          <span className="user-login muted">{user.login}</span>
+          <div className="user-identity">
+            <span className="user-role-label">Użytkownik</span>
+            <span className="user-display-name">{user.displayName}</span>
+            <span className="user-login muted">{user.login}</span>
+          </div>
           <button type="button" className="secondary-button" onClick={onLogout}>
             Wyloguj
           </button>

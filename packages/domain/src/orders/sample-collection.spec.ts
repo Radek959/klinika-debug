@@ -43,6 +43,33 @@ describe("sample collection domain", () => {
         validateCollectedAt(collectedAt, futureOrderCreatedAt, now)
       ).toEqual([{ field: "collectedAt", code: "COLLECTED_AT_IN_FUTURE" }]);
     });
+
+    describe("dokładność `datetime-local` (minuty) vs sekundowy `orderCreatedAt`", () => {
+      // Zlecenie utworzone o 10:15:42 — formularz próbki (dokładność do
+      // minuty) pozwala uczestnikowi wpisać co najwyżej 10:15.
+      const preciseOrderCreatedAt = new Date("2026-09-01T10:15:42.000Z");
+      const sameMinuteNow = new Date("2026-09-01T12:00:00.000Z");
+
+      it("akceptuje pobranie próbki ucięte do tej samej minuty co utworzenie zlecenia (10:15:00)", () => {
+        const collectedAt = new Date("2026-09-01T10:15:00.000Z");
+        expect(
+          validateCollectedAt(collectedAt, preciseOrderCreatedAt, sameMinuteNow)
+        ).toEqual([]);
+      });
+
+      it("akceptuje pobranie próbki o dokładnie tej samej sekundzie co utworzenie zlecenia (10:15:42)", () => {
+        expect(
+          validateCollectedAt(preciseOrderCreatedAt, preciseOrderCreatedAt, sameMinuteNow)
+        ).toEqual([]);
+      });
+
+      it("nadal odrzuca pobranie próbki z poprzedniej minuty (10:14:59)", () => {
+        const collectedAt = new Date("2026-09-01T10:14:59.000Z");
+        expect(
+          validateCollectedAt(collectedAt, preciseOrderCreatedAt, sameMinuteNow)
+        ).toEqual([{ field: "collectedAt", code: "COLLECTED_AT_BEFORE_ORDER" }]);
+      });
+    });
   });
 
   describe("determineOrderStatusAfterSampleCollection", () => {

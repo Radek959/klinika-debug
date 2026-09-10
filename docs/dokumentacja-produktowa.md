@@ -222,7 +222,9 @@ Reguły:
 
 - kod kreskowy jest wymagany i unikalny w workspace'ie;
 - czas pobrania nie może być w przyszłości;
-- czas pobrania nie może być wcześniejszy niż utworzenie zlecenia;
+- czas pobrania nie może być wcześniejszy niż utworzenie zlecenia — ta reguła działa
+  z dokładnością do pełnej minuty: pobranie w tej samej minucie co utworzenie zlecenia
+  jest dozwolone, natomiast pobranie w poprzedniej minucie nadal jest odrzucane;
 - pierwsza z kilku próbek zmienia status zlecenia na `SAMPLE_COLLECTION_IN_PROGRESS`;
 - zarejestrowanie wszystkich wymaganych próbek ustawia `SAMPLE_COLLECTED`;
 - zlecenie można wysłać do laboratorium dopiero po zarejestrowaniu wszystkich wymaganych próbek.

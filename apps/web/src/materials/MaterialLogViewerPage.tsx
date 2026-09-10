@@ -2,11 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../layout/AppLayout";
 import { CopyButton } from "../ui/CopyButton";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 import { findWorkshopLogById } from "./workshopLogs";
 
 export function MaterialLogViewerPage() {
   const { logId } = useParams<{ logId: string }>();
   const material = logId ? findWorkshopLogById(logId) : undefined;
+  useDocumentTitle(
+    material ? `${material.title} • Klinika Debug` : "Materiały • Klinika Debug"
+  );
 
   if (!material) {
     return (

@@ -4,7 +4,14 @@ import type { OrderListItem, OrdersListResponse } from "@klinika/api-contracts";
 import { ApiClientError, listOrders } from "../api/client";
 import { PageHeader } from "../layout/AppLayout";
 import { formatDateTime } from "../ui/dates";
-import { orderPriorityLabels, orderStatusLabels } from "../ui/labels";
+import {
+  orderPriorityBadgeVariants,
+  orderPriorityLabels,
+  orderStatusBadgeVariants,
+  orderStatusLabels,
+  statusBadgeClassName
+} from "../ui/labels";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "", label: "Wszystkie" },
@@ -20,6 +27,7 @@ const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 export function OrderListPage({ token }: { token: string }) {
+  useDocumentTitle("Zlecenia • Klinika Debug");
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<OrdersListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +43,52 @@ export function OrderListPage({ token }: { token: string }) {
     sort: searchParams.get("sort") ?? "updatedAt",
     order: searchParams.get("order") ?? "desc"
   };
+
+  const [searchInput, setSearchInput] = useState(filters.search);
+
+  // Zewnętrzna zmiana filtra (np. „Wyczyść filtry”, przycisk „wstecz”) ma
+  // natychmiast odzwierciedlić się w polu tekstowym.
+  useEffect(() => {
+    setSearchInput(filters.search);
+  }, [filters.search]);
+
+  // Debounce ~300 ms: aktualizujemy URL (a tym samym wywołujemy request)
+  // dopiero po chwili ciszy w pisaniu. Filtry z selectów aktualizują URL od
+  // razu — debounce dotyczy wyłącznie tego pola tekstowego.
+  //
+  // Gdy `searchInput` już zgadza się z `filters.search` (np. zaraz po tym,
+  // jak poprzedni debounce właśnie zaktualizował URL, albo po „Wyczyść
+  // filtry”, które ustawia oba na raz) — nic nie robimy: żadnego timeoutu,
+  // żadnego zbędnego `setSearchParams`. To ma dodatkowy efekt uboczny: skoro
+  // „Wyczyść filtry” zmienia `searchInput` na `""` synchronicznie z resetem
+  // URL, ten efekt przeliczy się od razu i sprzątnie (cleanup) jakikolwiek
+  // WCZEŚNIEJSZY, jeszcze oczekujący timeout z pisania sprzed kliknięcia —
+  // dzięki temu spóźniony debounce nie przywróci starego wyszukiwania.
+  useEffect(() => {
+    if (searchInput === filters.search) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setSearchParams(
+        (current) => {
+          const currentSearch = current.get("search") ?? "";
+          if (currentSearch === searchInput) {
+            return current;
+          }
+          const next = new URLSearchParams(current);
+          if (searchInput) {
+            next.set("search", searchInput);
+          } else {
+            next.delete("search");
+          }
+          next.set("page", "1");
+          return next;
+        },
+        { replace: true }
+      );
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput, filters.search, setSearchParams]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -100,8 +154,11 @@ export function OrderListPage({ token }: { token: string }) {
   }
 
   function clearFilters() {
+    setSearchInput("");
     setSearchParams({ page: "1", pageSize: "20", sort: "updatedAt", order: "desc" });
   }
+
+  const hasActiveFilters = Boolean(filters.search || filters.status || filters.priority);
 
   return (
     <>
@@ -118,8 +175,8 @@ export function OrderListPage({ token }: { token: string }) {
         <label>
           Wyszukaj
           <input
-            value={filters.search}
-            onChange={(event) => updateFilter("search", event.target.value)}
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Identyfikator, pacjent, badanie"
           />
         </label>
@@ -186,7 +243,21 @@ export function OrderListPage({ token }: { token: string }) {
       {!isLoading && data?.items.length === 0 ? (
         <section className="empty-state">
           <h2>Brak zleceń</h2>
-          <p>Nie znaleziono zleceń dla bieżących filtrów.</p>
+          {hasActiveFilters ? (
+            <>
+              <p>Nie znaleziono zleceń dla bieżących filtrów.</p>
+              <button type="button" className="secondary-button" onClick={clearFilters}>
+                Wyczyść filtry
+              </button>
+            </>
+          ) : (
+            <>
+              <p>W tym workspace nie ma jeszcze żadnych zleceń.</p>
+              <Link className="button-link" to="/orders/new">
+                Nowe zlecenie
+              </Link>
+            </>
+          )}
         </section>
       ) : null}
 
@@ -236,9 +307,15 @@ function OrderRow({ order }: { order: OrderListItem }) {
         </strong>
       </td>
       <td>{order.tests.map((test) => test.code).join(", ")}</td>
-      <td>{orderPriorityLabels[order.priority]}</td>
       <td>
-        <span className="status-badge">{orderStatusLabels[order.status]}</span>
+        <span className={statusBadgeClassName(orderPriorityBadgeVariants[order.priority])}>
+          {orderPriorityLabels[order.priority]}
+        </span>
+      </td>
+      <td>
+        <span className={statusBadgeClassName(orderStatusBadgeVariants[order.status])}>
+          {orderStatusLabels[order.status]}
+        </span>
       </td>
       <td>{formatDateTime(order.updatedAt)}</td>
       <td>

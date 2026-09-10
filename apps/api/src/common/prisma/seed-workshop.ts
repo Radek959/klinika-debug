@@ -51,7 +51,7 @@ export async function provisionWorkshopWorkspaces(
       where: { login: participant.login },
       update: {
         workspaceId: workspace.id,
-        displayName: participant.name,
+        displayName: participant.displayName,
         role: "STAFF",
         passwordHash,
         active: true
@@ -59,7 +59,7 @@ export async function provisionWorkshopWorkspaces(
       create: {
         workspaceId: workspace.id,
         login: participant.login,
-        displayName: participant.name,
+        displayName: participant.displayName,
         role: "STAFF",
         passwordHash,
         active: true

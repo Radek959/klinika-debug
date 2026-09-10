@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createOrder, getPatient, listMedicalTests } from "../api/client";
 import { PageHeader } from "../layout/AppLayout";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 import { OrderForm, type OrderFormState } from "./OrderForm";
 import { buildCreateOrderPayload } from "./orderFormState";
 
 export function NewOrderPage({ token }: { token: string }) {
+  useDocumentTitle("Nowe zlecenie • Klinika Debug");
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const patientId = searchParams.get("patientId");

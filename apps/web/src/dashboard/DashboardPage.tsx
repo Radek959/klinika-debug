@@ -4,6 +4,7 @@ import type { AuthenticatedUser, DashboardSummaryResponse } from "@klinika/api-c
 import { ApiClientError, getDashboardSummary } from "../api/client";
 import { PageHeader } from "../layout/AppLayout";
 import { orderStatusLabels } from "../ui/labels";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 
 export function DashboardPage({
   user,
@@ -12,6 +13,7 @@ export function DashboardPage({
   user: AuthenticatedUser;
   token: string;
 }) {
+  useDocumentTitle("Panel główny • Klinika Debug");
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -103,6 +105,23 @@ export function DashboardPage({
           </div>
         </section>
       </div>
+
+      <section className="workspace-summary" aria-label="Przydatne podczas pracy">
+        <h2>Przydatne podczas pracy</h2>
+        <ul className="quick-links-list">
+          <li>
+            <Link to="/materials/product-docs">Dokumentacja produktowa</Link>
+          </li>
+          <li>
+            <a href="/api/docs" target="_blank" rel="noreferrer">
+              Dokumentacja API
+            </a>
+          </li>
+          <li>
+            <Link to="/materials?tab=logs">Logi aplikacji</Link>
+          </li>
+        </ul>
+      </section>
     </>
   );
 }
