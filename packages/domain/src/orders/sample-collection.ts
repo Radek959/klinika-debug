@@ -14,6 +14,21 @@ export interface SampleCollectionFieldError {
   code: SampleCollectionDateCode;
 }
 
+/**
+ * Ucina znacznik czasu do pełnej minuty (zeruje sekundy i milisekundy).
+ *
+ * `<input type="datetime-local">` w formularzu rejestracji próbki ma
+ * dokładność do minuty — jeśli zlecenie powstało np. o 10:15:42, jedyna
+ * wartość, jaką uczestnik może wpisać dla "tej samej chwili", to 10:15.
+ * Bez normalizacji taka poprawna wartość (10:15:00) wypadałaby PRZED
+ * `orderCreatedAt` (10:15:42) i błędnie kończyłaby się
+ * `COLLECTED_AT_BEFORE_ORDER`. Używane WYŁĄCZNIE do tej jednej reguły —
+ * `COLLECTED_AT_IN_FUTURE` porównuje dokładne znaczniki czasu bez zmian.
+ */
+function truncateToMinute(date: Date): number {
+  return Math.floor(date.getTime() / 60000) * 60000;
+}
+
 export function validateCollectedAt(
   collectedAt: Date,
   orderCreatedAt: Date,
@@ -23,7 +38,7 @@ export function validateCollectedAt(
     return [{ field: "collectedAt", code: "COLLECTED_AT_IN_FUTURE" }];
   }
 
-  if (collectedAt.getTime() < orderCreatedAt.getTime()) {
+  if (truncateToMinute(collectedAt) < truncateToMinute(orderCreatedAt)) {
     return [{ field: "collectedAt", code: "COLLECTED_AT_BEFORE_ORDER" }];
   }
 

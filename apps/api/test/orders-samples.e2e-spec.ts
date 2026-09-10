@@ -288,6 +288,37 @@ describe("orders samples api", () => {
     );
   });
 
+  it(
+    "akceptuje pobranie próbki z czasem z tej samej minuty co utworzenie zlecenia " +
+      "(dokładność `datetime-local` w formularzu jest tylko do minuty)",
+    async () => {
+      const { token, patientId, tests } = await setupDefaultOrderData();
+      const order = await createOrderAndParse(token, {
+        patientId,
+        priority: "ROUTINE",
+        tests: [{ medicalTestId: tests.CRP.id }]
+      });
+
+      // Zlecenie "utworzone" o 10:15:42 — realny flow, gdyby `orderCreatedAt`
+      // miało niezerowe sekundy w chwili utworzenia.
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { createdAt: new Date("2026-09-05T10:15:42.000Z") }
+      });
+
+      // `<input type="datetime-local">` ma dokładność do minuty — to jedyna
+      // wartość, jaką uczestnik mógłby wpisać dla "tej samej chwili".
+      const response = await registerSample(token, order.id, {
+        materialType: "SERUM",
+        barcode: "SMP-0001",
+        collectedAt: "2026-09-05T10:15:00.000Z"
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body).status).toBe("SAMPLE_COLLECTED");
+    }
+  );
+
   it("odrzuca niepoprawny rodzaj materiału", async () => {
     const { token, patientId, tests } = await setupDefaultOrderData();
     const order = await createOrderAndParse(token, {
