@@ -208,6 +208,42 @@ describe("interfejs pacjentów", () => {
     });
   });
 
+  it(
+    "'Wyczyść filtry' kliknięte przed upływem debounce czyści pole i URL na trwałe " +
+      "— spóźniony debounce nie przywraca starego wyszukiwania",
+    async () => {
+      const requestedUrls: string[] = [];
+      mockFetch(({ url }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/patients?")) {
+          requestedUrls.push(url);
+          return json({ items: [patient], page: 1, pageSize: 20, total: 1, totalPages: 1 });
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+      await screen.findByText("Anna Nowak");
+
+      await userEvent.type(screen.getByLabelText("Wyszukaj"), "Nowak");
+      // Klikamy „Wyczyść filtry” zanim debounce (300 ms) zdążył odpytać API.
+      await userEvent.click(screen.getByRole("button", { name: "Wyczyść filtry" }));
+
+      expect(screen.getByLabelText("Wyszukaj")).toHaveValue("");
+      expect(window.location.search).not.toContain("search=");
+
+      // Czekamy dłużej niż okno debounce — spóźniony timeout nie mógł
+      // przywrócić "Nowak" w polu, w URL ani wysłać go do API.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      expect(screen.getByLabelText("Wyszukaj")).toHaveValue("");
+      expect(window.location.search).not.toContain("search=");
+      expect(requestedUrls.some((url) => url.includes("search=Nowak"))).toBe(false);
+    }
+  );
+
   it("pokazuje błąd listy z correlationId i nie zostawia starych wyników", async () => {
     let listRequest = 0;
     mockFetch(({ url }) => {

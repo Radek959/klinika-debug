@@ -224,6 +224,39 @@ describe("interfejs zleceń", () => {
     });
   });
 
+  it(
+    "'Wyczyść filtry' kliknięte przed upływem debounce czyści pole i URL na trwałe " +
+      "— spóźniony debounce nie przywraca starego wyszukiwania",
+    async () => {
+      const requestedUrls: string[] = [];
+      mockFetch(({ url }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/orders?")) {
+          requestedUrls.push(url);
+          return json({ items: [orderListItem], page: 1, pageSize: 20, total: 1, totalPages: 1 });
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+      await screen.findByText("Anna Nowak");
+
+      await userEvent.type(screen.getByLabelText("Wyszukaj"), "Nowak");
+      await userEvent.click(screen.getByRole("button", { name: "Wyczyść filtry" }));
+
+      expect(screen.getByLabelText("Wyszukaj")).toHaveValue("");
+      expect(window.location.search).not.toContain("search=");
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      expect(screen.getByLabelText("Wyszukaj")).toHaveValue("");
+      expect(window.location.search).not.toContain("search=");
+      expect(requestedUrls.some((url) => url.includes("search=Nowak"))).toBe(false);
+    }
+  );
+
   it("linkuje imię i nazwisko pacjenta w szczegółach zlecenia do jego profilu", async () => {
     window.history.pushState({}, "", "/orders/order-1");
     mockFetch(({ url }) => {

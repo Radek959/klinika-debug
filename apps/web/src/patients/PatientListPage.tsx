@@ -42,25 +42,40 @@ export function PatientListPage({ token }: { token: string }) {
   // dopiero po chwili ciszy w pisaniu, żeby nie odpytywać API po każdym
   // znaku. Filtry z selectów aktualizują URL od razu — debounce dotyczy
   // wyłącznie tego pola tekstowego.
+  //
+  // Gdy `searchInput` już zgadza się z `filters.search` (np. zaraz po tym,
+  // jak poprzedni debounce właśnie zaktualizował URL, albo po „Wyczyść
+  // filtry”, które ustawia oba na raz) — nic nie robimy: żadnego timeoutu,
+  // żadnego zbędnego `setSearchParams`. To ma dodatkowy efekt uboczny: skoro
+  // „Wyczyść filtry” zmienia `searchInput` na `""` synchronicznie z resetem
+  // URL, ten efekt przeliczy się od razu i sprzątnie (cleanup) jakikolwiek
+  // WCZEŚNIEJSZY, jeszcze oczekujący timeout z pisania sprzed kliknięcia —
+  // dzięki temu spóźniony debounce nie przywróci starego wyszukiwania.
   useEffect(() => {
+    if (searchInput === filters.search) {
+      return;
+    }
     const timeoutId = window.setTimeout(() => {
-      setSearchParams((current) => {
-        const currentSearch = current.get("search") ?? "";
-        if (currentSearch === searchInput) {
-          return current;
-        }
-        const next = new URLSearchParams(current);
-        if (searchInput) {
-          next.set("search", searchInput);
-        } else {
-          next.delete("search");
-        }
-        next.set("page", "1");
-        return next;
-      });
+      setSearchParams(
+        (current) => {
+          const currentSearch = current.get("search") ?? "";
+          if (currentSearch === searchInput) {
+            return current;
+          }
+          const next = new URLSearchParams(current);
+          if (searchInput) {
+            next.set("search", searchInput);
+          } else {
+            next.delete("search");
+          }
+          next.set("page", "1");
+          return next;
+        },
+        { replace: true }
+      );
     }, 300);
     return () => window.clearTimeout(timeoutId);
-  }, [searchInput, setSearchParams]);
+  }, [searchInput, filters.search, setSearchParams]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -130,6 +145,7 @@ export function PatientListPage({ token }: { token: string }) {
   }
 
   function clearFilters() {
+    setSearchInput("");
     setSearchParams({ page: "1", pageSize: "20", sort: "lastName", order: "asc" });
   }
 
