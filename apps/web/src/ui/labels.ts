@@ -26,6 +26,54 @@ export const activeLabels: Record<string, string> = {
   false: "Nieaktywny"
 };
 
+/**
+ * Spokojne warianty wizualne statusów — tekst statusu jest zawsze widoczny,
+ * kolor jest dodatkowym, pomocniczym sygnałem, a nie jedynym nośnikiem
+ * informacji. Użyj razem ze `statusBadgeClassName`, zamiast ręcznie ifować
+ * klasy w widokach.
+ */
+export type StatusBadgeVariant = "success" | "pending" | "neutral" | "warning" | "error";
+
+export function statusBadgeClassName(variant: StatusBadgeVariant): string {
+  return `status-badge status-badge-${variant}`;
+}
+
+export const orderStatusBadgeVariants: Record<OrderStatus, StatusBadgeVariant> = {
+  DRAFT: "neutral",
+  SAMPLE_COLLECTION_IN_PROGRESS: "pending",
+  SAMPLE_COLLECTED: "pending",
+  SENT_TO_LAB: "pending",
+  PROCESSING: "pending",
+  PARTIAL: "pending",
+  COMPLETED: "success",
+  REJECTED: "error",
+  TECHNICAL_ERROR: "error"
+};
+
+export const orderPriorityBadgeVariants: Record<OrderPriority, StatusBadgeVariant> = {
+  ROUTINE: "neutral",
+  URGENT: "warning"
+};
+
+export const orderTestStatusBadgeVariants: Record<OrderTestStatus, StatusBadgeVariant> = {
+  PENDING: "pending",
+  COMPLETED: "success",
+  REJECTED: "error"
+};
+
+export const sampleStatusBadgeVariants: Record<SampleStatus, StatusBadgeVariant> = {
+  REQUIRED: "neutral",
+  COLLECTED: "pending",
+  SENT: "pending",
+  ACCEPTED: "success",
+  REJECTED: "error"
+};
+
+export const activeBadgeVariants: Record<string, StatusBadgeVariant> = {
+  true: "success",
+  false: "error"
+};
+
 export const orderStatusLabels: Record<OrderStatus, string> = {
   DRAFT: "Przygotowywane",
   SAMPLE_COLLECTION_IN_PROGRESS: "Trwa pobieranie próbek",

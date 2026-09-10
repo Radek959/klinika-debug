@@ -222,7 +222,7 @@ export function maskPatientIdentifier(patient: Pick<
 }
 
 export function patientDisplayName(patient: Pick<PatientListItem, "firstName" | "lastName">) {
-  return `${patient.lastName} ${patient.firstName}`;
+  return `${patient.firstName} ${patient.lastName}`;
 }
 
 export function formatEstimatedDuration(minutes: number | null | undefined) {

@@ -27,6 +27,7 @@ import { ProductDocsPage } from "./materials/ProductDocsPage";
 export function App() {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const token = readToken();
 
   useEffect(() => {
@@ -52,6 +53,11 @@ export function App() {
     onSessionExpired(() => {
       clearToken();
       setUser(null);
+      // Po ponownym zalogowaniu ta sesja ma wylądować na `/`, nie na
+      // poprzedniej ścieżce — poprzedni zasób mógł zniknąć po resecie
+      // warsztatowego workspace'u. `LoginPage` czyta tę flagę zamiast
+      // `location.state.from` wyłącznie w tym jednym przypadku.
+      setSessionExpired(true);
     });
     return () => onSessionExpired(null);
   }, []);
@@ -80,9 +86,12 @@ export function App() {
           path="/login"
           element={
             user ? (
-              <AuthenticatedRedirect />
+              <AuthenticatedRedirect
+                sessionExpired={sessionExpired}
+                onRedirected={() => setSessionExpired(false)}
+              />
             ) : (
-              <LoginPage onAuthenticated={setUser} />
+              <LoginPage sessionExpired={sessionExpired} onAuthenticated={setUser} />
             )
           }
         />
@@ -129,9 +138,29 @@ export function App() {
   );
 }
 
-function AuthenticatedRedirect() {
+function AuthenticatedRedirect({
+  sessionExpired,
+  onRedirected
+}: {
+  sessionExpired: boolean;
+  onRedirected: () => void;
+}) {
   const location = useLocation();
-  return <Navigate to={getSafeReturnPath(location.state)} replace />;
+  // Ustalone WYŁĄCZNIE przy pierwszym renderze: `<Navigate>` reaguje na
+  // każdą zmianę `to`, a `onRedirected` (wywoływane niżej) zeruje
+  // `sessionExpired` zaraz po zamontowaniu tego komponentu — bez
+  // zamrożenia decyzji w stanie ten sam efekt przeliczyłby `to` na
+  // podstawie już zresetowanej flagi i przekierował w złe miejsce.
+  const [target] = useState(() =>
+    sessionExpired ? "/" : getSafeReturnPath(location.state)
+  );
+
+  useEffect(() => {
+    onRedirected();
+    // Celowo tylko przy montowaniu — to przekierowanie ma odpalić się raz.
+  }, []);
+
+  return <Navigate to={target} replace />;
 }
 
 function RequireAuth({

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PageHeader } from "../layout/AppLayout";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 
 export const PRODUCT_DOCS_URL = "/materials/docs/dokumentacja-produktowa.md";
 const FALLBACK_TITLE = "Dokumentacja produktowa";
@@ -85,6 +86,7 @@ export function ProductDocsPage() {
     () => (content !== null ? extractLeadingHeading(content) : { title: FALLBACK_TITLE, rest: "" }),
     [content]
   );
+  useDocumentTitle(`${title} • Klinika Debug`);
 
   return (
     <>

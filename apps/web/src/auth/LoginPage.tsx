@@ -1,16 +1,16 @@
 import { FormEvent, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import { ApiClientError, login } from "../api/client";
 import { saveToken } from "./authStorage";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 import type { AuthenticatedUser } from "@klinika/api-contracts";
 
 interface LoginPageProps {
   onAuthenticated: (user: AuthenticatedUser) => void;
+  sessionExpired?: boolean;
 }
 
-export function LoginPage({ onAuthenticated }: LoginPageProps) {
-  const location = useLocation();
-  const navigate = useNavigate();
+export function LoginPage({ onAuthenticated, sessionExpired = false }: LoginPageProps) {
+  useDocumentTitle("Logowanie • Klinika Debug");
   const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -24,8 +24,12 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     try {
       const response = await login(loginName, password);
       saveToken(response.token);
+      // Dokąd trafimy po zalogowaniu decyduje `App` (`AuthenticatedRedirect`)
+      // na podstawie `location.state.from` i flagi `sessionExpired` — stąd,
+      // a nie stąd, żeby uniknąć wyścigu dwóch niezależnych nawigacji: tej
+      // strony i automatycznego przekierowania z trasy `/login`, gdy
+      // użytkownik jest już zalogowany.
       onAuthenticated(response.user);
-      navigate(getSafeReturnPath(location.state), { replace: true });
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.correlationId) {
         setError(`${caught.message} Identyfikator: ${caught.correlationId}`);
@@ -51,6 +55,12 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
+          {sessionExpired ? (
+            <p className="form-error" role="status">
+              Sesja wygasła. Zaloguj się ponownie.
+            </p>
+          ) : null}
+
           <label>
             Login
             <input
@@ -87,22 +97,4 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
       </section>
     </main>
   );
-}
-
-function getSafeReturnPath(state: unknown) {
-  const from =
-    state && typeof state === "object" && "from" in state
-      ? (state as { from?: unknown }).from
-      : undefined;
-
-  if (
-    typeof from === "string" &&
-    from.startsWith("/") &&
-    !from.startsWith("//") &&
-    !from.startsWith("/\\")
-  ) {
-    return from;
-  }
-
-  return "/";
 }

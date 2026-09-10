@@ -65,6 +65,8 @@ describe("workshop provisioning", () => {
       expect(user.workspaceId).toBe(workspace.id);
       expect(user.role).toBe("STAFF");
       expect(user.active).toBe(true);
+      expect(user.displayName).toBe(`Uczestnik ${workspace.slug.slice(-2)}`);
+      expect(user.displayName).not.toBe(workspace.name);
       await expect(
         argon2.verify(user.passwordHash, "WarsztatTestowe123!")
       ).resolves.toBe(true);

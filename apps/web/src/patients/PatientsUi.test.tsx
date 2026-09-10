@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PatientResponse } from "@klinika/api-contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -138,6 +138,73 @@ describe("interfejs pacjentów", () => {
       expect(requestedUrls.some((url) => url.includes("active=false"))).toBe(true);
       expect(requestedUrls.some((url) => url.includes("page=2"))).toBe(true);
       expect(requestedUrls[requestedUrls.length - 1]).toContain("sort=lastName");
+    });
+  });
+
+  it(
+    "pusta lista bez aktywnych filtrów pokazuje 'Dodaj pacjenta', a z aktywnym " +
+      "filtrem 'Wyczyść filtry' w pustym stanie",
+    async () => {
+      mockFetch(({ url }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/patients?")) {
+          return json({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 });
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+
+      const emptyState = (
+        await screen.findByRole("heading", { name: "Brak pacjentów" })
+      ).closest("section") as HTMLElement;
+      expect(
+        within(emptyState).getByRole("link", { name: "Dodaj pacjenta" })
+      ).toHaveAttribute("href", "/patients/new");
+      expect(
+        within(emptyState).queryByRole("button", { name: "Wyczyść filtry" })
+      ).not.toBeInTheDocument();
+
+      await userEvent.selectOptions(screen.getByLabelText("Aktywność"), "true");
+
+      const filteredEmptyState = (
+        await screen.findByRole("heading", { name: "Brak pacjentów" })
+      ).closest("section") as HTMLElement;
+      expect(
+        within(filteredEmptyState).getByRole("button", { name: "Wyczyść filtry" })
+      ).toBeInTheDocument();
+      expect(
+        within(filteredEmptyState).queryByRole("link", { name: "Dodaj pacjenta" })
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it("debounce'uje wyszukiwanie tekstowe (~300 ms) zamiast odpytywać API po każdym znaku", async () => {
+    const requestedUrls: string[] = [];
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url.startsWith("/api/v1/patients?")) {
+        requestedUrls.push(url);
+        return json({ items: [patient], page: 1, pageSize: 20, total: 1, totalPages: 1 });
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+    await screen.findByText("Anna Nowak");
+    const requestsBeforeTyping = requestedUrls.length;
+
+    await userEvent.type(screen.getByLabelText("Wyszukaj"), "Nowak");
+
+    // Zaraz po wpisaniu tekstu debounce jeszcze nie zdążył odpytać API.
+    expect(requestedUrls.length).toBe(requestsBeforeTyping);
+
+    await waitFor(() => {
+      expect(requestedUrls.some((url) => url.includes("search=Nowak"))).toBe(true);
     });
   });
 

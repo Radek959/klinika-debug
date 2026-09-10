@@ -10,8 +10,10 @@ import {
   genderLabels,
   identifierTypeLabels
 } from "../ui/labels";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 
 export function PatientListPage({ token }: { token: string }) {
+  useDocumentTitle("Pacjenci • Klinika Debug");
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<PatientsListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +29,38 @@ export function PatientListPage({ token }: { token: string }) {
     sort: searchParams.get("sort") ?? "lastName",
     order: searchParams.get("order") ?? "asc"
   };
+
+  const [searchInput, setSearchInput] = useState(filters.search);
+
+  // Zewnętrzna zmiana filtra (np. „Wyczyść filtry”, przycisk „wstecz”) ma
+  // natychmiast odzwierciedlić się w polu tekstowym.
+  useEffect(() => {
+    setSearchInput(filters.search);
+  }, [filters.search]);
+
+  // Debounce ~300 ms: aktualizujemy URL (a tym samym wywołujemy request)
+  // dopiero po chwili ciszy w pisaniu, żeby nie odpytywać API po każdym
+  // znaku. Filtry z selectów aktualizują URL od razu — debounce dotyczy
+  // wyłącznie tego pola tekstowego.
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchParams((current) => {
+        const currentSearch = current.get("search") ?? "";
+        if (currentSearch === searchInput) {
+          return current;
+        }
+        const next = new URLSearchParams(current);
+        if (searchInput) {
+          next.set("search", searchInput);
+        } else {
+          next.delete("search");
+        }
+        next.set("page", "1");
+        return next;
+      });
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput, setSearchParams]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -99,6 +133,10 @@ export function PatientListPage({ token }: { token: string }) {
     setSearchParams({ page: "1", pageSize: "20", sort: "lastName", order: "asc" });
   }
 
+  const hasActiveFilters = Boolean(
+    filters.search || filters.active || filters.identifierType
+  );
+
   return (
     <>
       <PageHeader
@@ -114,8 +152,8 @@ export function PatientListPage({ token }: { token: string }) {
         <label>
           Wyszukaj
           <input
-            value={filters.search}
-            onChange={(event) => updateFilter("search", event.target.value)}
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Imię, nazwisko, PESEL albo dokument"
           />
         </label>
@@ -180,7 +218,21 @@ export function PatientListPage({ token }: { token: string }) {
       {!isLoading && data?.items.length === 0 ? (
         <section className="empty-state">
           <h2>Brak pacjentów</h2>
-          <p>Nie znaleziono pacjentów dla bieżących filtrów.</p>
+          {hasActiveFilters ? (
+            <>
+              <p>Nie znaleziono pacjentów dla bieżących filtrów.</p>
+              <button type="button" className="secondary-button" onClick={clearFilters}>
+                Wyczyść filtry
+              </button>
+            </>
+          ) : (
+            <>
+              <p>W tym workspace nie ma jeszcze żadnych pacjentów.</p>
+              <Link className="button-link" to="/patients/new">
+                Dodaj pacjenta
+              </Link>
+            </>
+          )}
         </section>
       ) : null}
 

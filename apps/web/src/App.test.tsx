@@ -138,6 +138,113 @@ describe("centralna obsługa SESSION_EXPIRED", () => {
     }
   );
 
+  it(
+    "po SESSION_EXPIRED pokazuje komunikat na /login i po ponownym zalogowaniu " +
+      "przenosi na panel główny, a NIE na wcześniejszą ścieżkę",
+    async () => {
+      window.history.pushState({}, "", "/orders/order-1");
+      let orderRequests = 0;
+
+      mockFetch(({ url, init }) => {
+        if (url === "/api/v1/auth/me") {
+          return json({ user: authenticatedUser });
+        }
+        if (url.startsWith("/api/v1/orders/order-1/history")) {
+          return json({ items: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 } });
+        }
+        if (url === "/api/v1/orders/order-1") {
+          orderRequests += 1;
+          if (orderRequests === 1) {
+            return json(orderDetails());
+          }
+          return sessionExpiredError();
+        }
+        if (url === "/api/v1/auth/login" && init?.method === "POST") {
+          return json({
+            token: "nowy-token",
+            expiresAt: "2026-09-06T13:00:00.000Z",
+            user: authenticatedUser
+          });
+        }
+        if (url === "/api/v1/dashboard/summary") {
+          return json({
+            patients: { total: 0, active: 0, inactive: 0 },
+            orders: {
+              total: 0,
+              byStatus: {
+                DRAFT: 0,
+                SAMPLE_COLLECTION_IN_PROGRESS: 0,
+                SAMPLE_COLLECTED: 0,
+                SENT_TO_LAB: 0,
+                PROCESSING: 0,
+                PARTIAL: 0,
+                COMPLETED: 0,
+                REJECTED: 0,
+                TECHNICAL_ERROR: 0
+              }
+            }
+          });
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+
+      const refreshButton = await screen.findByRole("button", { name: "Odśwież status" });
+      await userEvent.click(refreshButton);
+
+      expect(await screen.findByRole("heading", { name: "Logowanie" })).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Sesja wygasła. Zaloguj się ponownie."
+      );
+
+      await userEvent.type(screen.getByLabelText("Login"), "tester01");
+      await userEvent.type(screen.getByLabelText("Hasło"), "WarsztatTestowe123!");
+      await userEvent.click(screen.getByRole("button", { name: "Zaloguj" }));
+
+      expect(await screen.findByRole("heading", { name: "Panel główny" })).toBeInTheDocument();
+      expect(window.location.pathname).toBe("/");
+    }
+  );
+
+  it(
+    "zwykłe przekierowanie z chronionej trasy nadal wraca po loginie na wcześniejszy URL",
+    async () => {
+      window.history.pushState({}, "", "/orders/order-1");
+
+      mockFetch(({ url, init }) => {
+        if (url === "/api/v1/auth/login" && init?.method === "POST") {
+          return json({
+            token: "nowy-token",
+            expiresAt: "2026-09-06T13:00:00.000Z",
+            user: authenticatedUser
+          });
+        }
+        if (url === "/api/v1/orders/order-1") {
+          return json(orderDetails());
+        }
+        if (url.startsWith("/api/v1/orders/order-1/history")) {
+          return json({ items: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 } });
+        }
+        return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+      });
+
+      render(<App />);
+
+      expect(await screen.findByRole("heading", { name: "Logowanie" })).toBeInTheDocument();
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+      await userEvent.type(screen.getByLabelText("Login"), "tester01");
+      await userEvent.type(screen.getByLabelText("Hasło"), "WarsztatTestowe123!");
+      await userEvent.click(screen.getByRole("button", { name: "Zaloguj" }));
+
+      expect(
+        await screen.findByRole("heading", { name: "Zlecenie: Anna Nowak" })
+      ).toBeInTheDocument();
+      expect(window.location.pathname).toBe("/orders/order-1");
+    }
+  );
+
   it("zwykły błąd 500 INTERNAL_SERVER_ERROR nie wylogowuje użytkownika", async () => {
     window.history.pushState({}, "", "/orders/order-1");
 

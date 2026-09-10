@@ -8,6 +8,7 @@ import {
   updatePatient
 } from "../api/client";
 import { PageHeader } from "../layout/AppLayout";
+import { useDocumentTitle } from "../ui/useDocumentTitle";
 import { PatientForm } from "./PatientForm";
 import {
   emptyPatientForm,
@@ -19,6 +20,7 @@ import {
 } from "./patientFormState";
 
 export function NewPatientPage({ token }: { token: string }) {
+  useDocumentTitle("Dodaj pacjenta • Klinika Debug");
   const navigate = useNavigate();
   const [state, setState] = useState<PatientFormState>(emptyPatientForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,6 +68,7 @@ export function NewPatientPage({ token }: { token: string }) {
 }
 
 export function EditPatientPage({ token }: { token: string }) {
+  useDocumentTitle("Edytuj pacjenta • Klinika Debug");
   const { patientId } = useParams();
   const navigate = useNavigate();
   const [initialState, setInitialState] = useState<PatientFormState | null>(null);

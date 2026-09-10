@@ -159,6 +159,34 @@ describe("panel główny", () => {
     ).toHaveAttribute("href", "/orders?status=PROCESSING");
   });
 
+  it("pokazuje blok 'Przydatne podczas pracy' z linkami do materiałów", async () => {
+    mockFetch(({ url }) => {
+      if (url === "/api/v1/auth/me") {
+        return json({ user: authenticatedUser });
+      }
+      if (url === "/api/v1/dashboard/summary") {
+        return json(summary);
+      }
+      return jsonError(404, "NOT_FOUND", "Nie znaleziono zasobu.");
+    });
+
+    render(<App />);
+
+    const quickLinks = (
+      await screen.findByRole("heading", { name: "Przydatne podczas pracy" })
+    ).closest("section") as HTMLElement;
+
+    expect(
+      within(quickLinks).getByRole("link", { name: "Dokumentacja produktowa" })
+    ).toHaveAttribute("href", "/materials/product-docs");
+    expect(
+      within(quickLinks).getByRole("link", { name: "Dokumentacja API" })
+    ).toHaveAttribute("href", "/api/docs");
+    expect(
+      within(quickLinks).getByRole("link", { name: "Logi aplikacji" })
+    ).toHaveAttribute("href", "/materials?tab=logs");
+  });
+
   it("pokazuje błąd, ale nadal wyświetla szybkie akcje, gdy podsumowanie się nie załaduje", async () => {
     mockFetch(({ url }) => {
       if (url === "/api/v1/auth/me") {

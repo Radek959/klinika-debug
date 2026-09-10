@@ -38,17 +38,17 @@ describe("materiały warsztatowe", () => {
     expect(link).toHaveAttribute("href", "/materials");
   });
 
-  it("domyślnie (bez parametru tab) pokazuje wyłącznie zakładkę Logi aplikacji", async () => {
+  it("domyślnie (bez parametru tab) pokazuje wyłącznie zakładkę Dokumentacja", async () => {
     mockFetch(defaultHandler);
     window.history.pushState({}, "", "/materials");
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "Materiały warsztatowe" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Logi aplikacji" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Dokumentacja" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dokumentacja" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Logi aplikacji" })).not.toBeInTheDocument();
 
-    const logsTab = screen.getByRole("link", { name: "Logi aplikacji" });
-    expect(logsTab).toHaveAttribute("aria-current", "page");
+    const docsTab = screen.getByRole("link", { name: "Dokumentacja" });
+    expect(docsTab).toHaveAttribute("aria-current", "page");
   });
 
   it("?tab=logs pokazuje wyłącznie sekcję Logi aplikacji z kartami logów", async () => {
@@ -133,13 +133,13 @@ describe("materiały warsztatowe", () => {
     expect(await within(card).findByRole("button", { name: "Skopiowano" })).toBeInTheDocument();
   });
 
-  it("nieprawidłowa wartość parametru tab bezpiecznie pokazuje domyślną zakładkę Logi aplikacji", async () => {
+  it("nieprawidłowa wartość parametru tab bezpiecznie pokazuje domyślną zakładkę Dokumentacja", async () => {
     mockFetch(defaultHandler);
     window.history.pushState({}, "", "/materials?tab=xyz");
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Logi aplikacji" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Dokumentacja" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Dokumentacja" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Logi aplikacji" })).not.toBeInTheDocument();
   });
 
   it("pozwala przełączać zakładki klikając w linki stylizowane jak taby", async () => {
@@ -147,19 +147,19 @@ describe("materiały warsztatowe", () => {
     window.history.pushState({}, "", "/materials");
     render(<App />);
 
-    await screen.findByRole("heading", { name: "Logi aplikacji" });
-
-    await userEvent.click(screen.getByRole("link", { name: "Dokumentacja" }));
-
-    expect(await screen.findByRole("heading", { name: "Dokumentacja" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Logi aplikacji" })).not.toBeInTheDocument();
-    expect(window.location.search).toBe("?tab=documentation");
+    await screen.findByRole("heading", { name: "Dokumentacja" });
 
     await userEvent.click(screen.getByRole("link", { name: "Logi aplikacji" }));
 
     expect(await screen.findByRole("heading", { name: "Logi aplikacji" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Dokumentacja" })).not.toBeInTheDocument();
     expect(window.location.search).toBe("?tab=logs");
+
+    await userEvent.click(screen.getByRole("link", { name: "Dokumentacja" }));
+
+    expect(await screen.findByRole("heading", { name: "Dokumentacja" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Logi aplikacji" })).not.toBeInTheDocument();
+    expect(window.location.search).toBe("?tab=documentation");
   });
 
   it("pokazuje stan ładowania, a następnie treść pobranego logu w podglądzie", async () => {
