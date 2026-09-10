@@ -32,11 +32,15 @@ export class TestsCatalogService {
       this.prisma.medicalTest.count({ where })
     ]);
 
-    // WORKSHOP CONTROLLED DEFECT (ORDER_PRIORITY_MAPPING): this is the only
-    // signal the participant frontend gets about the globally configured
-    // controlled bug — a plain boolean, read fresh on every catalog request
-    // (no F5 needed once the trainer flips it in /admin), never the bug name
-    // or the rest of the admin config. The actual (wrong) priority mapping
+    // WORKSHOP CONTROLLED DEFECT (ORDER_PRIORITY_MAPPING): `catalogFlag` is
+    // the only signal the participant frontend gets about the globally
+    // configured controlled bug — a plain, deliberately opaque boolean, read
+    // fresh on every catalog request (no F5 needed once the trainer flips it
+    // in /admin), never the bug name or the rest of the admin config. Keep
+    // the public field name/description (here and in
+    // `MedicalTestsListResponseDto`) generic — no "priority", "workshop",
+    // "trainer" or "controlled bug" wording — so DevTools/OpenAPI inspection
+    // doesn't hint at the mechanism. The actual (wrong) priority mapping
     // happens in apps/web/src/orders/NewOrderPage.tsx and orderFormState.ts;
     // this backend endpoint and `POST /api/v1/orders` stay fully correct.
     const controlledBug = await this.workshopConfig.getControlledBug();
@@ -47,7 +51,7 @@ export class TestsCatalogService {
       pageSize: query.pageSize,
       total,
       totalPages: Math.ceil(total / query.pageSize),
-      orderPriorityRoutingActive: controlledBug === "ORDER_PRIORITY_MAPPING"
+      catalogFlag: controlledBug === "ORDER_PRIORITY_MAPPING"
     };
   }
 

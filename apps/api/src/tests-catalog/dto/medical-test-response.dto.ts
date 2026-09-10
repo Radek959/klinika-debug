@@ -128,9 +128,8 @@ export class MedicalTestsListResponseDto {
   totalPages!: number;
 
   @ApiProperty({
-    description:
-      "Techniczna flaga warsztatowa sterowana konfiguracją prowadzącego. Nie ujawnia szczegółów tej konfiguracji.",
+    description: "Wewnętrzna wartość techniczna katalogu.",
     example: false
   })
-  orderPriorityRoutingActive!: boolean;
+  catalogFlag!: boolean;
 }

@@ -70,7 +70,7 @@ const medicalTestsResponse: MedicalTestsListResponse = {
   pageSize: 100,
   total: catalogItems.length,
   totalPages: 1,
-  orderPriorityRoutingActive: false
+  catalogFlag: false
 };
 
 const orderListItem: OrderListItem = {
@@ -1740,11 +1740,11 @@ describe("interfejs zleceń", () => {
     });
 
     it("[sygnał aktywny] wysyła ROUTINE mimo wybranego Pilne, mimo że formularz był już otwarty przed przełączeniem sygnału", async () => {
-      let orderPriorityRoutingActive = false;
+      let catalogFlag = false;
       let createdPayload: unknown;
       renderNewOrder(({ url, init }) => {
         if (url === "/api/v1/tests?pageSize=100") {
-          return json({ ...medicalTestsResponse, orderPriorityRoutingActive });
+          return json({ ...medicalTestsResponse, catalogFlag });
         }
         if (url === "/api/v1/orders" && init?.method === "POST") {
           createdPayload = JSON.parse(String(init.body));
@@ -1763,7 +1763,7 @@ describe("interfejs zleceń", () => {
       // Symuluje prowadzącego przełączającego kontrolowany defekt w /admin,
       // podczas gdy uczestnik ma formularz już otwarty — bez odświeżenia
       // strony kolejne "Utwórz zlecenie" musi odczytać nowy stan sygnału.
-      orderPriorityRoutingActive = true;
+      catalogFlag = true;
 
       await userEvent.click(screen.getByRole("button", { name: "Utwórz zlecenie" }));
 
@@ -1776,7 +1776,7 @@ describe("interfejs zleceń", () => {
       let createdPayload: unknown;
       renderNewOrder(({ url, init }) => {
         if (url === "/api/v1/tests?pageSize=100") {
-          return json({ ...medicalTestsResponse, orderPriorityRoutingActive: true });
+          return json({ ...medicalTestsResponse, catalogFlag: true });
         }
         if (url === "/api/v1/orders" && init?.method === "POST") {
           createdPayload = JSON.parse(String(init.body));
@@ -1800,7 +1800,7 @@ describe("interfejs zleceń", () => {
     it("nie ujawnia nazwy defektu w interfejsie uczestnika", async () => {
       renderNewOrder(({ url }) => {
         if (url === "/api/v1/tests?pageSize=100") {
-          return json({ ...medicalTestsResponse, orderPriorityRoutingActive: true });
+          return json({ ...medicalTestsResponse, catalogFlag: true });
         }
         return undefined;
       });

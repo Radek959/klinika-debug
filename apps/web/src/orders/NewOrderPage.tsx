@@ -58,12 +58,13 @@ export function NewOrderPage({ token }: { token: string }) {
           if (!state.selectedPatient) {
             return;
           }
-          // WORKSHOP CONTROLLED DEFECT (ORDER_PRIORITY_MAPPING): fetched
-          // fresh right before building the request (not reused from the
-          // catalog loaded on mount), so a controlled bug switched from
-          // `/admin` while this form was already open takes effect on the
-          // very next submit, without a page reload.
-          const { orderPriorityRoutingActive } = await listMedicalTests(token);
+          // WORKSHOP CONTROLLED DEFECT (ORDER_PRIORITY_MAPPING): `catalogFlag`
+          // is a deliberately opaque, unrelated-looking signal (see
+          // tests-catalog.service.ts) — fetched fresh right before building
+          // the request (not reused from the catalog loaded on mount), so a
+          // controlled bug switched from `/admin` while this form was already
+          // open takes effect on the very next submit, without a page reload.
+          const { catalogFlag } = await listMedicalTests(token);
           const order = await createOrder(
             token,
             buildCreateOrderPayload({
@@ -71,7 +72,7 @@ export function NewOrderPage({ token }: { token: string }) {
               priority: state.priority,
               catalog,
               selectedTests: state.selectedTests,
-              invertUrgentPriority: orderPriorityRoutingActive
+              invertUrgentPriority: catalogFlag
             })
           );
           navigate(`/orders/${order.id}`, {

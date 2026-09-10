@@ -89,8 +89,8 @@ export function buildCreateOrderPayload(input: {
   selectedTests: SelectedOrderTests;
   /**
    * WORKSHOP CONTROLLED DEFECT (ORDER_PRIORITY_MAPPING): `true` only when
-   * the backend catalog signal (`orderPriorityRoutingActive`, read fresh at
-   * submit time — see NewOrderPage.tsx) says the controlled bug is active.
+   * the backend catalog signal (`catalogFlag`, read fresh at submit time —
+   * see NewOrderPage.tsx) says the controlled bug is active.
    * Only ever changes `URGENT` ("Pilne") into `ROUTINE`; a `ROUTINE`
    * selection is never touched. Defaults to `false`, so every other caller
    * (edit order, tests here that omit it) keeps sending exactly the

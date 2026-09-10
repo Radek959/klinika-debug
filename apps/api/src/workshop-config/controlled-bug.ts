@@ -22,7 +22,7 @@
  *   (`update`), tuż przed zapisem: pole `phone` zapisywane do bazy jest
  *   cofane do poprzedniej wartości, mimo że odpowiedź nadal zgłasza sukces;
  * - `ORDER_PRIORITY_MAPPING` — czysto frontendowy defekt. Backend jedynie
- *   udostępnia neutralny sygnał `orderPriorityRoutingActive` w odpowiedzi
+ *   udostępnia neutralny, celowo opaque sygnał `catalogFlag` w odpowiedzi
  *   katalogu badań (`apps/api/src/tests-catalog/tests-catalog.service.ts`),
  *   a właściwe (błędne) mapowanie priorytetu `URGENT` → `ROUTINE` w
  *   requeście tworzenia zlecenia wykonuje `apps/web/src/orders/NewOrderPage.tsx`

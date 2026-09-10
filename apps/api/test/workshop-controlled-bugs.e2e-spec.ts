@@ -18,7 +18,7 @@ import {
  * `ORDER_PRIORITY_MAPPING` is a purely frontend defect (see
  * `apps/web/src/orders/orderFormState.test.ts` and
  * `apps/web/src/orders/OrdersUi.test.tsx`); this file only covers its one
- * backend contribution, the `orderPriorityRoutingActive` signal. Per-rule
+ * backend contribution, the `catalogFlag` signal. Per-rule
  * unit coverage lives in `apps/api/src/patients/patient-write-domain.spec.ts`
  * and `packages/domain/src/orders/sample-collection.spec.ts` — this file
  * checks the integration: reading the globally configured controlled bug at
@@ -460,7 +460,7 @@ describe("workshop controlled bugs", () => {
     // Ten kontrolowany defekt jest celowo frontendowy — backend zawsze
     // zapisuje dokładnie to, co dostał w requeście (patrz `orders.service.ts`
     // `create`). Tu sprawdzamy jedyny udział backendu: neutralny sygnał
-    // `orderPriorityRoutingActive` w katalogu badań, czytany na świeżo przy
+    // `catalogFlag` w katalogu badań, czytany na świeżo przy
     // każdym żądaniu. Właściwe zachowanie UI (CITO -> ROUTINE w requeście)
     // jest pokryte testami frontendowymi w `orderFormState.test.ts` i
     // `OrdersUi.test.tsx`.
@@ -470,7 +470,7 @@ describe("workshop controlled bugs", () => {
       const response = await getMedicalTests(token);
 
       expect(response.statusCode).toBe(200);
-      expect(JSON.parse(response.body).orderPriorityRoutingActive).toBe(false);
+      expect(JSON.parse(response.body).catalogFlag).toBe(false);
     });
 
     it("[DEFEKT AKTYWNY] sygnał jest włączony", async () => {
@@ -480,7 +480,7 @@ describe("workshop controlled bugs", () => {
       const response = await getMedicalTests(token);
 
       expect(response.statusCode).toBe(200);
-      expect(JSON.parse(response.body).orderPriorityRoutingActive).toBe(true);
+      expect(JSON.parse(response.body).catalogFlag).toBe(true);
     });
 
     it("nie zmienia się dla innych defektów", async () => {
@@ -489,7 +489,7 @@ describe("workshop controlled bugs", () => {
 
       const response = await getMedicalTests(token);
 
-      expect(JSON.parse(response.body).orderPriorityRoutingActive).toBe(false);
+      expect(JSON.parse(response.body).catalogFlag).toBe(false);
     });
 
     it("backend zapisuje zlecenie z priorytetem ROUTINE dokładnie tak, jak dostał w requeście", async () => {
@@ -508,13 +508,13 @@ describe("workshop controlled bugs", () => {
     it("przełącza się CLEAN -> BUG -> CLEAN bez restartu aplikacji", async () => {
       const { token } = await login();
 
-      expect(JSON.parse((await getMedicalTests(token)).body).orderPriorityRoutingActive).toBe(false);
+      expect(JSON.parse((await getMedicalTests(token)).body).catalogFlag).toBe(false);
 
       await setControlledBug("ORDER_PRIORITY_MAPPING");
-      expect(JSON.parse((await getMedicalTests(token)).body).orderPriorityRoutingActive).toBe(true);
+      expect(JSON.parse((await getMedicalTests(token)).body).catalogFlag).toBe(true);
 
       await setControlledBug("CLEAN");
-      expect(JSON.parse((await getMedicalTests(token)).body).orderPriorityRoutingActive).toBe(false);
+      expect(JSON.parse((await getMedicalTests(token)).body).catalogFlag).toBe(false);
     });
 
     it("nie ujawnia nazwy defektu w publicznej odpowiedzi", async () => {
@@ -524,6 +524,35 @@ describe("workshop controlled bugs", () => {
       const response = await getMedicalTests(token);
 
       expect(response.body).not.toContain("ORDER_PRIORITY_MAPPING");
+    });
+
+    it("sygnał ma neutralną, nie sugerującą mechanizmu nazwę i opis", async () => {
+      const { token } = await login();
+      await setControlledBug("ORDER_PRIORITY_MAPPING");
+
+      const response = await getMedicalTests(token);
+
+      const lowered = response.body.toLowerCase();
+      for (const term of ["priority", "priorytet", "workshop", "warsztat", "trainer", "prowadzący", "controlled", "cito", "urgent"]) {
+        expect(lowered).not.toContain(term);
+      }
+    });
+
+    it("OpenAPI nie ujawnia mechanizmu przełączania priorytetu", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/docs-json"
+      });
+
+      expect(response.statusCode).toBe(200);
+      const document = JSON.parse(response.body);
+      const schema = document.components.schemas.MedicalTestsListResponseDto;
+      expect(schema.properties).toHaveProperty("catalogFlag");
+
+      const lowered = JSON.stringify(schema.properties.catalogFlag).toLowerCase();
+      for (const term of ["priority", "priorytet", "workshop", "warsztat", "trainer", "prowadzący", "controlled"]) {
+        expect(lowered).not.toContain(term);
+      }
     });
 
     async function getMedicalTests(token: string) {

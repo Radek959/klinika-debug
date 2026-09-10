@@ -263,7 +263,7 @@ komentarzem `WORKSHOP CONTROLLED DEFECT`.
 - `ORDER_PRIORITY_MAPPING` — jedyny defekt czysto frontendowy: backend
   zawsze zapisuje w `POST /api/v1/orders` dokładnie to, co dostał w
   requeście. Jedyny udział backendu to neutralny sygnał
-  `orderPriorityRoutingActive` w odpowiedzi katalogu badań
+  `catalogFlag` w odpowiedzi katalogu badań
   (`apps/api/src/tests-catalog/tests-catalog.service.ts`, `GET /api/v1/tests`)
   — `true` wyłącznie przy tym jednym defekcie, nigdy nazwa defektu ani
   pełna konfiguracja `/admin`. Formularz nowego zlecenia
@@ -283,7 +283,7 @@ komentarzem `WORKSHOP CONTROLLED DEFECT`.
   defektu w publicznej odpowiedzi, reset przywracający `CLEAN`, izolacja
   workspace'ów przy aktywnym defekcie, brak efektów ubocznych integracji dla
   `API_DIAGNOSTICS`, `PATIENT_EDIT_NOT_SAVED` na poziomie API i
-  `orderPriorityRoutingActive` na poziomie `GET /api/v1/tests`),
+  `catalogFlag` na poziomie `GET /api/v1/tests`),
   `apps/api/test/tests-catalog.e2e-spec.ts` (domyślny `false` sygnału),
   `apps/web/src/orders/orderFormState.test.ts` i
   `apps/web/src/orders/OrdersUi.test.tsx` (mapowanie priorytetu przez UI,

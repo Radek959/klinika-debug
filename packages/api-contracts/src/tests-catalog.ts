@@ -61,13 +61,18 @@ export interface MedicalTestsListResponse {
   total: number;
   totalPages: number;
   /**
-   * Techniczny sygnał warsztatowy odczytywany przez formularz nowego
-   * zlecenia tuż przed wysłaniem żądania. `true` tylko przy jednym,
-   * konkretnym kontrolowanym defekcie sterowanym z `/admin` — pole nigdy nie
-   * ujawnia nazwy defektu ani pełnej konfiguracji prowadzącego. W trybie
-   * `CLEAN` i przy każdym innym defekcie zawsze `false`.
+   * WORKSHOP CONTROLLED DEFECT (ORDER_PRIORITY_MAPPING) — wewnętrzna nazwa,
+   * NIE do użycia w publicznym DTO/OpenAPI/nazwie pola: ten opaque boolean
+   * jest jedynym sygnałem z backendu, odczytywanym przez formularz nowego
+   * zlecenia tuż przed wysłaniem żądania, żeby przełączenie defektu w
+   * `/admin` zadziałało na kolejnym submicie bez odświeżenia strony. `true`
+   * tylko przy tym jednym kontrolowanym defekcie; w `CLEAN` i przy każdym
+   * innym defekcie zawsze `false`. Nazwa pola i opis widoczne w publicznym
+   * kontrakcie/OpenAPI (patrz `MedicalTestsListResponseDto`) muszą pozostać
+   * neutralne — bez słów "priorytet", "workshop", "prowadzący" ani
+   * "controlled bug".
    */
-  orderPriorityRoutingActive: boolean;
+  catalogFlag: boolean;
 }
 
 export interface MedicalTestsListParams {
