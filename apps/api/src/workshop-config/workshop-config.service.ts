@@ -146,20 +146,46 @@ export class WorkshopConfigService {
 
     // Wiersz jeszcze nie istnieje (świeżo zmigrowana baza) — jedyny moment,
     // w którym `LAB_SIMULATOR_SCENARIO` i `LAB_SIMULATOR_DELAY_MS` są
-    // odczytywane jako wartości startowe. Upsert chroni przed wyścigiem dwóch
-    // równoległych pierwszych odczytów tuż po starcie procesu.
+    // odczytywane jako wartości startowe. `upsert` samo w sobie NIE jest
+    // atomowe względem dwóch równoległych pierwszych odczytów (dwa procesy
+    // mogą jednocześnie przejść przez `findUnique` powyżej i oba trafić w
+    // `create`) — MySQL zgłasza wtedy naruszenie unikalności klucza
+    // głównego (P2002) dla przegranego wyścigu. Zamiast propagować ten błąd
+    // jako 500, przegrany po prostu odczytuje wiersz zapisany przez
+    // zwycięzcę: efekt końcowy jest identyczny (jeden, wspólny wiersz
+    // konfiguracji), więc wywołujący nigdy nie widzi tego wyścigu.
     const bootstrapScenario = resolveLabSimulatorScenario();
     const bootstrapLabDelayMs = resolveLabDelayMsBootstrap();
-    return this.prisma.workshopConfig.upsert({
-      where: { id: CONFIG_ROW_ID },
-      create: {
-        id: CONFIG_ROW_ID,
-        labScenario: bootstrapScenario,
-        controlledBug: DEFAULT_CONTROLLED_BUG,
-        labDelayMs: bootstrapLabDelayMs
-      },
-      update: {}
-    });
+    try {
+      return await this.prisma.workshopConfig.upsert({
+        where: { id: CONFIG_ROW_ID },
+        create: {
+          id: CONFIG_ROW_ID,
+          labScenario: bootstrapScenario,
+          controlledBug: DEFAULT_CONTROLLED_BUG,
+          labDelayMs: bootstrapLabDelayMs
+        },
+        update: {}
+      });
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+      return this.prisma.workshopConfig.findUniqueOrThrow({
+        where: { id: CONFIG_ROW_ID }
+      });
+    }
+  }
+
+  private isUniqueConstraintError(
+    error: unknown
+  ): error is { code?: string; errno?: number } {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      (("code" in error && error.code === "P2002") ||
+        ("errno" in error && error.errno === 1062))
+    );
   }
 
   private toState(row: {

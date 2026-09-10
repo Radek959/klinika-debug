@@ -126,4 +126,10 @@ export class MedicalTestsListResponseDto {
 
   @ApiProperty({ description: "Łączna liczba stron.", example: 1 })
   totalPages!: number;
+
+  @ApiProperty({
+    description: "Wewnętrzna wartość techniczna katalogu.",
+    example: false
+  })
+  catalogFlag!: boolean;
 }

@@ -56,7 +56,8 @@ describe("tests catalog api", () => {
       page: 1,
       pageSize: 20,
       total: 5,
-      totalPages: 1
+      totalPages: 1,
+      catalogFlag: false
     });
     expect(body.items.map((item: { code: string }) => item.code)).toEqual([
       "CRP",

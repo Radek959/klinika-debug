@@ -244,7 +244,9 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
     CLEAN: "CLEAN — brak aktywnego defektu",
     PATIENT_GUARDIAN: "PATIENT_GUARDIAN — pacjent/opiekun",
     ORDER_FLOW: "ORDER_FLOW — proces zlecenia",
-    API_DIAGNOSTICS: "API_DIAGNOSTICS — diagnostyka API"
+    API_DIAGNOSTICS: "API_DIAGNOSTICS — diagnostyka API",
+    PATIENT_EDIT_NOT_SAVED: "PATIENT_EDIT_NOT_SAVED — edycja pacjenta",
+    ORDER_PRIORITY_MAPPING: "ORDER_PRIORITY_MAPPING — priorytet zlecenia"
   };
   var LAB_DELAY_LABELS = {
     5000: "5 sekund",
@@ -290,7 +292,27 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
       "<strong class=\\"infoHeading\\">Ważne</strong>" +
       "<ul><li>błąd występuje przed przyjęciem zlecenia przez laboratorium</li>" +
       "<li>nie powstaje externalOrderId</li><li>nie powstaje job laboratoryjny</li>" +
-      "<li>po przełączeniu na CLEAN to samo zlecenie może zostać ponownie wysłane</li></ul>"
+      "<li>po przełączeniu na CLEAN to samo zlecenie może zostać ponownie wysłane</li></ul>",
+    PATIENT_EDIT_NOT_SAVED:
+      "<strong class=\\"infoHeading\\">Co robi?</strong>" +
+      "Podczas edycji pacjenta zmiana numeru telefonu jest ignorowana mimo komunikatu o poprawnym zapisie." +
+      "<strong class=\\"infoHeading\\">Jak wywołać?</strong>" +
+      "Edytuj istniejącego pacjenta, zmień telefon i zapisz formularz." +
+      "<strong class=\\"infoHeading\\">Co powinno się wydarzyć?</strong>" +
+      "Aplikacja informuje o sukcesie, ale po zapisie nadal widoczny jest poprzedni telefon." +
+      "<strong class=\\"infoHeading\\">Nie wpływa na</strong>" +
+      "<ul><li>tworzenie pacjenta</li><li>pozostałe pola</li><li>walidację danych</li></ul>",
+    ORDER_PRIORITY_MAPPING:
+      "<strong class=\\"infoHeading\\">Co robi?</strong>" +
+      "Podczas tworzenia zlecenia wybór priorytetu Pilne jest błędnie wysyłany jako Rutynowe." +
+      "<strong class=\\"infoHeading\\">Jak wywołać?</strong>" +
+      "Utwórz nowe zlecenie i wybierz priorytet Pilne." +
+      "<strong class=\\"infoHeading\\">Co powinno się wydarzyć?</strong>" +
+      "Po utworzeniu zlecenie ma priorytet Rutynowe." +
+      "<strong class=\\"infoHeading\\">Wskazówka dla prowadzącego</strong>" +
+      "Request w DevTools (POST /api/v1/orders) zawiera ROUTINE." +
+      "<strong class=\\"infoHeading\\">Nie wpływa na</strong>" +
+      "<ul><li>zlecenia tworzone jako Rutynowe</li><li>wybór badań</li><li>próbki</li><li>laboratorium</li></ul>"
   };
 
   var SCENARIO_DESCRIPTIONS = {

@@ -60,6 +60,19 @@ export interface MedicalTestsListResponse {
   pageSize: number;
   total: number;
   totalPages: number;
+  /**
+   * WORKSHOP CONTROLLED DEFECT (ORDER_PRIORITY_MAPPING) — wewnętrzna nazwa,
+   * NIE do użycia w publicznym DTO/OpenAPI/nazwie pola: ten opaque boolean
+   * jest jedynym sygnałem z backendu, odczytywanym przez formularz nowego
+   * zlecenia tuż przed wysłaniem żądania, żeby przełączenie defektu w
+   * `/admin` zadziałało na kolejnym submicie bez odświeżenia strony. `true`
+   * tylko przy tym jednym kontrolowanym defekcie; w `CLEAN` i przy każdym
+   * innym defekcie zawsze `false`. Nazwa pola i opis widoczne w publicznym
+   * kontrakcie/OpenAPI (patrz `MedicalTestsListResponseDto`) muszą pozostać
+   * neutralne — bez słów "priorytet", "workshop", "prowadzący" ani
+   * "controlled bug".
+   */
+  catalogFlag: boolean;
 }
 
 export interface MedicalTestsListParams {

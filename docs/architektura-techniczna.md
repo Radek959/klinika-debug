@@ -254,7 +254,9 @@ Docelowo:
 - `CLEAN`;
 - `PATIENT_GUARDIAN`;
 - `ORDER_FLOW`;
-- `API_DIAGNOSTICS`.
+- `API_DIAGNOSTICS`;
+- `PATIENT_EDIT_NOT_SAVED`;
+- `ORDER_PRIORITY_MAPPING`.
 
 Aktywny może być maksymalnie jeden defekt.
 
