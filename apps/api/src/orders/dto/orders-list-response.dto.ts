@@ -53,7 +53,7 @@ export class OrderListPatientDto {
 
 export class OrderListTestItemDto {
   @ApiProperty({
-    description: "Identyfikator badania z kataloguu."
+    description: "Identyfikator badania z katalogu."
   })
   medicalTestId!: string;
 

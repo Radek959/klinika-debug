@@ -248,3 +248,73 @@ export class UpdatePatientDto
   @IsBoolean({ message: BOOLEAN_MESSAGE })
   active?: boolean;
 }
+
+export const CREATE_PATIENT_REQUEST_EXAMPLES = {
+  dorosłyZPesel: {
+    summary: "Dorosły pacjent z PESEL-em",
+    value: {
+      firstName: "Łukasz",
+      lastName: "Nowak-Testowy",
+      identifierType: "PESEL",
+      pesel: "44051401458",
+      birthDate: "1944-05-14",
+      gender: "MALE",
+      citizenship: "PL",
+      phone: "+48123123123",
+      email: "pacjent@example.test",
+      addressCity: "Warszawa",
+      addressCountry: "PL"
+    }
+  },
+  pacjentZInnymDokumentem: {
+    summary: "Pacjent z OTHER_DOCUMENT (bez PESEL-u)",
+    value: {
+      firstName: "Anna",
+      lastName: "Kowalska-Testowa",
+      identifierType: "OTHER_DOCUMENT",
+      documentType: "PASSPORT",
+      documentNumber: "XD1234567",
+      documentCountry: "PL",
+      birthDate: "1990-03-20",
+      gender: "FEMALE",
+      phone: "+48123123124"
+    }
+  },
+  niepełnoletniZOpiekunem: {
+    summary: "Pacjent niepełnoletni z opiekunem",
+    value: {
+      firstName: "Maja",
+      lastName: "Wiśniewska-Testowa",
+      identifierType: "PESEL",
+      pesel: "18210112349",
+      birthDate: "2018-01-01",
+      gender: "FEMALE",
+      guardian: {
+        firstName: "Maria",
+        lastName: "Wiśniewska-Testowa",
+        phone: "+48123123125"
+      }
+    }
+  }
+};
+
+export const UPDATE_PATIENT_REQUEST_EXAMPLES = {
+  zmianaTelefonu: {
+    summary: "Zmiana telefonu pacjenta",
+    value: { phone: "+48987654321" }
+  },
+  dezaktywacja: {
+    summary: "Dezaktywacja pacjenta",
+    value: { active: false }
+  },
+  aktualizacjaOpiekuna: {
+    summary: "Aktualizacja danych opiekuna",
+    value: {
+      guardian: {
+        firstName: "Maria",
+        lastName: "Wiśniewska-Testowa",
+        phone: "+48123123199"
+      }
+    }
+  }
+};
