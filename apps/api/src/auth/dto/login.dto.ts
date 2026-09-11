@@ -3,7 +3,7 @@ import { IsString, MinLength } from "class-validator";
 
 export class LoginDto {
   @ApiProperty({
-    example: "staff.demo",
+    example: "tester01",
     description: "Login syntetycznego konta personelu."
   })
   @IsString({ message: "Login jest wymagany." })
@@ -17,3 +17,13 @@ export class LoginDto {
   @MinLength(1, { message: "Hasło jest wymagane." })
   password!: string;
 }
+
+export const LOGIN_REQUEST_EXAMPLE = {
+  poprawneDaneLogowania: {
+    summary: "Poprawne dane logowania",
+    value: {
+      login: "tester01",
+      password: "HasloTestowe123!"
+    }
+  }
+};
