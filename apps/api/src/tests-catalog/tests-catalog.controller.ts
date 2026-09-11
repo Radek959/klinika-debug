@@ -9,7 +9,10 @@ import {
 import type { MedicalTestsListResponse } from "@klinika/api-contracts";
 import { AuthGuard } from "../auth/auth.guard";
 import { ApiErrorResponseDto } from "../common/errors/api-error-response.dto";
-import { ApiSessionUnauthorizedResponse } from "../common/openapi/openapi.helpers";
+import {
+  ApiCorrelationIdHeader,
+  ApiSessionUnauthorizedResponse
+} from "../common/openapi/openapi.helpers";
 import { MedicalTestListQueryDto } from "./dto/medical-test-list-query.dto";
 import { MedicalTestsListResponseDto } from "./dto/medical-test-response.dto";
 import { TestsCatalogService } from "./tests-catalog.service";
@@ -77,6 +80,7 @@ const MEDICAL_TESTS_SUCCESS_EXAMPLE = {
 
 @ApiTags("Katalog badań")
 @ApiBearerAuth()
+@ApiCorrelationIdHeader()
 @UseGuards(AuthGuard)
 @Controller("tests")
 export class TestsCatalogController {

@@ -20,6 +20,7 @@ import type {
 } from "@klinika/api-contracts";
 import { ApiErrorResponseDto } from "../common/errors/api-error-response.dto";
 import {
+  ApiCorrelationIdHeader,
   ApiPatientIdParam,
   ApiSessionUnauthorizedResponse
 } from "../common/openapi/openapi.helpers";
@@ -74,6 +75,7 @@ const PATIENT_LIST_SUCCESS_EXAMPLE = {
 
 @ApiTags("Pacjenci")
 @ApiBearerAuth()
+@ApiCorrelationIdHeader()
 @UseGuards(AuthGuard)
 @Controller("patients")
 export class PatientsController {

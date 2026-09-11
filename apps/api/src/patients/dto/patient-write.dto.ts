@@ -289,6 +289,7 @@ export const CREATE_PATIENT_REQUEST_EXAMPLES = {
       pesel: "18210112349",
       birthDate: "2018-01-01",
       gender: "FEMALE",
+      phone: "123456789",
       guardian: {
         firstName: "Maria",
         lastName: "Wiśniewska-Testowa",

@@ -11,7 +11,10 @@ import {
 } from "@nestjs/swagger";
 import type { AuthenticatedUser, LoginResponse } from "@klinika/api-contracts";
 import { ApiErrorResponseDto } from "../common/errors/api-error-response.dto";
-import { ApiSessionUnauthorizedResponse } from "../common/openapi/openapi.helpers";
+import {
+  ApiCorrelationIdHeader,
+  ApiSessionUnauthorizedResponse
+} from "../common/openapi/openapi.helpers";
 import { AuthService } from "./auth.service";
 import { AuthGuard } from "./auth.guard";
 import { CurrentSessionId } from "./current-session.decorator";
@@ -86,6 +89,7 @@ export class AuthController {
   @Get("me")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
+  @ApiCorrelationIdHeader()
   @ApiOperation({
     summary: "Bieżący użytkownik",
     description:
@@ -101,6 +105,7 @@ export class AuthController {
   @HttpCode(204)
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
+  @ApiCorrelationIdHeader()
   @ApiOperation({
     summary: "Wylogowanie",
     description: "Unieważnia aktywną sesję użytkownika."

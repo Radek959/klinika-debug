@@ -179,7 +179,7 @@ const ORDER_HISTORY_SUCCESS_EXAMPLE = {
           newStatus: "SENT_TO_LAB",
           details: {
             eventType: "LAB_SEND_RETRY",
-            attemptNumber: 1,
+            attemptNumber: 2,
             outcome: "ACCEPTED",
             previousStatus: "SAMPLE_COLLECTED",
             newStatus: "SENT_TO_LAB"
@@ -231,6 +231,7 @@ const ORDER_HISTORY_SUCCESS_EXAMPLE = {
 
 @ApiTags("Zlecenia")
 @ApiBearerAuth()
+@ApiCorrelationIdHeader()
 @UseGuards(AuthGuard)
 @Controller("orders")
 export class OrdersController {
@@ -533,7 +534,6 @@ export class OrdersController {
       "zakończą się błędem 5xx (503 albo 504), zlecenie przechodzi do TECHNICAL_ERROR."
   })
   @ApiOrderIdParam()
-  @ApiCorrelationIdHeader()
   @ApiOkResponse({
     type: OrderResponseDto,
     description:

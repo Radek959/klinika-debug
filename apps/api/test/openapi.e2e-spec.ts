@@ -7,7 +7,7 @@ import { configureTestEnvironment, resetTestDatabase } from "./database";
 interface OpenApiOperation {
   summary?: string;
   description?: string;
-  parameters?: Array<{ name: string; in: string }>;
+  parameters?: Array<{ name: string; in: string; required?: boolean }>;
   responses?: Record<string, { description?: string; headers?: Record<string, unknown> }>;
 }
 
@@ -52,6 +52,15 @@ describe("openapi contract documentation", () => {
   function hasParam(operation: OpenApiOperation, name: string): boolean {
     return (operation.parameters ?? []).some(
       (param) => param.name === name && param.in === "path"
+    );
+  }
+
+  function hasOptionalCorrelationIdHeader(operation: OpenApiOperation): boolean {
+    return (operation.parameters ?? []).some(
+      (param) =>
+        param.name === "X-Correlation-ID" &&
+        param.in === "header" &&
+        param.required !== true
     );
   }
 
@@ -163,5 +172,45 @@ describe("openapi contract documentation", () => {
   it("rejestracja próbki dokumentuje regułę tej samej minuty", () => {
     const registerSample = document.paths["/api/v1/orders/{orderId}/samples"]?.post;
     expect(registerSample?.description ?? "").toContain("minut");
+  });
+
+  it("reprezentatywne participant endpointy dokumentują opcjonalny X-Correlation-ID", () => {
+    const withHeader: Array<{ path: string; method: "get" | "post" | "patch" }> = [
+      { path: "/api/v1/auth/me", method: "get" },
+      { path: "/api/v1/auth/logout", method: "post" },
+      { path: "/api/v1/dashboard/summary", method: "get" },
+      { path: "/api/v1/patients", method: "post" },
+      { path: "/api/v1/patients/{patientId}", method: "get" },
+      { path: "/api/v1/tests", method: "get" },
+      { path: "/api/v1/orders", method: "post" },
+      { path: "/api/v1/orders/{orderId}", method: "get" },
+      { path: "/api/v1/orders/{orderId}/send", method: "post" }
+    ];
+
+    for (const { path, method } of withHeader) {
+      const operation = document.paths[path]?.[method];
+      expect(operation).toBeDefined();
+      expect(
+        hasOptionalCorrelationIdHeader(operation as OpenApiOperation)
+      ).toBe(true);
+    }
+
+    // Endpoint logowania nie ma jeszcze sesji, więc korelacja żądania z
+    // istniejącą sesją nie ma tu zastosowania.
+    const login = document.paths["/api/v1/auth/login"]?.post;
+    expect(hasOptionalCorrelationIdHeader(login as OpenApiOperation)).toBe(false);
+  });
+
+  it("health i webhook laboratorium nie dokumentują X-Correlation-ID uczestnika", () => {
+    const live = document.paths["/health/live"]?.get;
+    const ready = document.paths["/health/ready"]?.get;
+    const labWebhook = document.paths["/api/v1/integrations/lab/results"]?.post;
+
+    for (const operation of [live, ready, labWebhook]) {
+      if (!operation) {
+        continue;
+      }
+      expect(hasOptionalCorrelationIdHeader(operation)).toBe(false);
+    }
   });
 });

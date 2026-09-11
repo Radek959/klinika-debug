@@ -3,7 +3,10 @@ import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swa
 import { AuthGuard } from "../auth/auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import type { AuthenticatedUser, DashboardSummaryResponse } from "@klinika/api-contracts";
-import { ApiSessionUnauthorizedResponse } from "../common/openapi/openapi.helpers";
+import {
+  ApiCorrelationIdHeader,
+  ApiSessionUnauthorizedResponse
+} from "../common/openapi/openapi.helpers";
 import { DashboardSummaryResponseDto } from "./dto/dashboard-summary-response.dto";
 import { DashboardService } from "./dashboard.service";
 
@@ -32,6 +35,7 @@ const DASHBOARD_SUMMARY_SUCCESS_EXAMPLE = {
 
 @ApiTags("Panel główny")
 @ApiBearerAuth()
+@ApiCorrelationIdHeader()
 @UseGuards(AuthGuard)
 @Controller("dashboard")
 export class DashboardController {
