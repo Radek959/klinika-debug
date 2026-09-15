@@ -161,6 +161,33 @@ The participant-facing application does not expose trainer controls. Follow the 
 
 ---
 
+## More Resources
+
+### 📘 Playwright Starter Pack
+
+A free collection of practical Playwright materials, including commands, locators, assertions, configuration examples and checklists.
+
+[Playwright Starter Pack →](https://starter.rwasik.pl/)
+
+### 🤖 Prompt Hub for QA
+
+A free collection of practical AI prompts for software testers and QA engineers.
+
+Prompts cover areas such as:
+
+* test case generation,
+* exploratory testing,
+* requirements analysis,
+* regression scope,
+* risk-based testing,
+* Playwright,
+* code review,
+* DevTools analysis.
+
+[Prompt Hub for QA →](https://prompty.rwasik.pl/)
+
+---
+
 ## About the Author
 
 This project is created and maintained by **Radosław Wasik** — QA Tech Lead, trainer and software testing practitioner focused on test automation, Playwright and practical AI use in QA.
