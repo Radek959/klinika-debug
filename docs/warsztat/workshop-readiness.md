@@ -1,171 +1,341 @@
-# Workshop MVP — gotowość techniczna
+# Workshop Environment Operations
 
-**Status:** dokument techniczno-operacyjny repozytorium (NIE notatki prowadzącego).
-**Cel:** opisać, jak przygotować i zweryfikować środowisko Kliniki Debug przed
-warsztatem „Tester z AI”, oraz co zrobić, gdy coś pójdzie nie tak w trakcie.
+**Purpose:** prepare, verify and recover the deployed Klinika Debug environment for the **Tester z AI** workshop.  
+**Audience:** project owner and workshop trainer. This is an operational runbook, not participant documentation, and it does not contain passwords.
 
-Ten dokument nie opisuje przebiegu dydaktycznego (patrz
-[`przebieg-szkolenia.md`](przebieg-szkolenia.md)) ani nie zawiera haseł.
+Klinika Debug uses synthetic data only. Never place production secrets, real patient data or real medical information in the repository, fixtures or workshop environment.
 
-## 1. Audit zgodności szkolenia
+## 1. What This Runbook Covers
 
-Zestawienie każdego elementu z [`przebieg-szkolenia.md`](przebieg-szkolenia.md)
-z konkretną, zaimplementowaną funkcją Kliniki Debug.
+This document describes:
 
-| Element szkolenia | Wymaganie | Dowód | Status |
-|---|---|---|---|
-| Etap A — logowanie, izolacja, polski UI | stabilne logowanie, workspace per uczestnik, PL interfejs | `AuthController` (`/api/v1/auth/login`), `workspaceId` w każdej encji domenowej, `apps/web/src/**` (polskie etykiety) | OK |
-| Etap A — główna ścieżka | pacjent → zlecenie → próbka → laboratorium → wynik | `PatientsController`, `OrdersController` (`create`, `samples`, `send`), `LabSimulatorService`, `apps/api/test/lab-results.e2e-spec.ts` | OK |
-| Ćwiczenie 1/2 — kontekst vs brak kontekstu | realne reguły domenowe silniejsze niż ogólna wiedza AI | `packages/domain/src/patients/patient-write.ts`, `packages/domain/src/patients/pesel.ts`, `docs/dokumentacja-produktowa.md` | OK |
-| Etap C — pełny proces zlecenia | wiele materiałów, częściowe pobranie, statusy, historia, wyniki częściowe/kompletne | `packages/domain/src/orders/sample-collection.ts`, `OrderHistory`, scenariusze `PARTIAL_SUCCESS`/`COMPLETED` w `lab-simulator` | OK |
-| Etap D — dane testowe | wielokrotne tworzenie pacjentów/zleceń, jednoznaczne walidacje | `CreatePatientDto`, `apps/api/src/patients/patient-write-domain.spec.ts` | OK |
-| Etap E — UI → DevTools → API | REST API, jednolity format błędów, `correlationId`, scenariusze VALIDATION_ERROR/RATE_LIMIT/SERVER_ERROR/TIMEOUT, retry, TECHNICAL_ERROR, panel prowadzącego | `ApiExceptionFilter`, `CurrentCorrelationId`, `LabSendRetryService`, `AdminController` (`/admin/api/config`) | OK |
-| Etap F — analiza logów | realistyczne, syntetyczne, production-like logi z wieloma `correlationId`, retry, szumem | `workshop-assets/logs/*.log` (7 fixture'ów, `scripts/validate-workshop-logs.cjs`) | OK |
-| Etap G — bug report | 2-3 deterministyczne, obserwowalne, odwracalne defekty | `apps/api/src/workshop-config/controlled-bug.ts` (`PATIENT_GUARDIAN`, `ORDER_FLOW`, `API_DIAGNOSTICS`), `apps/api/test/workshop-controlled-bugs.e2e-spec.ts` | OK |
-| Etap H — API z AI | kompletne OpenAPI dla endpointów uczestnika, bez ujawnienia `/admin` | `app.setup.ts` (`SwaggerModule`, `@ApiExcludeController` na `AdminController`) | OK |
-| Panel prowadzącego (sekcja 4) | scenariusz laboratorium, `CLEAN`/1 defekt, reset pojedynczego uczestnika + reset całego środowiska, odczyt configu | `AdminController`, `resetSingleWorkshopWorkspace`, `resetWorkshopWorkspaces`, `WorkshopConfigService` | OK |
-| DoD #1 — 15+ uczestników równolegle | izolowane workspace'y i konta | `provisionWorkshopWorkspaces`, `workshop-provisioning.e2e-spec.ts`, `workshop-isolation.e2e-spec.ts` | OK |
-| DoD #8 — pełny smoke test zgodny z przebiegiem | zautomatyzowany smoke test wdrożonego środowiska | `npm run workshop:smoke` (`scripts/workshop-smoke.cjs`) | **Kod gotowy; rzeczywiste uruchomienie przeciwko wdrożonemu środowisku wymaga wykonania przez właściciela projektu — patrz sekcja 7.** |
-| Etap I — narzędzia własne (Python/Chrome) | świadomie poza repozytorium | `AGENTS.md`, `docs/implementation/README.md` ("Granice narzędzi warsztatowych") | OK (out of scope, celowo) |
+* Hostinger deployment commands,
+* participant workspace provisioning,
+* remote workshop smoke tests,
+* the optional local Playwright smoke suite,
+* pre-workshop readiness checks,
+* environment reset and recovery,
+* technical quality gates.
 
-Elementy niepotrzebne do szkolenia (import/eksport, pełny observability,
-rozbudowany admin, ogólny framework błędów, gotowe rozszerzenie Chrome/skrypt
-Python) pozostają świadomie `OUT_OF_SCOPE` — patrz `docs/implementation/README.md`.
+The workshop teaching flow is documented separately in [`przebieg-szkolenia.md`](./przebieg-szkolenia.md).
 
-Panel prowadzącego dodatkowo zawiera: szybkie presety (`labScenario` +
-`controlledBug` + `labDelayMs` jednym kliknięciem) oraz dynamiczne opisy pod
-selectami scenariusza laboratorium i kontrolowanego błędu — szczegóły w
-`docs/implementation/README.md` ("Workshop MVP — trainer controls").
+## 2. Hostinger Deployment
 
-## 2. Dzień przed szkoleniem
+Use the following settings for the Hostinger `Other` framework:
 
 ```text
-1. deploy aplikacji           → npm run build:hostinger:workshop
-                                 (albo build:hostinger + osobno workshop:prepare)
-2. npm run workshop:prepare    (pomijalne, jeśli użyto build:hostinger:workshop)
-3. npm run workshop:smoke      (bez potwierdzenia = tylko read-only preflight)
-4. WORKSHOP_SMOKE_CONFIRM=RUN npm run workshop:smoke
-                                 (pełny smoke: loguje uczestników, resetuje,
-                                  przechodzi główną ścieżkę, sprawdza
-                                  kontrolowane defekty, sprząta na końcu)
-5. manualny UI smoke (patrz sekcja 6)
-6. reset środowiska            → npm run workshop:reset albo reset w /admin
-7. potwierdź w /admin: labScenario = SUCCESS, controlledBug = CLEAN
+Package manager: npm
+Output directory: ./
+Entry file: apps/api/dist/main.js
 ```
 
-## 3. 30 minut przed szkoleniem
+### Standard deployment
 
-- [ ] `GET /health/live` zwraca `status: ok`
-- [ ] `GET /health/ready` zwraca `status: ok`
-- [ ] logowanie `tester01` działa
-- [ ] logowanie do `/admin` działa
-- [ ] `/api/docs` (OpenAPI) jest dostępne
-- [ ] fixture'y logów są dostępne uczestnikom w UI (**Materiały**, `/materials`), a nie tylko w repozytorium (`workshop-assets/logs/`)
-- [ ] konfiguracja w `/admin`: `SUCCESS`
-- [ ] konfiguracja w `/admin`: `CLEAN`
-
-## 4. Dane uczestników
-
-- Schemat loginów: `testerNN` (`tester01` … `tester15` dla 15 uczestników,
-  dwucyfrowy numer z zerem wiodącym).
-- Liczba workspace'ów: 1 workspace na uczestnika (`warsztat-NN`), domyślnie 15
-  — konfigurowalne przez `WORKSHOP_PARTICIPANTS` w `workshop:prepare`. Przy
-  pracy w parach dopuszczalne jest 1 workspace na parę (mniejsza liczba
-  uczestników przekazana do `workshop:prepare`).
-- Wspólne hasło kont `testerNN`: zmienna środowiskowa `WORKSHOP_STAFF_PASSWORD`
-  (ustawiana w konfiguracji wdrożenia Hostinger, NIE w repozytorium). Hasło
-  panelu `/admin` odpowiada `ADMIN_PASSWORD_HASH` i jest znane wyłącznie
-  prowadzącemu.
-- To repozytorium NIE zawiera haseł — patrz `.env.example` dla listy
-  wymaganych zmiennych (bez wartości produkcyjnych).
-
-## 5. Recovery — co zrobić, gdy coś pójdzie nie tak
-
-| Sytuacja | Działanie |
-|---|---|
-| Uczestnik zepsuł własne dane | `/admin` → sekcja "Reset uczestnika" → wybierz `testerNN` / `warsztat-NN` → potwierdź. Resetowane są WYŁĄCZNIE dane tego jednego workspace'u; jego sesja zostaje unieważniona (uczestnik loguje się ponownie tym samym loginem/hasłem). Inni uczestnicy NIE są resetowani, a globalna konfiguracja (`labScenario`/`controlledBug`/`labDelayMs`) pozostaje bez zmian. Backend: `resetSingleWorkshopWorkspace` (`POST /admin/api/workspaces/:slug/reset`). |
-| Wszyscy muszą zacząć od nowa | `/admin` → `Resetuj środowisko` (albo `npm run workshop:reset`) — resetuje WSZYSTKIE workspace'y `warsztat-NN`, wylogowuje wszystkich uczestników (unieważnia ich sesje) i przywraca globalną konfigurację do `SUCCESS` + `CLEAN` + 5 minut. Nie rusza `klinika-pokazowa`. |
-| Aktywny jest zły `controlledBug` | `/admin` → ustaw `controlledBug = CLEAN`. Zmiana jest natychmiastowa, bez restartu aplikacji. |
-| Aktywny jest zły `labScenario` | `/admin` → ustaw `labScenario = SUCCESS`. Dotyczy NOWYCH wysyłek; zadania już zaplanowane (retry) używają scenariusza zapisanego w chwili wysyłki. |
-| Sesja uczestnika została unieważniona (np. po reset) | Uczestnik loguje się ponownie tym samym loginem/hasłem — to oczekiwany, nieszkodliwy efekt uboczny resetu. Frontend uczestnika przechodzi do `/login` SAM, przy najbliższym requestcie po resecie (`401 SESSION_EXPIRED` obsługiwane centralnie w `apps/web/src/api/client.ts` + `App.tsx`) — nie jest potrzebne F5 ani ręczne „Wyloguj”. |
-| Środowisko wygląda niespójnie i nie wiadomo dlaczego | Wykonaj pełną sekwencję z sekcji "Emergency clean state" poniżej. |
-
-### Emergency clean state
-
-Jednoznaczna sekwencja przywracająca środowisko do stanu startowego:
-
-```text
-1. /admin → labScenario = SUCCESS
-2. /admin → controlledBug = CLEAN
-3. /admin → Resetuj środowisko (potwierdź) — albo npm run workshop:reset
-4. uczestnicy logują się ponownie tym samym testerNN — frontend sam
-   przechodzi do /login przy najbliższym requestcie (401 SESSION_EXPIRED),
-   bez F5 ani ręcznego „Wyloguj”
+```bash
+npm run build:hostinger
 ```
 
-Ta sama sekwencja jest wykonywana automatycznie w kroku sprzątania
-`npm run workshop:smoke` (`finally`) — jeśli smoke zakończy się z jasnym
-komunikatem o nieudanym sprzątaniu, wykonaj powyższą sekwencję ręcznie.
+This command generates the Prisma client, builds the application and runs `prisma migrate deploy`. It never creates or resets workshop accounts.
 
-## 6. Manualny UI smoke
+### Deployment with explicit workshop preparation
 
-Krótka checklista do wykonania przez człowieka na finalnym, wdrożonym
-środowisku (nie jest automatycznie oznaczana jako wykonana):
+When the hosting panel accepts a custom build command, use:
+
+```bash
+npm run build:hostinger:workshop
+```
+
+It runs the standard Hostinger build and then `npm run workshop:prepare`.
+
+### First deployment or restricted hosting panels
+
+If the panel only allows a fixed build command, use:
+
+```bash
+npm run build:hostinger:seed
+```
+
+This additionally runs `db:seed` and `workshop:prepare`. Both operations are idempotent: they use upserts and do not overwrite participant data when repeated. This variant requires both `SEED_STAFF_PASSWORD` and `WORKSHOP_STAFF_PASSWORD` in the production environment.
+
+## 3. Workshop Environment Configuration
+
+Set the required values in the deployment environment. Refer to [`.env.example`](../../.env.example) for the complete list and safe descriptions.
 
 ```text
-[ ] login tester
-[ ] lista pacjentów
+WORKSHOP_PARTICIPANTS=15
+WORKSHOP_STAFF_PASSWORD=...
+ADMIN_PASSWORD_HASH=...
+ADMIN_SESSION_SECRET=...
+```
+
+Do not commit real values. `WORKSHOP_STAFF_PASSWORD` is shared by the synthetic `testerNN` accounts. The trainer panel password corresponds to `ADMIN_PASSWORD_HASH` and must remain known only to the trainer.
+
+## 4. Preparing Participant Workspaces
+
+Workshop preparation is an explicit operation and is not part of a standard deployment:
+
+```bash
+npm run workshop:prepare
+```
+
+The command:
+
+* reads the participant count from `WORKSHOP_PARTICIPANTS` (default: 15),
+* creates `tester01` through `testerNN`,
+* creates one isolated `warsztat-NN` workspace per participant,
+* validates required configuration,
+* uses the shared provisioning mechanism also used by `workshop:seed`,
+* is idempotent and never resets existing participant data,
+* never prints passwords, password hashes, tokens or secrets.
+
+The default model is:
+
+> one participant = one `STAFF` account = one isolated workspace
+
+## 5. Recommended Pre-Workshop Sequence
+
+Run this sequence the day before the workshop:
+
+```text
+1. Deploy the application.
+2. Run workshop:prepare unless build:hostinger:workshop already did it.
+3. Run the read-only remote smoke preflight.
+4. Run the confirmed full remote smoke.
+5. Complete the manual UI smoke checklist.
+6. Reset the workshop environment.
+7. Confirm SUCCESS, CLEAN and the expected laboratory delay in the trainer panel.
+```
+
+The final reset should happen after all verification and before participants enter the environment.
+
+## 6. Remote Workshop Smoke Test
+
+`npm run workshop:smoke` targets the actually deployed application. It covers health checks, participant authentication, workspace isolation, the patient-to-result workflow, controlled scenarios, OpenAPI and workshop assets.
+
+Configure the runner outside the repository:
+
+```text
+WORKSHOP_BASE_URL=https://klinikadebug.rwasik.pl
+WORKSHOP_STAFF_PASSWORD=...
+WORKSHOP_ADMIN_PASSWORD=...
+```
+
+`WORKSHOP_ADMIN_PASSWORD` is used only by the smoke runner. It is the plain-text password corresponding to `ADMIN_PASSWORD_HASH`. Never commit or print it.
+
+### Read-only preflight
+
+Without explicit confirmation, the runner checks only read-only resources such as health endpoints, current trainer configuration, OpenAPI and workshop materials:
+
+```bash
+npm run workshop:smoke
+```
+
+### Full smoke
+
+The full smoke logs in participant accounts, resets data, exercises the main workflow and controlled failures, and performs cleanup. It requires explicit confirmation because it changes workshop data.
+
+macOS and Linux:
+
+```bash
+WORKSHOP_SMOKE_CONFIRM=RUN npm run workshop:smoke
+```
+
+Windows PowerShell:
+
+```powershell
+$env:WORKSHOP_SMOKE_CONFIRM = "RUN"
+npm run workshop:smoke
+```
+
+The runner prints the target host before starting and never logs passwords, tokens or cookies. In its final cleanup it attempts to restore `SUCCESS`, `CLEAN` and reset workshop data, even if an earlier step fails.
+
+Expected exit codes:
+
+* `0` — every required step passed,
+* `1` — at least one step failed.
+
+If cleanup fails, use the emergency clean-state procedure in section 10.
+
+### Testing the smoke runner itself
+
+The runner's tests use a mock HTTP server and do not access a deployed environment:
+
+```bash
+npm run test:workshop-smoke
+```
+
+## 7. Optional Local Playwright Smoke
+
+`npm run test:workshop-browser` is an additional manual quality gate for the participant-facing browser flow. It is not required for every pull request and does not run in CI.
+
+The suite is intentionally restricted to a local application. `WORKSHOP_BROWSER_BASE_URL` must point to `localhost`, `127.0.0.1` or `::1`; otherwise it fails before sending a request. It must never target Hostinger or use `WORKSHOP_BASE_URL`.
+
+Prepare and start the local production build:
+
+```bash
+npm run build
+npm start
+```
+
+Configure the local test process:
+
+```text
+WORKSHOP_STAFF_PASSWORD=...
+WORKSHOP_ADMIN_PASSWORD=...
+WORKSHOP_E2E_CONFIRM=RUN
+# Optional when the application does not use the default URL:
+# WORKSHOP_BROWSER_BASE_URL=http://localhost:XXXX
+```
+
+Run the suite:
+
+macOS and Linux:
+
+```bash
+WORKSHOP_E2E_CONFIRM=RUN npm run test:workshop-browser
+```
+
+Windows PowerShell:
+
+```powershell
+$env:WORKSHOP_E2E_CONFIRM = "RUN"
+npm run test:workshop-browser
+```
+
+The suite is serial because trainer configuration is global. Its setup resets the environment and then applies `SUCCESS`, `CLEAN` and a five-second laboratory delay. Cleanup resets data and restores the standard five-minute delay.
+
+On failure, Playwright retains a screenshot and trace. If cleanup cannot complete, the suite clearly reports that a manual reset is required.
+
+## 8. Manual UI Smoke Checklist
+
+Complete this checklist against the final deployed environment:
+
+```text
+[ ] participant login
+[ ] patient list
 [ ] create patient
 [ ] edit patient
 [ ] create order
-[ ] register sample
-[ ] send to lab
-[ ] history
-[ ] result
-[ ] DevTools request/response
+[ ] register samples
+[ ] send order to laboratory
+[ ] order history
+[ ] laboratory result
+[ ] DevTools request and response
 [ ] correlationId
-[ ] admin
-[ ] controlled bug
-[ ] reset
-[ ] Materiały
-[ ] podgląd logu
-[ ] pobranie .log
+[ ] trainer panel login
+[ ] controlled scenario
+[ ] participant reset
+[ ] full environment reset
+[ ] Materials page
+[ ] log preview
+[ ] .log download
 ```
 
-## 7. Statusy — IMPLEMENTED vs VERIFIED vs DEPLOYED
+## 9. Final 30-Minute Checklist
 
-`IMPLEMENTED`, `VERIFIED` i `DEPLOYED` mają różne znaczenie (patrz
-`docs/implementation/README.md`, sekcja "Definicje statusów").
+Thirty minutes before the workshop, confirm:
 
-- kod Workshop MVP (uczestnicy, trainer controls i recovery, kontrolowane
-  defekty, log fixture'y, production prepare, smoke runner) jest
-  **`IMPLEMENTED`**;
-- aktualne CI dla Workshop MVP wykonuje i przechodzi testy migracji testowej
-  bazy, `npm run check` (lint, typecheck, testy jednostkowe, build),
-  `npm run test:integration` oraz build produkcyjny i
-  `npm run test:production-start` — patrz status CI aktualnego PR-a w GitHub
-  Actions tego repozytorium;
-- brak przydzielonego runnera GitHub Actions NIE jest już aktualnym
-  blockerem — problem platformowy opisywany wcześniej w tym dokumencie
-  (analogiczny do #29–#31) został rozwiązany;
-- **rzeczywisty `npm run workshop:smoke` przeciwko wdrożonemu środowisku
-  Hostinger NIE został tu wykonany** (brak dostępu do produkcyjnego/warsztatowego
-  wdrożenia z tego środowiska) — to odrębny krok od zielonego CI repozytorium.
+* [ ] `GET /health/live` returns `status: ok`
+* [ ] `GET /health/ready` returns `status: ok`
+* [ ] `tester01` can sign in
+* [ ] the trainer can sign in to `/admin`
+* [ ] `/api/docs` is available
+* [ ] log fixtures are available from **Materiały** (`/materials`)
+* [ ] the laboratory scenario is `SUCCESS`
+* [ ] the controlled defect is `CLEAN`
+* [ ] the laboratory delay matches the workshop plan
 
-Zielone CI pozwala uznać warstwę kodową/techniczną Workshop MVP za
-**`VERIFIED`** w rozumieniu definicji z `docs/implementation/README.md`
-("Wymagane testy, CI i review zakończyły się powodzeniem"). To NIE jest
-jednak `DEPLOYED` — status wdrożonego, gotowego na warsztat środowiska nadal
-wymaga wykonania (i potwierdzenia wyniku) przez właściciela projektu:
+## 10. Recovery
 
-1. deploymentu na Hostinger;
-2. `npm run workshop:prepare` na wdrożonym środowisku;
-3. `WORKSHOP_SMOKE_CONFIRM=RUN npm run workshop:smoke` przeciwko wdrożonemu
-   środowisku, z wynikiem `RESULT: PASS`;
-4. manualnego UI smoke z sekcji 6;
-5. resetu środowiska (sekcja 2, krok 6) przed wejściem uczestników.
+### Reset one participant
 
-Dopiero po pozytywnym wykonaniu punktów 1–5 status może przejść na
-`DEPLOYED`. Nie oznaczaj `DEPLOYED` bez faktycznego wykonania tych kroków —
-zielone CI repozytorium potwierdza gotowość kodu, nie gotowość wdrożonego
-środowiska warsztatowego.
+In `/admin`, use **Reset uczestnika** and select the relevant `testerNN` / `warsztat-NN` workspace. This resets only that participant's business data and invalidates only that participant's session. The participant signs in again with the same credentials.
+
+Other workspaces and global trainer configuration are not changed.
+
+### Reset all participants
+
+Use **Resetuj środowisko** in `/admin`, or run:
+
+```bash
+npm run workshop:reset
+```
+
+This resets every `warsztat-NN` workspace, invalidates participant sessions and restores `SUCCESS`, `CLEAN` and the standard five-minute laboratory delay. It does not reset the `klinika-pokazowa` workspace.
+
+### Emergency clean state
+
+When the environment is inconsistent or the smoke cleanup failed:
+
+```text
+1. Set labScenario to SUCCESS in /admin.
+2. Set controlledBug to CLEAN in /admin.
+3. Reset the full workshop environment in /admin or with workshop:reset.
+4. Confirm the expected laboratory delay.
+5. Ask participants to sign in again when prompted.
+```
+
+The participant frontend redirects expired sessions to `/login` automatically after the next request.
+
+## 11. Standard Quality Gates
+
+The pull request Definition of Done is:
+
+```bash
+npm run verify:pr
+```
+
+It runs linting, type checking, automated tests and the build. It does not require a database, Chromium or destructive workshop confirmation.
+
+Database-backed API integration tests require an isolated MySQL database through `TEST_DATABASE_URL`:
+
+macOS and Linux:
+
+```bash
+TEST_DATABASE_URL="mysql://klinika:klinika_local_password@localhost:3307/klinika_debug_test" npm run db:migrate:test
+TEST_DATABASE_URL="mysql://klinika:klinika_local_password@localhost:3307/klinika_debug_test" npm run test:integration
+```
+
+Windows PowerShell:
+
+```powershell
+$env:TEST_DATABASE_URL = "mysql://klinika:klinika_local_password@localhost:3307/klinika_debug_test"
+npm run db:migrate:test
+npm run test:integration
+```
+
+Production-start smoke requires a completed build and the same isolated test database:
+
+```bash
+npm run build
+TEST_DATABASE_URL="mysql://klinika:klinika_local_password@localhost:3307/klinika_debug_test" npm run test:production-start
+```
+
+GitHub Actions provides MySQL and runs the required database-backed checks when a local MySQL or Docker environment is not available.
+
+## 12. Readiness Evidence and Status
+
+The repository includes implemented support for:
+
+* isolated participant workspaces and deterministic provisioning,
+* the complete patient → order → samples → laboratory → result workflow,
+* partial results, rejections, retries and technical errors,
+* trainer-controlled laboratory scenarios and reversible defects,
+* OpenAPI, consistent errors and `correlationId`,
+* realistic synthetic log fixtures,
+* automated remote smoke and optional local browser smoke,
+* environment reset and recovery.
+
+Use status labels precisely:
+
+* **IMPLEMENTED** — code and tests exist in the repository,
+* **VERIFIED** — required tests, CI and review have passed,
+* **DEPLOYED** — the target environment has been deployed and checked successfully.
+
+Green CI verifies the codebase; it does not prove that the current Hostinger environment is ready for a workshop. Mark the environment as **DEPLOYED** only after all of the following have succeeded:
+
+1. Hostinger deployment,
+2. participant preparation,
+3. confirmed full remote smoke with `RESULT: PASS`,
+4. manual UI smoke,
+5. final environment reset and configuration check.
