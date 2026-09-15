@@ -1,238 +1,176 @@
 # Klinika Debug
 
-Klinika Debug to demonstracyjna aplikacja do obsługi zleceń badań laboratoryjnych, przygotowywana na potrzeby warsztatu **Tester z AI**.
+Klinika Debug is a training application created for the **Tester z AI** workshop. It simulates a laboratory order management system and provides a realistic environment for hands-on software testing with AI.
 
-Aplikacja umożliwia przejście procesu:
+The main workflow is:
 
-> pacjent → zlecenie badań → rejestracja próbek → wysłanie do laboratorium → oczekiwanie → wynik lub błąd
+> patient → laboratory order → sample collection → laboratory processing → result or controlled failure
 
-## Najważniejsze założenia
+The repository is used during live training to practise:
 
-- interfejs użytkownika jest w języku polskim;
-- techniczne nazwy endpointów, pól API, kodów błędów i wartości enum są w języku angielskim;
-- aplikacja udostępnia interfejs webowy, REST API i dokumentację OpenAPI;
-- dane poszczególnych placówek są odseparowane;
-- laboratorium działa asynchronicznie i jest obsługiwane przez symulator;
-- zachowanie środowiska może być globalnie zmieniane z panelu technicznego `/admin`;
-- wszystkie dane są syntetyczne.
+* requirements analysis and test design with AI,
+* test data generation,
+* exploratory testing,
+* REST API and DevTools investigation,
+* log analysis with `correlationId`,
+* bug reporting,
+* building small QA tools with AI.
 
-System służy wyłącznie do demonstracji i nauki testowania. Nie wolno używać w nim prawdziwych danych pacjentów ani wykorzystywać wyników do podejmowania decyzji medycznych.
+> [!WARNING]
+> Klinika Debug is an educational system, not a medical product. Use synthetic data only. Do not enter real patient information or use generated results for medical decisions.
 
-## Dokumentacja
+Created and maintained by **Radosław Wasik**.
 
-- [Dokumentacja produktowa](docs/dokumentacja-produktowa.md)
-- [Specyfikacja MVP](docs/specyfikacja-mvp.md)
-- [Architektura techniczna](docs/architektura-techniczna.md)
-- [Plan implementacji](docs/implementation/README.md)
+🤖 **Looking for practical AI prompts for testing?**  
+Explore the free [Prompt Hub for QA](https://prompty.rwasik.pl/) — a growing collection of prompts for requirements analysis, test design, exploratory testing, Playwright, code review, DevTools and more.
 
-## Lokalne uruchomienie
+---
 
-Wymagania:
+## Features
 
-- Node.js 22 LTS;
-- npm;
-- MySQL 8 lokalnie albo Docker z Compose.
+* 👤 **Patient Management** — Register, search, edit and deactivate synthetic patients
+* 🧪 **Laboratory Orders** — Create and edit orders, select tests and calculate required samples
+* 🧫 **Sample Collection** — Register samples and follow the order lifecycle
+* 🔄 **Asynchronous Laboratory Flow** — Process complete and partial results, rejections, retries and technical errors
+* 🕒 **Order History** — Review business events and trace operations with `correlationId`
+* 🔌 **REST API** — Exercise the same workflows through a versioned API
+* 📚 **OpenAPI Documentation** — Explore endpoints and contracts in the browser
+* 🧑‍💻 **Isolated Workshop Accounts** — Give each participant an independent workspace
+* 🐞 **Controlled Training Scenarios** — Reproduce deterministic integration failures and product defects
+* 📄 **Synthetic Log Materials** — Investigate realistic, safe log fixtures directly in the application
+* 🇵🇱 **Polish User Interface** — Work with a consistent Polish-language product UI
 
-Kroki:
+---
 
-```powershell
+## Tech Stack
+
+### Frontend
+
+* React
+* TypeScript
+* Vite
+
+### Backend
+
+* NestJS
+* Fastify
+* TypeScript
+* OpenAPI / Swagger
+
+### Data and Tooling
+
+* MySQL
+* Prisma
+* npm workspaces
+* Jest, Vitest and Playwright
+* GitHub Actions
+
+---
+
+## Prerequisites
+
+Before running the application, install:
+
+* Node.js 22 LTS or newer,
+* npm,
+* Git,
+* Docker with Compose or a local MySQL 8 instance.
+
+---
+
+## Running Locally
+
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/Radek959/klinika-debug.git
+cd klinika-debug
 npm install
-Copy-Item .env.example .env
+```
+
+Create the local environment file and start the databases:
+
+```bash
+cp .env.example .env
 docker compose up -d mysql mysql-test
 npm run db:generate
 npm run db:migrate
 npm run db:seed
+```
+
+On Windows PowerShell, use `Copy-Item .env.example .env` instead of `cp`.
+
+Start the API:
+
+```bash
 npm run dev:api
 ```
 
-Frontend w trybie developerskim można uruchomić w drugim terminalu:
+Start the frontend in a second terminal:
 
-```powershell
+```bash
 npm run dev:web
 ```
 
-Domyślne syntetyczne konto lokalne:
+Useful local addresses:
 
-- login: `staff.demo`
-- hasło: `HasloTestowe123!`
+* **Application:** http://localhost:5173
+* **API:** http://localhost:3001/api/v1
+* **OpenAPI:** http://localhost:3001/api/docs
+* **Liveness:** http://localhost:3001/health/live
+* **Readiness:** http://localhost:3001/health/ready
 
-W produkcji seed wymaga jawnego `SEED_STAFF_PASSWORD`. Lokalna wartość domyślna działa tylko poza `NODE_ENV=production`.
-
-## Hostinger
-
-Konfiguracja dla frameworka `Other`:
-
-```powershell
-Package manager: npm
-Output directory: ./
-Entry file: apps/api/dist/main.js
-```
-
-Build command dla pierwszego wdrożenia:
-
-```powershell
-npm run build:hostinger:seed
-```
-
-Build command dla kolejnych wdrożeń:
-
-```powershell
-npm run build:hostinger
-```
-
-`build:hostinger` wykonuje `prisma generate`, build aplikacji i `prisma migrate deploy` — nigdy nie tworzy ani nie resetuje żadnych kont czy danych.
-
-`build:hostinger:seed` dodatkowo uruchamia `db:seed` (konto demo `staff.demo` / workspace `klinika-pokazowa`) i `workshop:prepare` (konta `testerNN` / workspace'y `warsztat-NN`). Oba kroki są w pełni idempotentne (`upsert`, bez nadpisywania danych uczestników przy powtórnym uruchomieniu) — bezpiecznie jest ustawić `build:hostinger:seed` jako **stały** Build command, jeśli panel hostingowy nie pozwala na wpisanie własnej komendy (np. Hostinger hPanel udostępnia tylko zamkniętą listę opcji). Wymaga ustawienia `SEED_STAFF_PASSWORD` i `WORKSHOP_STAFF_PASSWORD` w środowisku produkcyjnym.
-
-Jeśli panel budowania pozwala wpisać dowolną komendę, można zamiast tego użyć rozdzielonych opcji poniżej (`build:hostinger` na co dzień, `build:hostinger:workshop` świadomie przed szkoleniem) — to nadal jest preferowany, bardziej jawny podział. `build:hostinger:seed` z `workshop:prepare` w środku istnieje jako bezpieczny wariant dla platform z ograniczonym wyborem Build command, nie jako zmiana domyślnego zachowania zwykłego `build:hostinger`.
-
-## Przygotowanie środowiska warsztatowego
-
-Przygotowanie środowiska przed szkoleniem jest osobną, jawną operacją — nie częścią standardowego deploymentu.
-
-```powershell
-npm run build:hostinger:workshop
-```
-
-wykonuje kolejno: `build:hostinger` (build + `prisma migrate deploy`), a następnie `npm run workshop:prepare`.
-
-`workshop:prepare` można też uruchomić samodzielnie (np. po zwykłym `build:hostinger`):
-
-```powershell
-npm run workshop:prepare
-```
-
-Skrypt:
-
-- czyta liczbę uczestników z `WORKSHOP_PARTICIPANTS` (domyślnie 15);
-- sprawdza wymaganą konfigurację (`ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET`, `DATABASE_URL`, a w produkcji także `WORKSHOP_STAFF_PASSWORD`);
-- korzysta z istniejącego, jedynego mechanizmu provisioningu (`provisionWorkshopWorkspaces`) — tego samego, co `npm run workshop:seed`;
-- jest idempotentny i **nigdy nie resetuje** istniejących danych uczestników;
-- nie wypisuje żadnych haseł, hashy, tokenów ani sekretów.
-
-Wymagane zmienne środowiskowe (patrz `.env.example`):
+Default synthetic local account:
 
 ```text
-WORKSHOP_PARTICIPANTS=15
-WORKSHOP_STAFF_PASSWORD=...
-ADMIN_PASSWORD_HASH=...
-ADMIN_SESSION_SECRET=...
+Login: staff.demo
+Password: HasloTestowe123!
 ```
 
-### Proces przed szkoleniem
+The default password is available only outside `NODE_ENV=production`. Production seeding requires an explicit `SEED_STAFF_PASSWORD`.
 
-```text
-1. deploy aplikacji (build:hostinger albo build:hostinger:workshop)
-2. npm run workshop:prepare  (jeśli nie użyto build:hostinger:workshop)
-3. npm run workshop:smoke   (przeciwko wdrożonemu środowisku, patrz niżej)
-4. sprawdź /admin
-5. zresetuj środowisko (npm run workshop:reset albo reset w /admin) tuż przed wejściem uczestników
-```
+---
 
-## Smoke test wdrożonego środowiska
+## Quality Checks
 
-`npm run workshop:smoke` uruchamia automatyczny smoke test przeciwko RZECZYWIŚCIE WDROŻONEJ Klinice Debug, odzwierciedlający główny przebieg warsztatu (health, logowanie do `/admin`, logowanie uczestników, izolacja workspace'ów, ścieżka pacjent → zlecenie → próbka → laboratorium → wynik, kontrolowane błędy, OpenAPI, fixture'y logów).
+Run the standard pull request gate:
 
-Konfiguracja:
-
-```text
-WORKSHOP_BASE_URL=https://klinikadebug.rwasik.pl
-WORKSHOP_STAFF_PASSWORD=...
-WORKSHOP_ADMIN_PASSWORD=...
-```
-
-`WORKSHOP_ADMIN_PASSWORD` jest sekretem WYŁĄCZNIE tego runnera (jawne hasło panelu `/admin`, odpowiadające hashowi w `ADMIN_PASSWORD_HASH`) — nigdy nie trafia do repo ani logów.
-
-Bez jawnego potwierdzenia smoke wykonuje wyłącznie read-only preflight (health, odczyt konfiguracji `/admin`, OpenAPI, fixture'y logów) i nie zmienia żadnych danych:
-
-```powershell
-npm run workshop:smoke
-```
-
-Pełny smoke (logowanie uczestników, reset, główna ścieżka, kontrolowane błędy) wymaga jawnego potwierdzenia:
-
-```powershell
-$env:WORKSHOP_SMOKE_CONFIRM = "RUN"
-npm run workshop:smoke
-```
-
-Smoke drukuje host przed startem, nigdy nie loguje haseł/tokenów/cookies, na końcu (także po błędzie w trakcie testu) próbuje przywrócić `SUCCESS` + `CLEAN` i zresetować środowisko, oraz kończy się kodem `0` (PASS) albo `1` (co najmniej jeden krok FAIL).
-
-Testy samego runnera (bez sieci, mock HTTP server): `npm run test:workshop-smoke`.
-
-Pełny techniczny runbook przygotowania warsztatu (audit zgodności ze szkoleniem, checklisty, recovery, emergency clean state): [`docs/warsztat/workshop-readiness.md`](docs/warsztat/workshop-readiness.md).
-
-## Standardowa weryfikacja przed PR
-
-```powershell
+```bash
 npm run verify:pr
 ```
 
-Obejmuje lint, typecheck, testy i build (`npm run check`) — bez bazy, bez uruchamiania aplikacji, bez Chromium i bez `WORKSHOP_E2E_CONFIRM`. To jest Definition of Done dla każdego PR-a (patrz `docs/ai/feature-delivery-playbook.md`). `verify:pr` NIE jest uruchamiane w CI — to niezależna, lokalna bramka developera/agenta, dokładnie te same kroki co zwykły CI.
+It runs linting, type checking, automated tests and the production build. Database-backed integration tests and workshop smoke suites are documented separately.
 
-## Opcjonalny lokalny Playwright smoke
+---
 
-`npm run test:workshop-browser` to mały suite Playwright chroniący flow testowane manualnie przed warsztatem (logowanie, dashboard, pacjent → zlecenie, próbki → laboratorium → wynik, Materiały/dokumentacja/log, investigation z `correlationId`). Jest:
+## Documentation
 
-- OPCJONALNY i uruchamiany RĘCZNIE — NIE jest wymagany przed każdym PR-em i NIE blokuje pracy nad kolejnymi PR-ami;
-- NIE jest wymaganym checkiem GitHub Actions i NIE jest uruchamiany w CI;
-- działa WYŁĄCZNIE przeciwko lokalnemu środowisku — nigdy przeciwko Hostingerowi ani żadnemu innemu publicznemu hostowi (`WORKSHOP_BROWSER_BASE_URL` musi wskazywać `localhost`/`127.0.0.1`/`::1`, inaczej suite kończy się jasnym błędem przed wysłaniem jakiegokolwiek requestu).
+* [Product documentation](./docs/dokumentacja-produktowa.md) (Polish) — expected business behaviour and validation rules
+* [Workshop MVP specification](./docs/specyfikacja-mvp.md) (Polish) — workshop scope and requirements
+* [Technical architecture](./docs/architektura-techniczna.md) (Polish) — architecture and technical decisions
+* [Workshop environment operations](./docs/warsztat/workshop-readiness.md) (English) — deployment, participant setup, smoke tests, recovery and readiness checklists
+* [Implementation status](./docs/implementation/README.md) (Polish) — implemented scope and project status
 
-Warto go uruchomić przed warsztatem, przed ważnym releasem albo po większych zmianach end-to-end (auth, `/admin`, izolacja workspace'ów, lab flow). Jeśli nie został uruchomiony, po prostu to pomiń — to nie jest blocker PR-a.
+---
 
-Wymagania: lokalna aplikacja pod `http://localhost:3000` (`npm run build` + `npm start`, migracja bazy i konta `tester01`/panel `/admin` przygotowane tak jak w [„Lokalne uruchomienie"](#lokalne-uruchomienie) i [„Przygotowanie środowiska warsztatowego"](#przygotowanie-środowiska-warsztatowego) wyżej), oraz:
+## Training Use
 
-```text
-WORKSHOP_STAFF_PASSWORD=...
-WORKSHOP_ADMIN_PASSWORD=...
-WORKSHOP_E2E_CONFIRM=RUN
-# opcjonalnie, jeśli inny port/host niż domyślny localhost:3000:
-# WORKSHOP_BROWSER_BASE_URL=http://localhost:XXXX
-```
+This repository is intended primarily for educational workshops and hands-on QA exercises. The standard `CLEAN` mode follows the product documentation, while trainer-controlled scenarios can introduce deterministic failures for investigation.
 
-```powershell
-$env:WORKSHOP_E2E_CONFIRM = "RUN"
-npm run test:workshop-browser
-```
+The participant-facing application does not expose trainer controls. Follow the trainer's instructions when using a shared workshop environment.
 
-`WORKSHOP_BROWSER_BASE_URL` jest CELOWO osobny od `WORKSHOP_BASE_URL` (sekcja wyżej, wyłącznie dla `workshop:smoke` przeciwko wdrożonemu środowisku) — domyślnie `http://localhost:3000`, więc przy standardowym porcie nie trzeba go ustawiać. Suite jest destrukcyjny (tworzy dane, resetuje środowisko), dlatego wymaga jawnego `WORKSHOP_E2E_CONFIRM=RUN` — bez niego kończy się błędem, nigdy cichym "skipped". Jest też serial (globalny config `/admin` nie nadaje się do równoległych testów): setup resetuje środowisko, a DOPIERO POTEM ustawia `SUCCESS` + `CLEAN` + `labDelay=5s`; cleanup resetuje i przywraca `labDelay=5min` — jeśli sprzątanie się nie powiedzie, suite jasno kończy się komunikatem „Środowisko wymaga ręcznego resetu.”. Przy niepowodzeniu zapisuje zrzut ekranu i trace (`retain-on-failure`); artefakty nie są commitowane.
+---
 
-## Testy i build
+## About the Author
 
-Podstawowe bramki:
+This project is created and maintained by **Radosław Wasik** — QA Tech Lead, trainer and software testing practitioner focused on test automation, Playwright and practical AI use in QA.
 
-```powershell
-npm run lint
-npm run typecheck
-npm test
-npm run build
-```
+* 🌐 [rwasik.pl](https://rwasik.pl/)
+* 💼 [LinkedIn](https://www.linkedin.com/in/rwasik/)
+* 📸 [Instagram](https://instagram.com/radwasik)
 
-Testy integracyjne API wymagają oddzielnej bazy MySQL wskazanej przez `TEST_DATABASE_URL`.
-Skrypt automatycznie przekazuje ją do Prisma jako `DATABASE_URL`, żeby testy nie użyły bazy developerskiej.
+---
 
-```powershell
-$env:TEST_DATABASE_URL = "mysql://klinika:klinika_local_password@localhost:3307/klinika_debug_test"
-npm run db:migrate:test
-npm run test:integration
-```
+## Usage
 
-Smoke test produkcyjnego startu wymaga wcześniejszego buildu i tej samej testowej bazy:
-
-```powershell
-npm run build
-$env:TEST_DATABASE_URL = "mysql://klinika:klinika_local_password@localhost:3307/klinika_debug_test"
-npm run test:production-start
-```
-
-Jeżeli lokalnie nie ma MySQL albo Dockera, testy integracyjne i smoke test produkcyjny uruchamia workflow GitHub Actions z usługą MySQL.
-
-`npm run verify:pr` (patrz [„Standardowa weryfikacja przed PR"](#standardowa-weryfikacja-przed-pr) wyżej) łączy podstawowe bramki (lint, typecheck, testy, build) w jedną komendę.
-
-## Status
-
-Projekt ma działający fundament aplikacji i deploymentu: monorepo npm workspaces, React + Vite, NestJS + Fastify, Prisma + MySQL, healthchecki, OpenAPI, konfigurację builda pod Hostinger oraz podstawowe bramki jakości.
-
-Na `main` istnieją już między innymi: logowanie i sesje, izolacja workspace'ów, obsługa pacjentów, katalog badań, tworzenie zleceń, lista i szczegóły zleceń, rejestracja próbek, wysyłka do laboratorium, trwała kolejka zadań w MySQL, scheduler, callback z wynikami oraz prezentacja wyników w UI.
-
-Nie cały zakres MVP jest ukończony. Aktualny stan etapów, statusy i rekomendowany następny PR są opisane w [planie implementacji](docs/implementation/README.md).
+Klinika Debug is intended for educational, workshop and training purposes.
