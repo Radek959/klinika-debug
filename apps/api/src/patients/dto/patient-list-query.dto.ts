@@ -19,6 +19,7 @@ export type SortOrder = (typeof SORT_ORDERS)[number];
 export class PatientListQueryDto {
   @ApiPropertyOptional({
     description: "Numer strony wyników. Pierwsza strona ma numer 1.",
+    type: Number,
     default: 1,
     minimum: 1
   })
@@ -29,6 +30,7 @@ export class PatientListQueryDto {
 
   @ApiPropertyOptional({
     description: "Liczba rekordów na stronie. Maksymalnie 100.",
+    type: Number,
     default: 20,
     minimum: 1,
     maximum: 100
@@ -41,6 +43,7 @@ export class PatientListQueryDto {
 
   @ApiPropertyOptional({
     description: "Wyszukiwanie po imieniu, nazwisku, PESEL-u lub numerze dokumentu.",
+    type: String,
     example: "Nowak"
   })
   @IsOptional()
@@ -50,6 +53,7 @@ export class PatientListQueryDto {
 
   @ApiPropertyOptional({
     description: "Filtr aktywności pacjenta.",
+    type: String,
     enum: ["true", "false"]
   })
   @IsOptional()
@@ -60,6 +64,7 @@ export class PatientListQueryDto {
 
   @ApiPropertyOptional({
     description: "Filtr typu identyfikatora pacjenta.",
+    type: String,
     enum: ["PESEL", "OTHER_DOCUMENT"]
   })
   @IsOptional()
@@ -70,6 +75,7 @@ export class PatientListQueryDto {
 
   @ApiPropertyOptional({
     description: "Pole sortowania listy pacjentów.",
+    type: String,
     enum: PATIENT_SORT_FIELDS,
     default: "lastName"
   })
@@ -81,6 +87,7 @@ export class PatientListQueryDto {
 
   @ApiPropertyOptional({
     description: "Kierunek sortowania.",
+    type: String,
     enum: SORT_ORDERS,
     default: "asc"
   })

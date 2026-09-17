@@ -24,6 +24,7 @@ export type SortOrder = (typeof SORT_ORDERS)[number];
 export class MedicalTestListQueryDto {
   @ApiPropertyOptional({
     description: "Numer strony wyników. Pierwsza strona ma numer 1.",
+    type: Number,
     default: 1,
     minimum: 1
   })
@@ -34,6 +35,7 @@ export class MedicalTestListQueryDto {
 
   @ApiPropertyOptional({
     description: "Liczba badań na stronie. Maksymalnie 100.",
+    type: Number,
     default: 20,
     minimum: 1,
     maximum: 100
@@ -46,6 +48,7 @@ export class MedicalTestListQueryDto {
 
   @ApiPropertyOptional({
     description: "Wyszukiwanie po kodzie, nazwie albo opisie badania.",
+    type: String,
     example: "glukoza",
     maxLength: 100
   })
@@ -57,6 +60,7 @@ export class MedicalTestListQueryDto {
   @ApiPropertyOptional({
     description:
       "Filtr aktywności badania. Gdy nie zostanie podany, zwracane są badania aktywne i nieaktywne.",
+    type: String,
     enum: ["true", "false"]
   })
   @IsOptional()
@@ -67,6 +71,7 @@ export class MedicalTestListQueryDto {
 
   @ApiPropertyOptional({
     description: "Filtr rodzaju materiału wymaganego do badania.",
+    type: String,
     enum: MATERIAL_TYPES
   })
   @IsOptional()
@@ -77,6 +82,7 @@ export class MedicalTestListQueryDto {
 
   @ApiPropertyOptional({
     description: "Pole sortowania katalogu badań.",
+    type: String,
     enum: MEDICAL_TEST_SORT_FIELDS,
     default: "code"
   })
@@ -88,6 +94,7 @@ export class MedicalTestListQueryDto {
 
   @ApiPropertyOptional({
     description: "Kierunek sortowania.",
+    type: String,
     enum: SORT_ORDERS,
     default: "asc"
   })

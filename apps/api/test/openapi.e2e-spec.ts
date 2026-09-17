@@ -4,16 +4,33 @@ import { PrismaService } from "../src/common/prisma/prisma.service";
 import { closeTestApp, createTestApp } from "./test-app";
 import { configureTestEnvironment, resetTestDatabase } from "./database";
 
+interface OpenApiSchema {
+  type?: string;
+  enum?: unknown[];
+  default?: unknown;
+  allOf?: OpenApiSchema[];
+  $ref?: string;
+  [key: string]: unknown;
+}
+
+interface OpenApiParameter {
+  name: string;
+  in: string;
+  required?: boolean;
+  schema?: OpenApiSchema;
+}
+
 interface OpenApiOperation {
   summary?: string;
   description?: string;
-  parameters?: Array<{ name: string; in: string; required?: boolean }>;
+  parameters?: OpenApiParameter[];
   responses?: Record<string, { description?: string; headers?: Record<string, unknown> }>;
 }
 
 interface OpenApiDocument {
   info: { description?: string };
   paths: Record<string, Record<string, OpenApiOperation>>;
+  components?: { schemas?: Record<string, OpenApiSchema> };
 }
 
 describe("openapi contract documentation", () => {
@@ -62,6 +79,48 @@ describe("openapi contract documentation", () => {
         param.in === "header" &&
         param.required !== true
     );
+  }
+
+  /**
+   * Swagger UI woła `parseJsonObjectOrArray` na wartości parametru przed
+   * wysłaniem requestu wyłącznie wtedy, gdy jego (rozwiązana) schema ma
+   * `type: "object"` albo `"array"`. Parametr tekstowy albo liczbowy z takim
+   * typem (np. union type alias bez jawnego `type: String`/`Number` w
+   * dekoratorze Swaggera) powoduje, że `Execute` przerywa budowanie requestu
+   * bez wysłania go — stąd rozwiązujemy `allOf`/`$ref`, żeby zobaczyć
+   * faktyczny typ, jaki zobaczy przeglądarka.
+   */
+  function resolveParameterSchema(
+    schema: OpenApiSchema | undefined
+  ): OpenApiSchema | undefined {
+    if (!schema) {
+      return schema;
+    }
+    if (schema.type !== undefined) {
+      return schema;
+    }
+    if (schema.allOf) {
+      for (const nested of schema.allOf) {
+        const resolved = resolveParameterSchema(nested);
+        if (resolved?.type !== undefined) {
+          return resolved;
+        }
+      }
+    }
+    if (schema.$ref) {
+      const refName = schema.$ref.split("/").pop();
+      const referenced = refName ? document.components?.schemas?.[refName] : undefined;
+      return referenced ?? schema;
+    }
+    return schema;
+  }
+
+  function describeParameter(
+    method: string,
+    path: string,
+    param: OpenApiParameter
+  ): string {
+    return `${method.toUpperCase()} ${path} ${param.in} parameter "${param.name}"`;
   }
 
   it("opisuje szybki start, uwierzytelnienie i correlation ID w top-level description", () => {
@@ -211,6 +270,154 @@ describe("openapi contract documentation", () => {
         continue;
       }
       expect(hasOptionalCorrelationIdHeader(operation)).toBe(false);
+    }
+  });
+
+  it("żaden parametr query/path/header nie ma schematu object albo array (błąd Swagger UI parseJsonObjectOrArray)", () => {
+    const brokenParameters: string[] = [];
+
+    for (const { path, method, operation } of operations()) {
+      for (const param of operation.parameters ?? []) {
+        if (param.in !== "query" && param.in !== "path" && param.in !== "header") {
+          continue;
+        }
+        const resolved = resolveParameterSchema(param.schema);
+        const type = resolved?.type;
+        if (type === "object" || type === "array") {
+          brokenParameters.push(
+            `${describeParameter(method, path, param)} has schema type "${type}", expected a scalar type.`
+          );
+        }
+      }
+    }
+
+    expect(brokenParameters).toEqual([]);
+  });
+
+  it("żaden tekstowy parametr enum (same wartości string) nie ma schematu object albo array", () => {
+    const brokenParameters: string[] = [];
+
+    for (const { path, method, operation } of operations()) {
+      for (const param of operation.parameters ?? []) {
+        if (param.in !== "query" && param.in !== "path" && param.in !== "header") {
+          continue;
+        }
+        const resolved = resolveParameterSchema(param.schema);
+        const enumValues = resolved?.enum;
+        const isTextEnum =
+          Array.isArray(enumValues) &&
+          enumValues.length > 0 &&
+          enumValues.every((value) => typeof value === "string");
+        if (isTextEnum && resolved?.type !== "string") {
+          brokenParameters.push(
+            `${describeParameter(method, path, param)} has schema type "${resolved?.type}", expected "string".`
+          );
+        }
+      }
+    }
+
+    expect(brokenParameters).toEqual([]);
+  });
+
+  it("żaden parametr z tekstową wartością default nie ma schematu object albo array", () => {
+    const brokenParameters: string[] = [];
+
+    for (const { path, method, operation } of operations()) {
+      for (const param of operation.parameters ?? []) {
+        if (param.in !== "query" && param.in !== "path" && param.in !== "header") {
+          continue;
+        }
+        const resolved = resolveParameterSchema(param.schema);
+        if (typeof resolved?.default === "string" && resolved.type !== "string") {
+          brokenParameters.push(
+            `${describeParameter(method, path, param)} has schema type "${resolved.type}", expected "string".`
+          );
+        }
+      }
+    }
+
+    expect(brokenParameters).toEqual([]);
+  });
+
+  it("sort i order dla GET /patients i GET /tests mają schema.type string z zachowanym enum i default", () => {
+    const patients = document.paths["/api/v1/patients"]?.get;
+    const tests = document.paths["/api/v1/tests"]?.get;
+    expect(patients).toBeDefined();
+    expect(tests).toBeDefined();
+
+    const cases: Array<{
+      operation: OpenApiOperation;
+      path: string;
+      name: string;
+      enumValues: string[];
+      defaultValue: string;
+    }> = [
+      {
+        operation: patients as OpenApiOperation,
+        path: "/api/v1/patients",
+        name: "sort",
+        enumValues: ["lastName", "birthDate", "createdAt"],
+        defaultValue: "lastName"
+      },
+      {
+        operation: patients as OpenApiOperation,
+        path: "/api/v1/patients",
+        name: "order",
+        enumValues: ["asc", "desc"],
+        defaultValue: "asc"
+      },
+      {
+        operation: tests as OpenApiOperation,
+        path: "/api/v1/tests",
+        name: "sort",
+        enumValues: ["code", "name", "estimatedDurationMinutes"],
+        defaultValue: "code"
+      },
+      {
+        operation: tests as OpenApiOperation,
+        path: "/api/v1/tests",
+        name: "order",
+        enumValues: ["asc", "desc"],
+        defaultValue: "asc"
+      }
+    ];
+
+    for (const { operation, path, name, enumValues, defaultValue } of cases) {
+      const param = (operation.parameters ?? []).find(
+        (candidate) => candidate.name === name && candidate.in === "query"
+      );
+      expect(param).toBeDefined();
+      const resolved = resolveParameterSchema(param?.schema);
+      if (resolved?.type !== "string") {
+        throw new Error(
+          `GET ${path} query parameter "${name}" has schema type "${resolved?.type}", expected "string".`
+        );
+      }
+      expect(resolved.enum).toEqual(enumValues);
+      expect(resolved.default).toBe(defaultValue);
+    }
+  });
+
+  it("page i pageSize dla GET /patients i GET /tests mają schema.type number", () => {
+    const targets = [
+      { path: "/api/v1/patients", operation: document.paths["/api/v1/patients"]?.get },
+      { path: "/api/v1/tests", operation: document.paths["/api/v1/tests"]?.get }
+    ];
+
+    for (const { path, operation } of targets) {
+      expect(operation).toBeDefined();
+      for (const name of ["page", "pageSize"]) {
+        const param = (operation?.parameters ?? []).find(
+          (candidate) => candidate.name === name && candidate.in === "query"
+        );
+        expect(param).toBeDefined();
+        const resolved = resolveParameterSchema(param?.schema);
+        if (resolved?.type !== "number" && resolved?.type !== "integer") {
+          throw new Error(
+            `GET ${path} query parameter "${name}" has schema type "${resolved?.type}", expected "number".`
+          );
+        }
+      }
     }
   });
 });
