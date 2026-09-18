@@ -47,6 +47,35 @@ test("SmokeReport zwraca RESULT: FAIL, gdy jakikolwiek krok się nie powiódł",
   assert.match(report.render(), /RESULT: FAIL/);
 });
 
+test("SmokeReport wyświetla detail dla FAIL", () => {
+  const report = new SmokeReport();
+  report.fail("Order flow", "Utworzenie zlecenia nie powiodło się (HTTP 422).");
+  assert.match(
+    report.render(),
+    /Order flow\s+FAIL — Utworzenie zlecenia nie powiodło się \(HTTP 422\)\./
+  );
+});
+
+test("SmokeReport wyświetla detail dla SKIP", () => {
+  const report = new SmokeReport();
+  report.skip("Reset", "brak potwierdzenia");
+  assert.match(report.render(), /Reset\s+SKIP — brak potwierdzenia/);
+});
+
+test("SmokeReport wyświetla detail dla PASS", () => {
+  const report = new SmokeReport();
+  report.pass("Health", "wszystko sprawne");
+  assert.match(report.render(), /Health\s+PASS — wszystko sprawne/);
+});
+
+test("SmokeReport nie dodaje separatora ani detalu, gdy detail nie istnieje", () => {
+  const report = new SmokeReport();
+  report.pass("Health");
+  const rendered = report.render();
+  assert.match(rendered, /^Health\s+PASS$/m);
+  assert.equal(rendered.includes("—"), false);
+});
+
 test("generateSyntheticAdultPesel generuje strukturalnie poprawny PESEL", () => {
   const pesel = generateSyntheticAdultPesel(7);
   assert.equal(pesel.length, 11);
