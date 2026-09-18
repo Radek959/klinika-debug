@@ -86,9 +86,12 @@ export class ApiExceptionFilter implements ExceptionFilter {
   }
 
   /**
-   * Loguje wyłącznie metodę/ścieżkę, kod błędu, correlationId i stack trace —
-   * nigdy body żądania, dane pacjenta, tokeny, ciasteczka ani hashe (patrz
-   * AGENTS.md, sekcja "Dane i bezpieczeństwo").
+   * Loguje wyłącznie metodę/pathname (bez query stringu), kod błędu,
+   * correlationId i bezpieczne ramki stosu — nigdy body żądania, query
+   * parameters, nagłówki, ciasteczka, `Error.message` ani inną treść
+   * wyjątku (patrz AGENTS.md, sekcja "Dane i bezpieczeństwo"). Query string
+   * i `Error.message` mogą zawierać dane wejściowe użytkownika (PESEL,
+   * telefon, token), więc obie wartości są celowo odrzucane przed logowaniem.
    */
   private logServerError(
     exception: unknown,
@@ -96,11 +99,36 @@ export class ApiExceptionFilter implements ExceptionFilter {
     correlationId: string,
     code: string
   ) {
-    const stack = exception instanceof Error ? exception.stack : undefined;
+    const pathname = this.safePathname(request.url);
+    const stackFrames = this.safeStackFrames(exception);
     this.logger.error(
-      `[${correlationId}] ${request.method} ${request.url} -> ${code}`,
-      stack
+      `[${correlationId}] ${request.method} ${pathname} -> ${code}`,
+      stackFrames
     );
+  }
+
+  /** Odcina query string (i wszystko po nim) z surowego URL requestu. */
+  private safePathname(url: string): string {
+    const queryIndex = url.indexOf("?");
+    return queryIndex === -1 ? url : url.slice(0, queryIndex);
+  }
+
+  /**
+   * Zwraca wyłącznie linie stack trace w formacie `at ...`. Pierwsza linia
+   * `Error.stack` to zawsze `<Name>: <message>` — `message` może zawierać
+   * dane wejściowe użytkownika, więc jest odrzucana razem z każdą inną
+   * linią, która nie jest bezpieczną ramką stosu.
+   */
+  private safeStackFrames(exception: unknown): string | undefined {
+    if (!(exception instanceof Error) || !exception.stack) {
+      return undefined;
+    }
+
+    const frames = exception.stack
+      .split("\n")
+      .filter((line) => /^\s*at /.test(line));
+
+    return frames.length > 0 ? frames.join("\n") : undefined;
   }
 
   private send(
