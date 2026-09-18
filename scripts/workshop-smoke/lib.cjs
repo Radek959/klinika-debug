@@ -237,8 +237,9 @@ class SmokeReport {
       if (!this.results.has(step)) {
         continue;
       }
-      const { status } = this.results.get(step);
-      lines.push(`${step.padEnd(labelWidth + 2)}${status}`);
+      const { status, detail } = this.results.get(step);
+      const suffix = detail ? ` — ${detail}` : "";
+      lines.push(`${step.padEnd(labelWidth + 2)}${status}${suffix}`);
     }
 
     lines.push("");
