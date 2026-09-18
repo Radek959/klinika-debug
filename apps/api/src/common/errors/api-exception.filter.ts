@@ -3,7 +3,8 @@ import {
   Catch,
   ExceptionFilter,
   HttpException,
-  HttpStatus
+  HttpStatus,
+  Logger
 } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
 import {
@@ -42,6 +43,8 @@ interface ReplyLike {
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(ApiExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
     const context = host.switchToHttp();
     const request = context.getRequest<FastifyRequest>();
@@ -75,7 +78,29 @@ export class ApiExceptionFilter implements ExceptionFilter {
       body.error.fieldErrors = payload.fieldErrors;
     }
 
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      this.logServerError(exception, request, correlationId, body.error.code);
+    }
+
     this.send(reply, status, correlationId, body, payload.responseHeaders);
+  }
+
+  /**
+   * Loguje wyłącznie metodę/ścieżkę, kod błędu, correlationId i stack trace —
+   * nigdy body żądania, dane pacjenta, tokeny, ciasteczka ani hashe (patrz
+   * AGENTS.md, sekcja "Dane i bezpieczeństwo").
+   */
+  private logServerError(
+    exception: unknown,
+    request: FastifyRequest,
+    correlationId: string,
+    code: string
+  ) {
+    const stack = exception instanceof Error ? exception.stack : undefined;
+    this.logger.error(
+      `[${correlationId}] ${request.method} ${request.url} -> ${code}`,
+      stack
+    );
   }
 
   private send(
