@@ -197,6 +197,7 @@ const REPORT_STEP_ORDER = [
   "API_DIAGNOSTICS",
   "OpenAPI",
   "Log fixtures",
+  "Materials asset",
   "Final cleanup"
 ];
 

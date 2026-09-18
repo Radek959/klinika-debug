@@ -30,14 +30,16 @@ const {
   generateSyntheticMinorPesel
 } = require("./workshop-smoke/lib.cjs");
 
-main().then(
-  (exitCode) => process.exit(exitCode),
-  (error) => {
-    console.error("workshop:smoke zakończyło się nieoczekiwanym błędem:");
-    console.error(error instanceof Error ? error.stack ?? error.message : error);
-    process.exit(1);
-  }
-);
+if (require.main === module) {
+  main().then(
+    (exitCode) => process.exit(exitCode),
+    (error) => {
+      console.error("workshop:smoke zakończyło się nieoczekiwanym błędem:");
+      console.error(error instanceof Error ? error.stack ?? error.message : error);
+      process.exit(1);
+    }
+  );
+}
 
 async function main() {
   const config = readWorkshopSmokeConfig(process.env);
@@ -277,6 +279,7 @@ function buildSyntheticPatient(pesel, overrides = {}) {
     birthDate: "1990-01-15",
     gender: "MALE",
     citizenship: "PL",
+    email: "smoke.testowy@example.invalid",
     ...overrides
   };
 }
@@ -599,6 +602,8 @@ async function runMaterialsAssetCheck(client, report) {
   }
   report.pass("Materials asset");
 }
+
+module.exports = { buildSyntheticPatient };
 
 async function runFinalCleanup(adminClient, report, log) {
   try {
